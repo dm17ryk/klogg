@@ -1656,9 +1656,15 @@ void PluginManager::commitWhenStopped( const StagedPlugin& staged, const QString
     const bool pack = isConfigPack( staged.manifest.json );
     PackFiles packShipped;
     std::optional<PackFiles> packMerged;
-    auto error = pack ? preparePackInstall( staged, jobIt->second.context, &packShipped,
-                                            &packMerged, &result )
-                      : QString{};
+    // A plugin that is not a pack merges nothing: choices made for a pack merge are refused, not
+    // ignored (a strategy is only a policy and has nothing to act on).
+    const auto& context = jobIt->second.context;
+    const bool mergeChoices
+        = !context.value( "resolutions" ).toList().isEmpty() || context.contains( "revision" );
+    auto error = pack           ? preparePackInstall( staged, context, &packShipped, &packMerged, &result )
+                 : mergeChoices ? QStringLiteral( "Resolutions and a merge revision apply only to "
+                                                  "configuration packs." )
+                                : QString{};
     if ( result.value( "needsMerge" ).toBool() ) {
         // Shown as "Update to X needs a merge" until an install or update of the pack succeeds.
         settings_.setValue( configurationKey( staged.manifest.id ) + "needsMerge",

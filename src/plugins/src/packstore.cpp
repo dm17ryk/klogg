@@ -763,6 +763,12 @@ QString PackStore::planRestore( const QString& storePath, const QString& commitI
         *stored = target;
     }
     else if ( target.contains( storePath ) ) {
+        // The manifest decides which files a pack has: a file this version does not list would
+        // never reach the content folder, an edit with no effect.
+        if ( kind == QLatin1String( "file" ) && !current.contains( storePath ) ) {
+            return QStringLiteral( "This version of the pack has no such file; its manifest "
+                                   "decides which files it has." );
+        }
         stored->insert( storePath, target.value( storePath ) );
     }
     else if ( kind == QLatin1String( "file" ) || kind == QLatin1String( "order" )

@@ -266,9 +266,12 @@ bool applyResolution( PackFiles* merged, const QVariantMap& resolution, const QS
         }
         return true;
     }
-    // The name is the item's identity: a field resolution never renames it, nor brings back an
-    // item the merge result does not have (it would have no name); a whole-item resolution does.
-    if ( field == QLatin1String( "name" ) || !fieldPathFits( field ) || !merged->contains( path ) ) {
+    // The name is the item's identity: a field resolution never changes it (nor anything under
+    // it, which would make it an object), nor brings back an item the merge result does not have
+    // (it would have no name); a whole-item resolution does.
+    const bool nameField
+        = field == QLatin1String( "name" ) || field.startsWith( QLatin1String( "name/" ) );
+    if ( nameField || !fieldPathFits( field ) || !merged->contains( path ) ) {
         return false;
     }
     const auto changed = packmerge::withField( current, field, value );
@@ -404,7 +407,12 @@ QString PluginManager::preparePackInstall( const StagedPlugin& staged, const QVa
         }
     }
     if ( !store.exists() ) {
-        return {}; // a first install: nothing to merge
+        // A first install merges nothing: choices made for a merge are not ignored but refused.
+        if ( !context.value( "resolutions" ).toList().isEmpty() || context.contains( "revision" ) ) {
+            return QStringLiteral( "The pack has no local edits to merge, so the resolutions and "
+                                   "revision of a merge do not apply. Install it without them." );
+        }
+        return {};
     }
     const auto strategy = strategyOf( context.value( "strategy" ) ).value_or( MergeStrategy::Fail );
     auto plan = store.planUpdate( *shipped, strategy );
@@ -772,18 +780,20 @@ Result PluginManager::managePack( const QString& operation, const QString& id,
             return { "Not an item of the pack.", {} };
         }
         const auto commit = options.value( "commit" ).toString();
-        // A reset brings back what an edit removed: an enabled pack loads it at once, so it
-        // passes the same check as an edit.
-        if ( enabled ) {
-            PackFiles candidate;
-            bool changes = false;
-            auto refusal = store.planRestore( path, commit, &candidate, &changes );
-            if ( refusal.isEmpty() && changes ) {
-                refusal = checkPackFiles( id, candidate, manifest.json );
-            }
-            if ( !refusal.isEmpty() ) {
-                return { refusal, {} };
-            }
+        // A reset brings back what an edit removed, from another version too: the content folder
+        // must load afterwards (the previews within their limits, as after an edit), and an
+        // enabled pack loads it at once, so it also passes the pack check.
+        PackFiles candidate;
+        bool changes = false;
+        auto refusal = store.planRestore( path, commit, &candidate, &changes );
+        if ( refusal.isEmpty() && changes ) {
+            refusal = previewsTooLarge( candidate );
+        }
+        if ( refusal.isEmpty() && changes && enabled ) {
+            refusal = checkPackFiles( id, candidate, manifest.json );
+        }
+        if ( !refusal.isEmpty() ) {
+            return { refusal, {} };
         }
         const auto what = path.isEmpty() ? QStringLiteral( "the pack" ) : packcanonical::itemOf( path );
         error = store.restore( path, commit,

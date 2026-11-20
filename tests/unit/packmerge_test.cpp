@@ -1153,6 +1153,15 @@ TEST_CASE( "Resolutions keep an item's name and its bytes", "[packmerge][E16]" )
     const auto lua = packcanonical::filePath( "lua/a.lua" );
     // Version 1 has a Lua file in Latin-1.
     const auto v1 = writePackage( root.filePath( "v1" ), "1.0.0", Previews, "-- caf\xe9\n" );
+    // A first install merges nothing: the choices of a merge are refused, not ignored.
+    const auto first = finished(
+        manager, manager.manage( "install", {},
+                                 { { "path", v1 },
+                                   { "resolutions", QVariantList{ QVariantMap{ { "path", second }, { "take", "mine" } } } },
+                                   { "revision", "stale" } } ) );
+    CHECK( first[ "state" ] == "failed" );
+    CHECK( first[ "error" ].toString().contains( "no local edits to merge" ) );
+    CHECK( manager.plugins().isEmpty() );
     REQUIRE( finished( manager, manager.manage( "install", {}, { { "path", v1 } } ) )[ "state" ]
              == "completed" );
     // Yours: "First Frame" deleted, "Second" and the Lua file (now UTF-8) changed.
@@ -1193,6 +1202,12 @@ TEST_CASE( "Resolutions keep an item's name and its bytes", "[packmerge][E16]" )
                                     QVariantMap{ { "path", firstFrame }, { "field", "regex" }, { "value", "^x$" } } } );
     CHECK( revived[ "state" ] == "failed" );
     CHECK( revived[ "error" ].toString().contains( "Invalid merge resolution" ) );
+    // Nor is anything under the name changed (it would turn the name into an object).
+    const auto renamed = attempt( { secondChoice,
+                                    QVariantMap{ { "path", lua }, { "take", "theirs" } },
+                                    QVariantMap{ { "path", second }, { "field", "name/x" }, { "value", "bad" } } } );
+    CHECK( renamed[ "state" ] == "failed" );
+    CHECK( renamed[ "error" ].toString().contains( "Invalid merge resolution" ) );
     CHECK( manager.plugins().first().toMap()[ "version" ] == "1.0.0" );
     // Whole sides and fields of present items go ahead.
     const auto applied = attempt( { secondChoice, QVariantMap{ { "path", lua }, { "take", "theirs" } } } );
@@ -1201,6 +1216,34 @@ TEST_CASE( "Resolutions keep an item's name and its bytes", "[packmerge][E16]" )
     const auto content = manager.packContentDirectory( id );
     CHECK( previewRegex( content, "Second" ) == "^B$" );
     CHECK( previewRegex( content, "First Frame" ).isEmpty() );
+
+    // Version 3 no longer lists the Lua file: a revert does not bring it back (the content
+    // folder would never have it, an edit with no effect).
+    const auto v3 = writePackage( root.filePath( "v3" ), "1.2.0", QJsonDocument( document ).toJson(),
+                                  "-- theirs\n" );
+    {
+        auto manifest = packManifest( "1.2.0" );
+        auto contents = manifest[ "content" ].toObject();
+        contents.remove( "lua" );
+        manifest[ "content" ] = contents;
+        QFile file( v3 + "/plugin.json" );
+        REQUIRE( file.open( QIODevice::WriteOnly | QIODevice::Truncate ) );
+        file.write( QJsonDocument( manifest ).toJson() );
+    }
+    const auto third = finished( manager, manager.manage( "install", {}, { { "path", v3 } } ) );
+    INFO( third[ "error" ].toString().toStdString() );
+    REQUIRE( third[ "state" ] == "completed" );
+    const auto luaHistory
+        = manager.manage( "pack_history", id, { { "path", lua } } ).payload[ "commits" ].toList();
+    REQUIRE( !luaHistory.isEmpty() );
+    const auto reverted = manager.manage(
+        "pack_reset", id, { { "path", lua }, { "commit", luaHistory.last().toMap()[ "commit" ] } } );
+    CHECK( !reverted.ok() );
+    CHECK( reverted.error.contains( "no such file" ) );
+    const auto edits = manager.manage( "pack_edits", id, {} ).payload[ "files" ].toList();
+    CHECK( std::none_of( edits.cbegin(), edits.cend(), [ &lua ]( const QVariant& file ) {
+        return file.toMap().value( "path" ).toString() == lua;
+    } ) );
 }
 
 TEST_CASE( "A merge result stays within the preview limits", "[packmerge][E16]" )

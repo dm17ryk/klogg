@@ -768,7 +768,7 @@ changed differently, or deleted on one side and changed on the other, is a confl
 | `pack_read` | `path` | `content`, `edited` |
 | `pack_edit` | `path`, exactly one of `content` or `remove: true` (previews and blocks only), optional `message` | a commit on `local`; only the pack's own items, and preview and block JSON keeps its `name` |
 | `pack_history` | optional `path` | `commits`: `commit`, `message`, `time`, `packVersion` |
-| `pack_reset` | optional `path`, optional `commit` (from `pack_history`) | restores the item (or, within the installed version, the whole pack) as in `commit`, or as shipped, as a new commit; for an enabled pack only content that passes the pack check (like `pack_edit`) |
+| `pack_reset` | optional `path`, optional `commit` (from `pack_history`) | restores the item (or, within the installed version, the whole pack) as in `commit`, or as shipped, as a new commit; never a file the installed version's manifest does not list; previews within their limits, and for an enabled pack only content that passes the pack check (like `pack_edit`) |
 
 `install` and `update` of a pack (and no other operation, which refuses them) take `strategy` (`fail`, the default; `keep_mine`;
 `take_theirs`) and `resolutions`: `{path, take: "mine"|"theirs"}` (a whole side, byte for
@@ -777,7 +777,9 @@ block field (an empty `field` replaces the whole item), and `{path, text}` for a
 preview order, which are never removed (the new manifest lists the files). A file that is not UTF-8 text on
 any side (the installed version's too) is resolved with `take` only, and `pack_read` refuses it
 (editing it as text would change its bytes). A field resolution needs its item in the merge
-result: an item both sides deleted comes back only by a whole-item resolution. With conflicts left open the job fails with `needsMerge: true`,
+result (an item both sides deleted comes back only by a whole-item resolution) and never names
+`name` or a field under it. `resolutions` and `revision` belong to a merge: a first install
+of a pack, or an install or update of a plugin that is not a pack, refuses them. With conflicts left open the job fails with `needsMerge: true`,
 `conflicts` (`path`, `kind`, `item`, `field`, `base`, `mine`, `theirs`; field values as JSON
 text; a file's conflict has only `base`, its sides are in `items`) and `items` (each conflicting
 item whole: `mine`, `theirs`, `inMine`, `inTheirs`, `utf8`), and the installed version stays.

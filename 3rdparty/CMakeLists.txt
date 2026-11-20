@@ -446,10 +446,16 @@ endif()
 # and no feature macros, misses st_mtim on glibc, and filebuf.c then stops at "GIT_USE_NSEC
 # defined but unknown struct stat nanosecond type". The checks get the -D_GNU_SOURCE that every
 # libgit2 source is compiled with (not with MSVC, like libgit2's DefaultCFlags).
+#
+# Always this build, also when packaging asks CPM for the system's packages
+# (CPM_USE_LOCAL_PACKAGES): the store relies on these options (static, local only, deprecated
+# API removed), and a system libgit2 found by CPM would leave klogg_libgit2 undefined.
 set(KLOGG_SAVED_REQUIRED_DEFINITIONS "${CMAKE_REQUIRED_DEFINITIONS}")
 if(NOT MSVC)
   list(APPEND CMAKE_REQUIRED_DEFINITIONS -D_GNU_SOURCE)
 endif()
+set(KLOGG_SAVED_USE_LOCAL_PACKAGES ${CPM_USE_LOCAL_PACKAGES})
+set(CPM_USE_LOCAL_PACKAGES OFF)
 cpmaddpackage(
   NAME
   libgit2
@@ -480,11 +486,14 @@ cpmaddpackage(
 )
 set(CMAKE_REQUIRED_DEFINITIONS "${KLOGG_SAVED_REQUIRED_DEFINITIONS}")
 unset(KLOGG_SAVED_REQUIRED_DEFINITIONS)
-if(libgit2_ADDED)
-  add_library(klogg_libgit2 INTERFACE)
-  target_link_libraries(klogg_libgit2 INTERFACE libgit2package)
-  target_include_directories(klogg_libgit2 SYSTEM INTERFACE ${libgit2_SOURCE_DIR}/include)
+set(CPM_USE_LOCAL_PACKAGES ${KLOGG_SAVED_USE_LOCAL_PACKAGES})
+unset(KLOGG_SAVED_USE_LOCAL_PACKAGES)
+if(NOT libgit2_ADDED)
+  message(FATAL_ERROR "libgit2 was not added: the configuration pack store needs its own build")
 endif()
+add_library(klogg_libgit2 INTERFACE)
+target_link_libraries(klogg_libgit2 INTERFACE libgit2package)
+target_include_directories(klogg_libgit2 SYSTEM INTERFACE ${libgit2_SOURCE_DIR}/include)
 # libgit2's CMakeLists sets CMAKE_C_STANDARD (90) and CMAKE_C_EXTENSIONS (OFF) as cache
 # variables, which would make every later C target of CILogg strict ISO C90 (whereami then fails
 # with GCC and Clang; MSVC has no C90 switch). libgit2's targets keep the standard they were

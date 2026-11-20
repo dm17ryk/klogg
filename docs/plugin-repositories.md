@@ -855,7 +855,10 @@ file, which CILogg writes itself, or differ from another only in case. The conte
 that failed (a rename refused while a file is held; it is retried for about 1.5 s) is written
 again by the next pack operation, enable or update.
 Edits change or delete the pack's own previews and blocks and change its listed files and
-preview order; they add no items. Resolutions name only the pack's items in their canonical
+preview order; they add no items. A revert never brings back a file the installed version's
+manifest no longer lists (the content folder would not have it), and its result stays within the
+preview limits like an edit's. libgit2 is always CILogg's own build (static, local only), also
+when packaging asks CPM for the system's packages. Resolutions name only the pack's items in their canonical
 spelling, and the content folder is written only with relative paths inside it. A whole-pack
 Revert stays within the installed version (items revert one by one across versions), and a
 Revert names a commit from the pack's history. A tree that cannot be read whole is never
