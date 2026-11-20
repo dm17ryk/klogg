@@ -1678,7 +1678,11 @@ void PluginManager::commitWhenStopped( const StagedPlugin& staged, const QString
     if ( error.isEmpty() && pack ) {
         PackStore store( packStoreRoot(), staged.manifest.id );
         packBefore = store.tips();
-        error = store.beginUpdate( packBefore );
+        // A store that is there but whose tips cannot be read now could not be put back.
+        error = packBefore.existed && ( packBefore.upstream.isEmpty() || packBefore.local.isEmpty() )
+                    ? QStringLiteral( "The pack's store cannot be opened now (another program may "
+                                      "be using it). Try again." )
+                    : store.beginUpdate( packBefore );
         journal = error.isEmpty();
         if ( journal ) {
             error = finishPackInstall( staged, packShipped, packMerged, source );

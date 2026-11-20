@@ -811,9 +811,15 @@ replace it). The merge window sends a whole side as `take` only when a whole-sid
 it (the editor shows CRLF as LF), and a text result of a CRLF file keeps CRLF. Every install
 or update writes a journal first (`<pack-id>.update.json`: the branch tips before it) and
 removes it once the package folder is replaced or the store put back; a journal still there
-when the pack is next read (at startup too) means CILogg ended part-way, between the branch
-moves or before the package swap, whatever the versions, and the store is put back to those
-tips, so a later update merges anew. Keep Both is for a preview as a whole: a field choice of
+when the pack is next read (at startup too) is finished: if the package folder already holds
+what the store's `upstream` holds, the update had completed and only the journal goes;
+otherwise CILogg ended part-way (between the branch moves or before the package swap, whatever
+the versions) and the store is put back to those tips, so a later update merges anew. A journal
+is read strictly (a missing or malformed field is never taken as "there was no store", which
+would remove it), and a store that is on disk but does not open now (another program holds a
+file) stops the operation instead of being taken as missing. A previews document over the
+preview limits (128 previews, 4,096 blocks), which could never be enabled, is refused at
+install, and item names are checked with a hash set. Keep Both is for a preview as a whole: a field choice of
 one of its rows takes the item out of it. Removing a
 pack removes the repository and the content folder each on its own; a store still on disk when
 the pack is installed again (a removal that could not finish) is set aside as

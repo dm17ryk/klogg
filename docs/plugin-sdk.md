@@ -727,7 +727,8 @@ packs](plugin-repositories.md) section 4). The example is
   blocks are renamed `<pack-id>/<block>` so they never meet the user's or another pack's; a user
   preview with the same name replaces the pack's; two enabled packs never share a preview name;
   and the user's previews and all enabled packs together stay within the preview limits
-  (128 previews, 4,096 blocks, 1 MiB). **Copy to My Previews** in the previews dialog copies a pack
+  (128 previews, 4,096 blocks, 1 MiB); a pack whose own previews document is over the counts is
+  refused at install. **Copy to My Previews** in the previews dialog copies a pack
   preview, with the blocks it needs and its route, into the user's own previews and routes.
   Exports and project snapshots contain the user's previews only.
 - `lua.load` lists every file of `lua.folder` in loading order (1 to 8 files, 1 MiB each). While

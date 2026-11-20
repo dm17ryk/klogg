@@ -270,10 +270,28 @@ QString PluginManager::ensurePackStore( const QString& id, const Manifest& insta
                                         bool create ) const
 {
     PackStore store( packStoreRoot(), id );
-    // An update whose journal is still there stopped part-way (CILogg ended in the middle): the
-    // store is put back to the installed version first.
-    if ( const auto error = store.recoverInterruptedUpdate(); !error.isEmpty() ) {
-        return error;
+    // An install or update whose journal is still there: it finished (the package folder holds
+    // what the store's `upstream` holds) or stopped part-way (CILogg ended in the middle), and
+    // then the store is put back to the installed version first.
+    if ( store.hasJournal() ) {
+        QString readError;
+        const auto installedFiles
+            = packcanonical::fromPackFolder( installed.json, installed.directory, &readError );
+        if ( !readError.isEmpty() ) {
+            return QStringLiteral( "The pack's installed folder cannot be read to finish an update "
+                                   "that stopped part-way: %1" )
+                .arg( readError );
+        }
+        if ( const auto error = store.recoverInterruptedUpdate( &installedFiles, installed.json );
+             !error.isEmpty() ) {
+            return error;
+        }
+    }
+    // A store that is there but does not open now (another program holds a file of it) is not a
+    // missing one: nothing is done with it until it opens, or its edits could be lost.
+    if ( store.hasRepository() && !store.exists() && !store.damaged() ) {
+        return QStringLiteral( "The pack's store cannot be opened now (another program may be "
+                               "using it). Try again." );
     }
     // A content folder without its repository (moved, or deleted by hand) still holds the
     // edits: that is rebuilt like a damaged store, never replaced by the installed version.
@@ -317,7 +335,8 @@ QString PluginManager::preparePackInstall( const StagedPlugin& staged, const QVa
     if ( packInstalled ) {
         error = ensurePackStore( staged.manifest.id, installed->second->manifest, false );
         if ( !error.isEmpty() ) {
-            return QStringLiteral( "The pack's local store is damaged and could not be rebuilt: %1" )
+            return QStringLiteral( "The pack's local store is not usable, so the installed version "
+                                   "stays: %1" )
                 .arg( error );
         }
     }

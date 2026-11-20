@@ -143,6 +143,18 @@ TEST_CASE( "Pack items have a canonical one-item-per-file form", "[packmerge][E1
         CHECK( packcanonical::fromPreviews( bad, &why ).isEmpty() );
         CHECK( why.startsWith( "The pack's previews document is not valid" ) );
     }
+    // A pack over the preview limits could never be enabled: refused before it becomes thousands
+    // of store items (a 1 MiB document can hold tens of thousands of small ones).
+    {
+        QJsonArray many;
+        for ( int index = 0; index < 20000; ++index ) {
+            many.append( QJsonObject{ { "name", QStringLiteral( "p%1" ).arg( index ) } } );
+        }
+        QString why;
+        CHECK( packcanonical::fromPreviews( QJsonDocument( QJsonObject{ { "previews", many } } ).toJson(), &why )
+                   .isEmpty() );
+        CHECK( why.contains( "more than 128 previews" ) );
+    }
     // Every file the manifest lists is carried, also actions, highlights and filters.
     auto withFilters = packManifest();
     auto declared = withFilters[ "content" ].toObject();
@@ -532,6 +544,62 @@ TEST_CASE( "An update that stopped part-way is put back by its journal", "[packm
     CHECK( recovered.localEdits() == QStringList{ second } );
     CHECK( readFile( recovered.contentDirectory() + "/previews.json" ).contains( "^EDITED$" ) );
     CHECK( !readFile( recovered.contentDirectory() + "/previews.json" ).contains( "^A2$" ) );
+}
+
+TEST_CASE( "A journal is acted on only when it is sure", "[packmerge][E16]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    const auto second = QStringLiteral( "previews/%53econd.json" );
+    const auto journal = root.filePath( "org.example.pack.update.json" );
+    PackStore store( root.path(), "org.example.pack" );
+    REQUIRE( store.install( packFiles(), packManifest(), "1.0.0", "Team packs" ).isEmpty() );
+    auto edited = QJsonDocument::fromJson( store.files().value( second ) ).object();
+    edited[ "regex" ] = "^EDITED$";
+    REQUIRE( store.commitEdit( second, packcanonical::itemBytes( edited ), "Edit" ).isEmpty() );
+    const auto tip = store.localTip();
+
+    SECTION( "the package folder was replaced: only the journal goes" )
+    {
+        auto v2Previews = QJsonDocument::fromJson( Previews ).object();
+        auto previews = v2Previews[ "previews" ].toArray();
+        auto frame = previews[ 1 ].toObject();
+        frame[ "regex" ] = "^A2$";
+        previews[ 1 ] = frame;
+        v2Previews[ "previews" ] = previews;
+        const auto v2 = packFiles( QJsonDocument( v2Previews ).toJson() );
+        REQUIRE( store.beginUpdate( store.tips() ).isEmpty() );
+        REQUIRE( store.applyUpdate( v2, store.planUpdate( v2, MergeStrategy::Fail ).merged,
+                                    packManifest( "1.1.0" ), "1.1.0", "Team packs" )
+                     .isEmpty() );
+        const auto after = store.localTip();
+        // What the installed folder holds is the new version: the update finished.
+        REQUIRE( store.recoverInterruptedUpdate( &v2, packManifest( "1.1.0" ) ).isEmpty() );
+        CHECK( !QFileInfo::exists( journal ) );
+        CHECK( store.localTip() == after );
+    }
+    SECTION( "a journal that cannot be read changes nothing" )
+    {
+        // No "existed": never taken as "there was no store", which would remove it.
+        QFile file( journal );
+        REQUIRE( file.open( QIODevice::WriteOnly ) );
+        file.write( QJsonDocument( QJsonObject{ { "upstream", tip }, { "local", tip } } ).toJson() );
+        file.close();
+        CHECK( store.recoverInterruptedUpdate().contains( "cannot be read" ) );
+        CHECK( QFileInfo::exists( journal ) );
+        CHECK( store.localTip() == tip );
+        CHECK( readFile( store.contentDirectory() + "/previews.json" ).contains( "^EDITED$" ) );
+    }
+    SECTION( "a repository that does not open is never taken as missing" )
+    {
+        PackStore other( root.path(), "org.example.other" );
+        REQUIRE( QDir().mkpath( root.filePath( "org.example.other.git" ) ) );
+        const auto tips = other.tips();
+        CHECK( tips.existed );
+        CHECK( tips.upstream.isEmpty() );
+        CHECK( !other.rollback( tips ).isEmpty() );
+        CHECK( QFileInfo::exists( root.filePath( "org.example.other.git" ) ) );
+    }
 }
 
 TEST_CASE( "A store left by an earlier install does not come back into a new one",

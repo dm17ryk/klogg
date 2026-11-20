@@ -8,6 +8,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
+#include <QRegularExpression>
 #include <QSaveFile>
 #include <QSet>
 #include <QThread>
@@ -847,10 +848,28 @@ void PackStore::endUpdate()
     }
 }
 
-QString PackStore::recoverInterruptedUpdate()
+bool PackStore::hasJournal() const
 {
-    if ( !safePackId( packId_ ) || !QFileInfo::exists( journalPath() ) ) {
+    return safePackId( packId_ ) && QFileInfo::exists( journalPath() );
+}
+
+QString PackStore::recoverInterruptedUpdate( const PackFiles* installed,
+                                             const QJsonObject& installedManifest )
+{
+    if ( !hasJournal() ) {
         return {};
+    }
+    // The package folder already holds what `upstream` holds: the update finished, only the
+    // journal's removal did not.
+    if ( installed ) {
+        bool complete = false;
+        const auto upstream = filesAt( QStringLiteral( "refs/heads/upstream" ), &complete );
+        if ( complete && withoutManifest( upstream ) == *installed
+             && QJsonDocument::fromJson( upstream.value( ManifestPath ) ).object() == installedManifest ) {
+            LOG_INFO << "Pack store update had finished; its journal goes pack=" << packId_.toStdString();
+            endUpdate();
+            return {};
+        }
     }
     QFile file( journalPath() );
     const auto journal = file.open( QIODevice::ReadOnly )
@@ -859,7 +878,14 @@ QString PackStore::recoverInterruptedUpdate()
     file.close();
     const PackTips before{ journal.value( "existed" ).toBool(), journal.value( "upstream" ).toString(),
                            journal.value( "local" ).toString() };
-    if ( journal.isEmpty() || ( before.existed && ( before.upstream.isEmpty() || before.local.isEmpty() ) ) ) {
+    // Read strictly: a journal that says "no store before" removes the store, so anything short
+    // of exactly that (or of two commit IDs) is not acted on.
+    static const QRegularExpression commitId( QStringLiteral( "\\A[0-9a-f]{40}\\z" ) );
+    const bool valid = journal.value( "existed" ).isBool()
+                       && ( before.existed ? commitId.match( before.upstream ).hasMatch()
+                                                 && commitId.match( before.local ).hasMatch()
+                                           : before.upstream.isEmpty() && before.local.isEmpty() );
+    if ( !valid ) {
         return QStringLiteral( "The journal of an unfinished update of the pack cannot be read: %1" )
             .arg( QDir::toNativeSeparators( journalPath() ) );
     }
@@ -878,6 +904,9 @@ PackTips PackStore::tips() const
     PackTips tips;
     git_oid oid;
     if ( !open( false ) ) {
+        // A repository that is there but does not open now is not a missing one: without its
+        // tips nothing can be put back, but it is never removed as if it had not been there.
+        tips.existed = hasRepository();
         return tips;
     }
     tips.existed = true;

@@ -110,11 +110,16 @@ public:
     // put back. Found later, it means CILogg ended part-way, whatever the versions.
     QString beginUpdate( const PackTips& before );
     void endUpdate();
-    // Puts back an install or update whose journal is still there (CILogg ended between moving
-    // `upstream` and `local`, or before the package folder was replaced), so the store matches
-    // the installed package again; a later update merges anew. Empty when there was nothing to
-    // put back or it was put back; the journal stays when it could not be.
-    QString recoverInterruptedUpdate();
+    bool hasJournal() const;
+    // Finishes an install or update whose journal is still there. When `installed` (the
+    // installed package folder's files, with `installedManifest`) is what the store's `upstream`
+    // holds, the package was replaced and only the journal was left: it goes. Otherwise (CILogg
+    // ended between moving `upstream` and `local`, or before the package folder was replaced; or
+    // no package is installed) the store is put back to the tips before, so it matches the
+    // installed package again. Empty when there was nothing to do or it was done; the journal
+    // stays when it could not be.
+    QString recoverInterruptedUpdate( const PackFiles* installed = nullptr,
+                                      const QJsonObject& installedManifest = {} );
     // Sets an earlier install's store aside as `<name>.orphaned-<time>` (kept, never deleted):
     // a pack installed again starts a store of its own.
     QString setAside();
