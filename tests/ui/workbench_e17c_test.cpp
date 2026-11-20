@@ -352,9 +352,20 @@ TEST_CASE( "E17c later roots, dialogs and typed text keep validity and values ri
     REQUIRE( fixture.get<QPushButton>( "apply" )->isEnabled() );
     fixture.events.clear();
     fixture.get<QLineEdit>( "name" )->setText( "x" );
-    REQUIRE( waitFor( [ & ] { return !fixture.events.isEmpty(); } ) );
-    REQUIRE( fixture.last().value( "element_id" ) == "name" );
-    REQUIRE_FALSE( fixture.last().contains( "valid" ) );
+    // The drop-down's debounced `changed` for "custom" may arrive before or after it: find the
+    // name's own event.
+    QJsonObject named;
+    REQUIRE( waitFor( [ & ] {
+        for ( const auto& event : std::as_const( fixture.events ) ) {
+            const auto object = event.front().toJsonObject();
+            if ( object.value( "element_id" ) == "name" ) {
+                named = object;
+                return true;
+            }
+        }
+        return false;
+    } ) );
+    REQUIRE_FALSE( named.contains( "valid" ) );
 }
 
 TEST_CASE( "E17c searchable and editable drop-downs and completion", "[ui][workbench][E17]" )
