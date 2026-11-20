@@ -1,6 +1,6 @@
 # UI Gallery
 
-A small tour of the plugin view and menu features of the advanced plugin SDK (see
+A small tour of the plugin view, menu and form features of the advanced plugin SDK (see
 `docs/plugin-sdk.md` and `docs/plugin-sdk-advanced.md`). It grows with each E17 slice. It is
 disabled by default; enable it in **Plugins → Manage Plugins…**, then open **Plugins → UI
 Gallery → Open gallery** (or press **Ctrl+Alt+Shift+G**).
@@ -57,9 +57,41 @@ The commands put their result in the gallery's status label. The view need not b
 plugin keeps the last result and shows it when the gallery opens. Command handlers run on the
 same worker thread as the view callbacks, so they share the gallery state with them.
 
+### Choices, check boxes, radio buttons, field kinds and validation (E17c)
+
+The **Choices and fields** group has:
+
+- **Speed**, a drop-down whose choices have icons and a tooltip, a separator, a section title
+  ("Fixed speeds") and a disabled choice (`choice(...)`, `choice_separator()`,
+  `choice_section(...)`);
+- **Parity**, a drop-down with radio marks (`indicator="radio"`);
+- **Direction**, an inline row of radio buttons (`style="radio"`,
+  `orientation="horizontal"`), and **Channels**, a `multichoice` shown as check boxes in two
+  columns (`style="checkboxes"`, `columns=2`);
+- **Firmware**, a searchable drop-down of 30 versions (`searchable=True`);
+- **Target board**, an editable drop-down with completion (`editable=True`,
+  `completion=True`): when typing pauses, CILogg asks `field/complete` and
+  `@plugin.complete("gallery", "target_board")` answers the board names that start with the
+  typed text, with their state and a status icon;
+- a tri-state **Verbose logging** check box that starts partly checked (`checkbox(...,
+  value=None, tristate=True)`), a **Mode** `radio_group` and a **Logs** `check_group` with
+  All and None links (`all_none=True`);
+- one field of each new kind: `multiline` (**Notes**, 3 rows, monospace), `secret`, `slider`
+  (**Log level**), `color`, `date`, `time` and `datetime`, and the `integer` **Retries**
+  (0 to 10);
+- **Board label**, a text field with `required=True` and `pattern="[A-Za-z0-9_-]+"`, and
+  **Apply**, an event button with `requires_valid=["board_label", "retries"]`: CILogg keeps it
+  disabled until both fields are valid.
+
+The label next to **Apply** shows the last `changed` event as `changed <element>=<value>
+valid=<true|false>` (text as typed, other values as JSON; an event without `valid`, such as a
+check box's, counts as valid) or the click as `clicked apply board_label=<value>
+retries=<value>`.
+
 `plugin.json` lists the host-to-plugin methods the plugin handles in `handles`
-(`tooltip/resolve`, `menu/populate`, `ui/command`, `query/cancel`); without them CILogg never
-sends them (an `event` entry is then disabled), and the SDK warns on stderr at start.
+(`tooltip/resolve`, `menu/populate`, `field/complete`, `ui/command`, `query/cancel`); without
+them CILogg never sends them (an `event` entry is then disabled), and the SDK warns on stderr
+at start.
 
 ## On an older CILogg
 
@@ -69,6 +101,14 @@ The gallery still loads: the previous CILogg ignores `handles` and `menus` and s
 accessible names without `views` version 2; `register_icons`, `invalidate_tooltips` and
 `update_menu` send nothing. The intro label then says that advanced tooltips need a newer
 CILogg.
+
+The choices group becomes plain fields: without `choices`, separators and section titles are
+left out and choices lose their icons, tooltips and `enabled`, and the drop-down styles and
+completion go; without `toggles`, the check box is a boolean field (partly checked becomes
+unchecked), the radio group a choice field and the check group a multichoice field; without
+`field_kinds`, the new kinds are text fields (integer and slider: number fields); without
+`validation`, `required`, `pattern`, the bounds and `requires_valid` are left out. The group's
+first label then says that these controls need a newer CILogg.
 
 ## Testing without CILogg
 
@@ -83,7 +123,10 @@ with FakeHost.start_package("plugins/examples/ui-gallery") as host:  # with cilo
     print(host.populate_menu("main", "boards"))                     # the dynamic submenu
     host.send_command("lines", "count_lines", "log", selection=log_selection([(5, 9)]))
     print(host.wait_for("view/update", lambda params: "patch" in params))  # the status label
+    print(host.complete_field("gallery", "target_board", "Bo"))      # completion
+    host.change_field("gallery", "board_label", "bad name", valid=False)
+    print(host.wait_for("view/update", lambda params: "patch" in params))  # "changed board_label=..."
 ```
 
-`tests/plugins/test_ui_gallery.py` does this for every tooltip, menu entry and command, on a
-current, an E17a and an older host.
+`tests/plugins/test_ui_gallery.py` does this for every tooltip, menu entry, command, control
+and completion, on a current, an E17b, an E17a and an older host.

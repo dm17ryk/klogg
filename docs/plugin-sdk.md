@@ -109,6 +109,7 @@ Host requests:
 | `invoke` | `job_id`, `action`, `arguments`, `context`; respond to the request ID when complete. An action run from a menu entry or its shortcut gets `context.menu`: `location`, `menu_id`, `item_id`, and for `log` entries `line` and `selection` (`ranges`, `count`, `text`, `truncated`) |
 | `tooltip/resolve` | A host query (ids `q:<n>`), sent only to a plugin that lists it in `handles` and `features`: `view_id`, `window_id`, `element_id`, optional `row_id`, `column_id`, `tooltip_key`, `timeout_ms`, `context`; answer a tooltip object or `null` (see below) |
 | `menu/populate` | A host query for a `dynamic` menu entry (docs/plugin-sdk-advanced.md 7.4): `menu_id`, `item_id`, `location`, `window_id`, `context` (ids, the line under the pointer and the selected line ranges, never the text), `timeout_ms`; answer `{items, cache_ms}` with entries of the menu schema without shortcuts or dynamic entries; `null` is an empty list |
+| `field/complete` | A host query 150 ms after typing pauses in a view field with `completion` (docs/plugin-sdk-advanced.md 8.2): `view_id`, `window_id`, `element_id`, `text`, `cursor`, `timeout_ms` (500 ms, `completion_timeout_ms` up to 2,000), `context`; answer `{items: [{value, label, icon}]}` (at most 100, each with a string `value`), a list of items, or `null` |
 
 The plugin process environment also contains `CILOGG_EXECUTABLE` (the running CILogg
 executable) and `CILOGG_INSTANCE_ID` (the single-application name that Commander clients use to
@@ -130,6 +131,16 @@ plugin notification `menu/update` (`menu_id`, `items: [{id, set: {title, icon, t
 visible, checked}}]`) changes declared entries in every window. `shortcut` (on menu entries,
 actions and views, at most 32) is a portable key sequence with Ctrl, Alt or Meta, or a function
 key; a shortcut CILogg already uses is refused and listed in the Plugins and Packs window.
+
+Choices and fields (E17c, docs/plugin-sdk-advanced.md sections 8 and 26): view choices may be
+objects (`value`, `label`, `icon`, `tooltip`, `enabled`) with `{"type": "separator"}` and
+`{"type": "section", "label": ...}` between them; fields take `indicator`, `style`, `orientation`,
+`columns`, `searchable`, `editable` and `completion`, the kinds `multiline`, `secret`, `integer`,
+`slider`, `color`, `date`, `time` and `datetime`, and the validation keys `required`, `pattern`,
+`min`, `max`, `min_length`, `max_length` and `error`; the elements `checkbox`, `radio_group` and
+`check_group` are new, and buttons take `requires_valid`. A `changed` event of a field with a
+validation key carries `valid`. Hosts without these features announce no `choices`, `toggles`,
+`field_kinds` or `validation`, and the Python SDK sends such a host the fields it knows.
 
 Plugin notifications:
 
@@ -337,7 +348,8 @@ checked with `mypy --strict` in CI. Every name of the earlier SDK keeps working.
 `plugins/examples/ui-gallery` (disabled by default) shows static and advanced tooltips on a
 label, a button, a field, table headers and every table cell, a registered icon,
 `invalidate_tooltips` and accessible names, a Plugins submenu with a check box, radio entries, a
-dynamic submenu and a shortcut, log and tab context menu entries, and degrades on an older
+dynamic submenu and a shortcut, log and tab context menu entries, every choice style, check
+boxes, radio buttons, the new field kinds, validation and completion, and degrades on an older
 CILogg.
 
 ### Menus and commands (E17b)
@@ -405,6 +417,101 @@ def explain(command: UiCommand) -> None:
     print(command.line_count, command.ranges, command.text)
 ```
 
+### Choices, toggles, field kinds and validation (E17c)
+
+A host that announces `choices`, `toggles`, `field_kinds` and `validation` (version 1 each)
+shows richer form controls (design section 8). The SDK builds them, converts them for an older
+host and answers field completion:
+
+- **Choices.** A `choices` list holds plain values and `choice(value, label=None, *, icon=None,
+  tooltip=None, enabled=None)` objects, with `choice_separator()` and `choice_section(label)`
+  between them (`Choice`, `ChoiceSeparator`, `ChoiceSection`). `choice` and `multichoice`
+  fields, `radio_group`, `check_group` and table cell editors take them.
+- **Field keys.** `field(...)` gains keyword-only keys (`FieldElement`), checked against the
+  kind (ValueError for a combination CILogg refuses):
+  - `choices`: `indicator="radio"` (radio marks in a `choice` drop-down); `style` (`dropdown`,
+    or the inline `radio` for `choice` and `checkboxes` for `multichoice`, `CHOICE_STYLES`) with
+    `orientation` (`vertical`, `horizontal`) and `columns` (1 to 12); `searchable` (a filter
+    line in the open list); `editable` (`choice`: the user may type a value that is not in the
+    list); `completion` (on an editable `choice` or a `text` field);
+  - `field_kinds`: the kinds `multiline` (`rows`, `monospace`), `secret`, `integer` and
+    `slider` (`min`, `max`, `step`), `color` (`"#rrggbb"`), `date` (`YYYY-MM-DD`), `time`
+    (`HH:MM:SS`) and `datetime` (`YYYY-MM-DDTHH:MM:SS`, local time) (`FIELD_KINDS`);
+  - `validation`: `required`, `pattern` (a regular expression for the whole text, at most 256
+    characters), `min` and `max`, `min_length` and `max_length`, and `error` (the plugin's
+    message; `""` clears it). `min`, `max` and `step` are finite numbers, whole on `integer` and
+    `slider` fields; `rows`, `min_length` and `max_length` are whole numbers (`field()` raises
+    ValueError otherwise). `button(..., requires_valid=True)` (every field of the view) or
+    `requires_valid=["label", "retries"]` keeps a button disabled until those fields are valid.
+- **Check boxes and radio buttons.** `checkbox(id, text, value=False, *, tristate=None,
+  tone=None)` (`value` None is partly checked and needs `tristate=True`),
+  `radio_group(id, choices, value=None, *, title=None, orientation=None, columns=None)` and
+  `check_group(id, choices, value=None, *, title=None, orientation=None, columns=None,
+  all_none=None)` (`all_none` adds All and None links) are elements (`CheckboxElement`,
+  `RadioGroupElement`, `CheckGroupElement`). Their values appear in `inputs` under their ids,
+  and they send `changed` with the new value (a list for a check group).
+- **Events.** On a host with validation, the `changed` event of a field that declares a
+  validation key (`required`, `pattern`, `min`, `max`, `min_length`, `max_length` or a
+  non-empty `error`), and of every `color` field (blank or `#rrggbb`), carries `valid`; other
+  `changed` events keep their earlier shape, so read `params.get("valid", True)`
+  (`ViewEventParams`).
+- **Completion.** `@plugin.complete(view_id, element_id=None)` registers
+  `handler(CompleteQuery)` for a field with `completion`, or for every such field of the view
+  (an element's own handler wins; a `@plugin.query("field/complete")` handler is the last
+  fallback, its result unchanged). `CompleteQuery` adds `view_id`, `window_id`, `element_id`,
+  `text` and `cursor` (0 to `len(text)`) to `Query`. The handler returns a list of items
+  (strings, or `completion_item(value, label=None, *, icon=None)`), a dict `{"items": [...]}`
+  or None (no completions); the SDK keeps the first 100 items and answers the error `-32000`
+  for any other return value or an item without a string `value`. Handlers run on the
+  `field/complete` lane, where a newer query replaces a waiting one (default timeout 500 ms,
+  at most 2,000). The initialize result lists `field/complete` (and `query/cancel`), which
+  `plugin.json` must list in `handles`. The messages have `TypedDict` classes:
+  `CompleteParams`, `CompletionItem` and `CompleteResult`.
+- **Older hosts.** `update()` and `patch()` convert what the host does not know, without
+  changing the caller's dictionaries: without `choices`, separators and sections are left out
+  and choice objects keep only `value` and `label` (a plain value when there is no label), also
+  in table cell editors, and the field keys `indicator`, `style`, `orientation`, `columns`,
+  `searchable`, `editable` and `completion` go; without `toggles`, a `checkbox` becomes a
+  `boolean` field captioned with its text (partly checked becomes False), a `radio_group` a
+  `choice` field and a `check_group` a `multichoice` field captioned with the title (with the
+  inline style when the host has `choices`); without `field_kinds`, the new kinds become
+  `text` fields, `integer` and `slider` `number` fields, and `rows`, `monospace` and `step` go;
+  without `validation`, the validation keys and `requires_valid` go (`min` and `max` of
+  `integer` and `slider` fields stay with `field_kinds`). A patch is converted by the type of
+  the element in the view's last `update()`.
+
+```python
+from typing import List
+
+from cilogg_plugin import (
+    CompleteQuery, CompletionItem, JsonObject, Plugin, button, checkbox, choice,
+    choice_separator, column, completion_item, field,
+)
+
+plugin = Plugin()
+BOARDS = ["Board 1", "Board 2", "Board 7"]
+
+
+def form() -> JsonObject:
+    return column(
+        field("speed", "choice", label="Speed", value="auto", choices=[
+            choice("auto", "Automatic", icon="builtin:refresh"), choice_separator(),
+            choice(115200, "115200"), choice(9600, "9600", enabled=False)]),
+        field("board", "choice", label="Board", choices=BOARDS, editable=True,
+              completion=True),
+        checkbox("verbose", "Verbose", value=None, tristate=True),
+        field("label", "text", label="Label", required=True, pattern="[A-Za-z0-9_-]+"),
+        field("retries", "integer", label="Retries", value=3, min=0, max=10),
+        button("apply", "Apply", event=True, requires_valid=["label", "retries"]),
+        id="body")
+
+
+@plugin.complete("main", "board")
+def boards(query: CompleteQuery) -> List[CompletionItem]:
+    typed = query.text[:query.cursor].casefold()
+    return [completion_item(name) for name in BOARDS if name.casefold().startswith(typed)]
+```
+
 ### Testing plugins without CILogg
 
 `plugins/sdk/python/cilogg_plugin_testing.py` (standard library only) has a `FakeHost` that
@@ -424,9 +531,11 @@ with FakeHost.start_package("path/to/my-plugin") as host:   # its plugin.json, e
 - Start a plugin with `FakeHost.start(command, cwd)`, `FakeHost.start_package(folder)` or, for
   a `Plugin` object in the test process, `FakeHost.in_process(plugin)`.
 - `initialize(configuration, host_features=…, host_feature_versions=…, host_version=…,
-  host_limits=…)` sends the current host's keys by default (`HOST_FEATURES`, with `menus` and
-  `shortcuts`); pass None to leave one out, or `E17A_HOST_FEATURES` and
-  `E17A_HOST_FEATURE_VERSIONS` to play a CILogg without menus.
+  host_limits=…)` sends the current host's keys by default (`HOST_FEATURES`, with `menus`,
+  `shortcuts`, `choices`, `toggles`, `field_kinds` and `validation`); pass None to leave one
+  out, `E17B_HOST_FEATURES` and `E17B_HOST_FEATURE_VERSIONS` to play a CILogg without the E17c
+  form controls, or `E17A_HOST_FEATURES` and `E17A_HOST_FEATURE_VERSIONS` to play one without
+  menus.
 - `invoke`, `start_invoke`, `cancel`, `configure`, `open_view`, `close_view`, `view_event`,
   `message_result`, `request`, `notify` and `send_frame` (any frame, also raw bytes) send;
   `wait_for(method, predicate)` consumes the next matching plugin notification and
@@ -441,6 +550,12 @@ with FakeHost.start_package("path/to/my-plugin") as host:   # its plugin.json, e
   location="plugins", origin="menu", checked=None, context=None, selection=None)` picks an
   `event` entry, with `log_selection(ranges, count=None, text=None, truncated=None)` building
   the `context.selection` of a log entry.
+- `complete_field(view_id, element_id, text, cursor=None, window_id="w1", timeout_ms=500,
+  timeout=None, context=None)` asks `field/complete` as when typing pauses in a field with
+  `completion` (`cursor` defaults to the end of the text; returns `{items}` or None);
+  `change_field(view_id, element_id, value, valid=None, window_id="w1", inputs=None)` sends a
+  `changed` view event with the new value in `inputs` and, when given, `valid` (pass it only
+  for a field with validation keys, as CILogg does).
 - `frames` (`Frame`: `direction`, `message`, `raw`, `time`) holds the whole session; `errors`
   lists frames that CILogg would refuse (malformed envelopes, requests from the plugin);
   `stderr` holds a subprocess plugin's diagnostics; `shutdown()` returns its exit code.

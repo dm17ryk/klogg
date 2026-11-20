@@ -4,8 +4,9 @@ Version 2.0.0 adds capability negotiation (`Plugin.supports`, `host_limits`, `ho
 host queries answered on worker lanes (`@plugin.tooltip`, `@plugin.query`), tooltip
 invalidation, registered icons, menus with dynamic submenus and commands
 (`@plugin.menu_populate`, `@plugin.on_command`, `Plugin.update_menu`, `menu_item` and the other
-menu builders) and forward compatibility with newer hosts. See docs/plugin-sdk.md and
-docs/plugin-sdk-advanced.md.
+menu builders), choices, check boxes, radio buttons, new field kinds, validation and field
+completion (`choice`, `checkbox`, `radio_group`, `check_group`, `@plugin.complete`) and forward
+compatibility with newer hosts. See docs/plugin-sdk.md and docs/plugin-sdk-advanced.md.
 """
 from __future__ import annotations
 
@@ -13,6 +14,7 @@ import base64
 import collections
 import collections.abc
 import json
+import math
 import os
 import pathlib
 import queue
@@ -70,6 +72,26 @@ MENU_LOCATIONS = ("plugins", "menubar", "tab", "pane", "log", "element", "toolba
 COMMAND_ORIGINS = ("menu", "shortcut", "toolbar", "status")
 MAX_MENU_CACHE_MS = 60000
 
+# Choices, check boxes, radio buttons, field kinds, validation and completion
+# (docs/plugin-sdk-advanced.md, section 8; host features choices, toggles, field_kinds and
+# validation).
+FIELD_COMPLETE = "field/complete"
+MAX_COMPLETION_ITEMS = 100
+MAX_PATTERN_LENGTH = 256
+MAX_INLINE_COLUMNS = 12
+E14_FIELD_KINDS = ("text", "number", "choice", "multichoice", "boolean", "file_open", "file_save",
+                   "directory")
+# The kinds of host feature field_kinds, and the kind a host without it gets instead.
+FIELD_KIND_FALLBACKS: Dict[str, str] = {
+    "multiline": "text", "secret": "text", "integer": "number", "slider": "number",
+    "color": "text", "date": "text", "time": "text", "datetime": "text",
+}
+FIELD_KINDS = E14_FIELD_KINDS + tuple(FIELD_KIND_FALLBACKS)
+# The styles of choice and multichoice fields: a drop-down or an inline list.
+CHOICE_STYLES: Dict[str, Tuple[str, ...]] = {
+    "choice": ("dropdown", "radio"), "multichoice": ("dropdown", "checkboxes")}
+ORIENTATIONS = ("vertical", "horizontal")
+
 # Host methods the SDK handles itself; @plugin.query cannot take them over.
 _CORE_HOST_METHODS = frozenset({
     "initialize", "shutdown", "invoke", "configure", "cancel", "stream/opened", "stream/ack",
@@ -85,6 +107,21 @@ _TOOLTIP_ROW_KEYS = frozenset({"tooltip_provider", "tooltip_key"})
 _ACCESSIBLE_KEYS = frozenset({"accessible_name", "accessible_description"})
 _ROW_OPERATIONS = ("replace_rows", "update_rows", "insert_rows")
 _SHORTCUT_KEYS = frozenset({"shortcut"})  # Not allowed in menu/populate answers.
+# Field and element keys of the E17c features (update() and patch() remove them per feature).
+_CHOICE_OBJECT_KEYS = frozenset({"icon", "tooltip", "enabled"})  # inside choice objects
+_CHOICE_MARKERS = ("separator", "section")
+_CHOICE_FIELD_KEYS = frozenset({"indicator", "style", "searchable", "editable", "completion",
+                                "completion_timeout_ms", "orientation", "columns"})
+_FIELD_KIND_KEYS = frozenset({"rows", "monospace", "step"})
+_BOUND_KEYS = frozenset({"min", "max"})
+_VALIDATION_KEYS = frozenset({"required", "pattern", "min", "max", "min_length", "max_length",
+                              "error", "requires_valid"})
+_TOGGLE_KEYS = frozenset({"tristate", "all_none"})
+# A toggle element on a host without toggles: (field kind, inline style, caption key).
+_TOGGLE_FIELDS: Dict[str, Tuple[str, Optional[str], str]] = {
+    "checkbox": ("boolean", None, "text"), "radio_group": ("choice", "radio", "title"),
+    "check_group": ("multichoice", "checkboxes", "title")}
+_BOUNDED_KINDS = ("integer", "slider")  # their min and max belong to field_kinds
 
 
 # Message shapes (docs/plugin-sdk.md and docs/plugin-sdk-advanced.md). Keys of the
@@ -320,6 +357,162 @@ class MenuUpdateParams(TypedDict):
 MenuAnswer = Union[MenuPopulateResult, Sequence[MenuEntry], Sequence[Mapping[str, Any]],
                    Mapping[str, Any], None]
 
+# Choices, check boxes, radio buttons, field kinds and validation (docs/plugin-sdk-advanced.md,
+# section 8). A choice is a plain value or a Choice; separators and sections sit between them.
+ChoiceValue = Union[str, int, float]
+
+
+class _ChoiceRequired(TypedDict):
+    value: ChoiceValue
+
+
+class Choice(_ChoiceRequired, total=False):
+    """A choice object; `icon`, `tooltip` and `enabled` need the host feature choices."""
+    label: str
+    icon: IconRef
+    tooltip: str
+    enabled: bool
+
+
+class ChoiceSeparator(TypedDict):
+    type: str  # separator
+
+
+class ChoiceSection(TypedDict):
+    type: str  # section
+    label: str
+
+
+ChoiceEntry = Union[ChoiceValue, Choice, ChoiceSeparator, ChoiceSection]
+# A button's requires_valid: True (every field of the view) or a list of field ids.
+RequiresValid = Union[bool, List[str]]
+
+
+class ElementProperties(TypedDict, total=False):
+    """Properties every view element takes."""
+    id: str
+    enabled: bool
+    visible: bool
+    tooltip: str
+    tooltip_provider: bool
+    tooltip_key: str
+    accessible_name: str
+    accessible_description: str
+
+
+class FieldElement(ElementProperties, total=False):
+    """A `field` element with the keys of E13/E14 and of the E17c features."""
+    type: str  # field
+    kind: str  # FIELD_KINDS
+    label: str
+    value: Any
+    choices: List[ChoiceEntry]
+    filter: str
+    placeholder: str
+    # Host feature choices (kinds choice and multichoice; completion also on text fields).
+    indicator: str  # radio
+    style: str  # CHOICE_STYLES
+    searchable: bool
+    editable: bool
+    completion: bool
+    orientation: str  # ORIENTATIONS, with an inline style
+    columns: int  # 1..12, with an inline style
+    # Host feature field_kinds.
+    rows: int  # multiline
+    monospace: bool  # multiline
+    step: float  # integer, slider
+    # Host feature validation (min and max also bound integer and slider fields).
+    min: float
+    max: float
+    required: bool
+    pattern: str  # a regular expression for the whole text, at most 256 characters
+    min_length: int
+    max_length: int
+    error: str  # the plugin's message; "" clears it
+
+
+class CheckboxElement(ElementProperties, total=False):
+    """A `checkbox` element (host feature toggles); `value` None is partly checked."""
+    type: str  # checkbox
+    text: str
+    value: Optional[bool]
+    tristate: bool
+    tone: str
+
+
+class RadioGroupElement(ElementProperties, total=False):
+    """A `radio_group` element (host feature toggles)."""
+    type: str  # radio_group
+    title: str
+    choices: List[ChoiceEntry]
+    value: ChoiceValue
+    orientation: str
+    columns: int
+
+
+class CheckGroupElement(ElementProperties, total=False):
+    """A `check_group` element (host feature toggles); `all_none` adds All and None links."""
+    type: str  # check_group
+    title: str
+    choices: List[ChoiceEntry]
+    value: List[ChoiceValue]
+    orientation: str
+    columns: int
+    all_none: bool
+
+
+class _ViewEventParamsRequired(TypedDict):
+    view_id: str
+    element_id: str
+    type: str  # changed, clicked, selected, edited
+
+
+class ViewEventParams(_ViewEventParamsRequired, total=False):
+    """A view/event. On a host with validation, the `changed` event of a field that declares a
+    validation key (required, pattern, min, max, min_length, max_length or a non-empty error)
+    carries `valid`; read it as optional, True when absent. Check boxes, radio groups and
+    check groups send `changed` with their value."""
+    window_id: str
+    value: Any
+    inputs: JsonObject
+    valid: bool
+    truncated: bool
+    row_id: str
+    column_id: str
+    previous: str
+
+
+class _CompleteParamsRequired(TypedDict):
+    view_id: str
+    element_id: str
+    text: str
+    cursor: int
+
+
+class CompleteParams(_CompleteParamsRequired, total=False):
+    """A field/complete query: typing paused in a field with `completion`."""
+    window_id: str
+    timeout_ms: int
+    context: JsonObject
+
+
+class _CompletionItemRequired(TypedDict):
+    value: str
+
+
+class CompletionItem(_CompletionItemRequired, total=False):
+    label: str
+    icon: IconRef
+
+
+class CompleteResult(TypedDict):
+    """A field/complete answer: at most 100 items."""
+    items: List[CompletionItem]
+
+
+CompleteAnswer = Union[CompleteResult, Sequence[CompletionItem], Sequence[str],
+                       Sequence[Mapping[str, Any]], Mapping[str, Any], None]
+
 
 class LineReader(Protocol):
     def readline(self, size: int = -1, /) -> bytes: ...
@@ -368,20 +561,206 @@ def badge(id: str, text: str, tone: Optional[str] = None, **props: Any) -> JsonO
     return _element("badge", id, text=text, tone=tone, **props)
 
 
+def _check_layout(orientation: Optional[str], columns: Optional[int]) -> None:
+    if orientation is not None and orientation not in ORIENTATIONS:
+        raise ValueError(f"orientation is vertical or horizontal, not {orientation!r}")
+    if columns is not None and (isinstance(columns, bool) or not isinstance(columns, int)
+                                or not 1 <= columns <= MAX_INLINE_COLUMNS):
+        raise ValueError(f"columns is a whole number from 1 to {MAX_INLINE_COLUMNS}")
+
+
+def _check_choice_keys(kind: str, indicator: Optional[str], style: Optional[str],
+                       searchable: Optional[bool], editable: Optional[bool],
+                       completion: Optional[bool]) -> None:
+    if indicator is not None and (indicator != "radio" or kind != "choice"):
+        raise ValueError('indicator is "radio", on a choice field')
+    if style is not None and style not in CHOICE_STYLES.get(kind, ()):
+        raise ValueError(f"A {kind} field has no style {style!r}")
+    if searchable and kind not in CHOICE_STYLES:
+        raise ValueError("searchable is for choice and multichoice fields")
+    if editable and kind != "choice":
+        raise ValueError("editable is for choice fields")
+    if completion and not (kind == "text" or (kind == "choice" and editable)):
+        raise ValueError("completion is for text fields and editable choice fields")
+
+
+def _check_bounds(low: Optional[float], high: Optional[float], name: str) -> None:
+    if low is not None and high is not None and low > high:
+        raise ValueError(f"min{name} is greater than max{name}")
+
+
+def _is_number(value: Any, whole: bool) -> bool:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    if isinstance(value, float) and not math.isfinite(value):
+        return False
+    return not whole or float(value).is_integer()
+
+
+def _check_field_values(kind: str, pattern: Optional[str], minimum: Optional[float],
+                        maximum: Optional[float], step: Optional[float], rows: Optional[int],
+                        min_length: Optional[int], max_length: Optional[int]) -> None:
+    if pattern is not None and (not isinstance(pattern, str) or len(pattern) > MAX_PATTERN_LENGTH):
+        raise ValueError(f"pattern is a regular expression of at most {MAX_PATTERN_LENGTH} "
+                         "characters")
+    # integer and slider fields take whole bounds and steps (the host would truncate them);
+    # rows and length rules are always whole.
+    discrete = kind in ("integer", "slider")
+    for name, value, whole in (("min", minimum, discrete), ("max", maximum, discrete),
+                               ("step", step, discrete), ("rows", rows, True),
+                               ("min_length", min_length, True),
+                               ("max_length", max_length, True)):
+        if value is not None and not _is_number(value, whole):
+            raise ValueError(f"{name} is a {'whole' if whole else 'finite'} number")
+    _check_bounds(minimum, maximum, "")
+    _check_bounds(min_length, max_length, "_length")
+    for name, value in (("min_length", min_length), ("max_length", max_length)):
+        if value is not None and value < 0:
+            raise ValueError(f"{name} is not negative")
+    if step is not None and step <= 0:
+        raise ValueError("step is positive")
+    if rows is not None and rows < 1:
+        raise ValueError("rows is at least 1")
+
+
 def field(id: str, kind: str = "text", label: Optional[str] = None, value: Any = None,
           choices: Optional[Sequence[Any]] = None, filter: Optional[str] = None,
-          placeholder: Optional[str] = None, **props: Any) -> JsonObject:
+          placeholder: Optional[str] = None, *, indicator: Optional[str] = None,
+          style: Optional[str] = None, searchable: Optional[bool] = None,
+          editable: Optional[bool] = None, completion: Optional[bool] = None,
+          orientation: Optional[str] = None, columns: Optional[int] = None,
+          rows: Optional[int] = None, monospace: Optional[bool] = None,
+          min: Optional[float] = None, max: Optional[float] = None,
+          step: Optional[float] = None, required: Optional[bool] = None,
+          pattern: Optional[str] = None, min_length: Optional[int] = None,
+          max_length: Optional[int] = None, error: Optional[str] = None,
+          **props: Any) -> JsonObject:
+    """A form field (FieldElement). `kind` is one of FIELD_KINDS; choices are plain values or
+    choice(), choice_separator() and choice_section() entries.
+
+    Keyword keys of the E17c host features (update() and patch() remove what the host lacks):
+    choices: `indicator="radio"` and `style` ("dropdown", "radio" for choice, "checkboxes" for
+    multichoice) with `orientation` and `columns`, `searchable`, `editable` (choice) and
+    `completion` (text, or an editable choice; answered by @plugin.complete); field_kinds:
+    `rows` and `monospace` (multiline), `step` (integer, slider); validation: `required`,
+    `pattern` (whole text, at most 256 characters), `min`/`max` (which also bound integer and
+    slider fields), `min_length`/`max_length` and `error` ("" clears it). Raises ValueError
+    for a combination the host refuses."""
+    _check_choice_keys(kind, indicator, style, searchable, editable, completion)
+    _check_layout(orientation, columns)
+    _check_field_values(kind, pattern, min, max, step, rows, min_length, max_length)
     return _element("field", id, kind=kind, label=label, value=value,
                     choices=list(choices) if choices is not None else None,
-                    filter=filter, placeholder=placeholder, **props)
+                    filter=filter, placeholder=placeholder, indicator=indicator, style=style,
+                    searchable=searchable or None, editable=editable or None,
+                    completion=completion or None, orientation=orientation, columns=columns,
+                    rows=rows, monospace=monospace, min=min, max=max, step=step,
+                    required=required, pattern=pattern, min_length=min_length,
+                    max_length=max_length, error=error, **props)
+
+
+def _requires_valid(value: Union[bool, Sequence[str], None]) -> Optional[RequiresValid]:
+    if value is None or isinstance(value, bool):
+        return True if value else None  # False: no requirement
+    if isinstance(value, str) or not all(isinstance(item, str) and item for item in value):
+        raise ValueError("requires_valid is True or a list of field ids")
+    return list(value)
 
 
 def button(id: str, label: str, action: Optional[str] = None,
            arguments: Optional[JsonObject] = None, event: Optional[bool] = None,
            tone: Optional[str] = None, confirm: Optional[JsonObject] = None,
-           save_dialog: Optional[JsonObject] = None, **props: Any) -> JsonObject:
+           save_dialog: Optional[JsonObject] = None, *,
+           requires_valid: Union[bool, Sequence[str], None] = None,
+           **props: Any) -> JsonObject:
+    """A button. `requires_valid` (host feature validation) keeps it disabled until every
+    field of the view (True) or the listed fields are valid."""
     return _element("button", id, label=label, action=action, arguments=arguments,
-                    event=event, tone=tone, confirm=confirm, save_dialog=save_dialog, **props)
+                    event=event, tone=tone, confirm=confirm, save_dialog=save_dialog,
+                    requires_valid=_requires_valid(requires_valid), **props)
+
+
+def checkbox(id: str, text: str, value: Optional[bool] = False, *,
+             tristate: Optional[bool] = None, tone: Optional[str] = None,
+             **props: Any) -> JsonObject:
+    """A check box (CheckboxElement, host feature toggles). value is True, False or, with
+    tristate=True, None (partly checked); `changed` events and `inputs` carry it. On a host
+    without toggles update() sends a boolean field captioned `text` (None becomes False)."""
+    if value is None and not tristate:
+        raise ValueError("A partly checked box (value None) needs tristate=True")
+    element = _element("checkbox", id, text=text, tristate=tristate, tone=tone, **props)
+    element["value"] = value
+    return element
+
+
+def radio_group(id: str, choices: Sequence[Any], value: Any = None, *,
+                title: Optional[str] = None, orientation: Optional[str] = None,
+                columns: Optional[int] = None, **props: Any) -> JsonObject:
+    """Radio buttons (RadioGroupElement, host feature toggles) in an optional titled frame;
+    the value is the chosen choice value. On a host without toggles update() sends a choice
+    field captioned `title`."""
+    _check_layout(orientation, columns)
+    return _element("radio_group", id, title=title, choices=list(choices), value=value,
+                    orientation=orientation, columns=columns, **props)
+
+
+def check_group(id: str, choices: Sequence[Any], value: Optional[Sequence[Any]] = None, *,
+                title: Optional[str] = None, orientation: Optional[str] = None,
+                columns: Optional[int] = None, all_none: Optional[bool] = None,
+                **props: Any) -> JsonObject:
+    """Check boxes (CheckGroupElement, host feature toggles); the value is the list of checked
+    choice values, and `all_none` adds All and None links. On a host without toggles update()
+    sends a multichoice field captioned `title`."""
+    _check_layout(orientation, columns)
+    if isinstance(value, (str, bytes)):
+        raise ValueError("The value of a check group is a list of choice values")
+    return _element("check_group", id, title=title, choices=list(choices),
+                    value=list(value) if value is not None else None,
+                    orientation=orientation, columns=columns, all_none=all_none, **props)
+
+
+def choice(value: ChoiceValue, label: Optional[str] = None, *, icon: Optional[IconRef] = None,
+           tooltip: Optional[str] = None, enabled: Optional[bool] = None) -> Choice:
+    """A choice object for `choices` lists. `icon`, `tooltip` and `enabled` need the host
+    feature choices; on an older host update() sends {value, label}, or the plain value."""
+    if isinstance(value, bool) or not isinstance(value, (str, int, float)):
+        raise ValueError("A choice value is a string or a number")
+    entry: Choice = {"value": value}
+    if label is not None:
+        entry["label"] = label
+    if icon is not None:
+        entry["icon"] = icon
+    if tooltip is not None:
+        entry["tooltip"] = tooltip
+    if enabled is not None:
+        entry["enabled"] = enabled
+    return entry
+
+
+def choice_separator() -> ChoiceSeparator:
+    """A line between choices (left out on a host without the choices feature)."""
+    return {"type": "separator"}
+
+
+def choice_section(label: str) -> ChoiceSection:
+    """A section title between choices (left out on a host without the choices feature)."""
+    if not label:
+        raise ValueError("A choice section needs a label")
+    return {"type": "section", "label": label}
+
+
+def completion_item(value: str, label: Optional[str] = None, *,
+                    icon: Optional[IconRef] = None) -> CompletionItem:
+    """One entry of a field/complete answer: the text to insert, and an optional label and
+    icon for the completion list."""
+    if not isinstance(value, str):
+        raise ValueError("A completion value is a string")
+    item: CompletionItem = {"value": value}
+    if label is not None:
+        item["label"] = label
+    if icon is not None:
+        item["icon"] = icon
+    return item
 
 
 def progress(id: str, value: Optional[float] = None, busy: Optional[bool] = None,
@@ -683,6 +1062,34 @@ def _menu_answer(answer: object) -> Optional[JsonObject]:
         result["cache_ms"] = _cache_ms(result["cache_ms"])
     else:
         result.pop("cache_ms", None)
+    return result
+
+
+def _completion_entry(item: object) -> JsonObject:
+    if isinstance(item, str):
+        return {"value": item}
+    if isinstance(item, collections.abc.Mapping) and isinstance(item.get("value"), str):
+        return dict(item)
+    raise TypeError("A completion item is a string or a dict with a string value")
+
+
+def _complete_answer(answer: object) -> Optional[JsonObject]:
+    """The field/complete result of a @plugin.complete handler's return value: at most
+    MAX_COMPLETION_ITEMS items, each {value, label?, icon?}."""
+    if answer is None:
+        return None
+    result: JsonObject
+    if isinstance(answer, collections.abc.Mapping):
+        result = dict(answer)
+    elif isinstance(answer, collections.abc.Sequence) and not isinstance(answer, (str, bytes)):
+        result = {"items": answer}
+    else:
+        raise TypeError("A field/complete handler returns a list of items, a dict with items "
+                        "or None")
+    items = result.get("items")
+    if not isinstance(items, collections.abc.Sequence) or isinstance(items, (str, bytes)):
+        raise TypeError("A field/complete answer needs a list of items")
+    result["items"] = [_completion_entry(item) for item in list(items)[:MAX_COMPLETION_ITEMS]]
     return result
 
 
@@ -1010,6 +1417,35 @@ class MenuQuery(Query, _MenuContext):
         return _optional_text(self.params.get("window_id"))
 
 
+class CompleteQuery(Query):
+    """A field/complete query: typing paused in a field with `completion` (default timeout
+    500 ms). `text` is the field's text and `cursor` the cursor position in it."""
+
+    @property
+    def view_id(self) -> str:
+        return _optional_text(self.params.get("view_id")) or ""
+
+    @property
+    def element_id(self) -> str:
+        return _optional_text(self.params.get("element_id")) or ""
+
+    @property
+    def window_id(self) -> Optional[str]:
+        return _optional_text(self.params.get("window_id"))
+
+    @property
+    def text(self) -> str:
+        return _optional_text(self.params.get("text")) or ""
+
+    @property
+    def cursor(self) -> int:
+        """The cursor position, within 0..len(text); the end of the text when not given."""
+        cursor = self.params.get("cursor")
+        if isinstance(cursor, bool) or not isinstance(cursor, int):
+            return len(self.text)
+        return max(0, min(len(self.text), cursor))
+
+
 class UiCommand(_MenuContext):
     """A ui/command: the user picked an `event` menu entry (origin "menu") or pressed its
     shortcut ("shortcut"); toolbars and status items come later ("toolbar", "status")."""
@@ -1061,7 +1497,9 @@ QueryHandler = Callable[[Query], Any]
 TooltipHandler = Callable[[TooltipQuery], TooltipAnswer]
 MenuPopulateHandler = Callable[[MenuQuery], MenuAnswer]
 CommandHandler = Callable[[UiCommand], None]
-_QUERY_CLASSES: Dict[str, Type[Query]] = {TOOLTIP_RESOLVE: TooltipQuery, MENU_POPULATE: MenuQuery}
+CompleteHandler = Callable[[CompleteQuery], CompleteAnswer]
+_QUERY_CLASSES: Dict[str, Type[Query]] = {
+    TOOLTIP_RESOLVE: TooltipQuery, MENU_POPULATE: MenuQuery, FIELD_COMPLETE: CompleteQuery}
 
 
 def _tooltip_answer(answer: object) -> Optional[JsonObject]:
@@ -1134,9 +1572,19 @@ class _QueryLane:
 
 
 class _StripRules(NamedTuple):
+    """What update() and patch() change for the host: keys removed from every element, table
+    column and row, and whether the host has each E17c feature."""
     element: FrozenSet[str]
     column: FrozenSet[str]
     row: FrozenSet[str]
+    choices: bool = True
+    toggles: bool = True
+    field_kinds: bool = True
+    validation: bool = True
+
+
+# Element id -> (type, field kind) of a view's last update(), for patches.
+_ElementKinds = Dict[str, Tuple[str, Optional[str]]]
 
 
 def _without(item: Any, keys: FrozenSet[str]) -> Any:
@@ -1153,16 +1601,123 @@ def _map_list(items: Any, convert: Callable[[Any], Any]) -> Any:
     return items if all(new is old for new, old in zip(converted, items)) else converted
 
 
-def _compatible_element(element: Any, rules: _StripRules) -> Any:
-    """Return the element (or a `set` dict of patch properties) without the properties the
-    host does not know, copying only what changes."""
-    if not isinstance(element, dict):
-        return element
-    result = _without(element, rules.element)
+def _compatible_choices(choices: Any) -> Any:
+    """A choices list for a host without the choices feature: no separators or sections, and
+    choice objects as {value, label} (or the plain value)."""
+    if not isinstance(choices, list):
+        return choices
+    converted: List[Any] = []
+    for item in choices:
+        if isinstance(item, dict) and item.get("type") in _CHOICE_MARKERS:
+            continue
+        entry = _without(item, _CHOICE_OBJECT_KEYS)
+        converted.append(entry["value"] if isinstance(entry, dict) and set(entry) == {"value"}
+                         else entry)
+    unchanged = len(converted) == len(choices) and all(
+        new is old for new, old in zip(converted, choices))
+    return choices if unchanged else converted
+
+
+def _with_compatible_choices(props: JsonObject) -> JsonObject:
+    if "choices" not in props:
+        return props
+    choices = _compatible_choices(props["choices"])
+    return props if choices is props["choices"] else {**props, "choices": choices}
+
+
+def _toggle_as_field(props: JsonObject, element_type: str, whole: bool) -> JsonObject:
+    """A checkbox, radio_group or check_group (or the `set` properties of its patch) as the
+    field a host without toggles shows: boolean, choice or multichoice, captioned by the
+    element's text or title."""
+    kind, style, caption = _TOGGLE_FIELDS[element_type]
+    result: JsonObject = {}
+    if whole:
+        result["type"] = "field"
+        if "id" in props:
+            result["id"] = props["id"]
+        result["kind"] = kind
+    if caption in props:
+        result["label"] = props[caption]
+    if whole and style is not None:
+        result["style"] = style  # removed again on a host without choices
+    for key, value in props.items():
+        if key in ("type", "id", "tone", caption) or key in _TOGGLE_KEYS:
+            continue
+        # A partly checked box (None) shows as unchecked.
+        result[key] = (value is True) if key == "value" and kind == "boolean" else value
+    return result
+
+
+def _compatible_field(props: JsonObject, kind: Optional[str], rules: _StripRules) -> JsonObject:
+    """A field (or the `set` properties of its patch) without the E17c keys the host lacks,
+    with a new kind replaced by its FIELD_KIND_FALLBACKS kind."""
+    current = props.get("kind", kind)
+    remove: FrozenSet[str] = frozenset()
+    if not rules.choices:
+        remove |= _CHOICE_FIELD_KEYS
+    if not rules.field_kinds:
+        remove |= _FIELD_KIND_KEYS
+    if not rules.validation:
+        # min and max of integer and slider fields belong to field_kinds.
+        bounded = rules.field_kinds and current in _BOUNDED_KINDS
+        remove |= _VALIDATION_KEYS - _BOUND_KEYS if bounded else _VALIDATION_KEYS
+    result: JsonObject = _without(props, remove)
+    if not rules.field_kinds and result.get("kind") in FIELD_KIND_FALLBACKS:
+        result = {**result, "kind": FIELD_KIND_FALLBACKS[result["kind"]]}
+    return result if rules.choices else _with_compatible_choices(result)
+
+
+def _compatible_unknown(props: JsonObject, rules: _StripRules) -> JsonObject:
+    """The `set` properties of a patch of an element that no update() showed: only the keys no
+    other element type uses are removed."""
+    remove: FrozenSet[str] = frozenset()
+    if not rules.choices:
+        remove |= _CHOICE_FIELD_KEYS - {"columns"}  # also table columns
+    if not rules.field_kinds:
+        remove |= _FIELD_KIND_KEYS - {"rows"}  # also table rows
+    if not rules.validation:
+        remove |= _VALIDATION_KEYS - _BOUND_KEYS  # also integer and slider bounds
+    if not rules.toggles:
+        remove |= _TOGGLE_KEYS
+    result: JsonObject = _without(props, remove)
+    return result if rules.choices else _with_compatible_choices(result)
+
+
+def _compatible_row(row: Any, rules: _StripRules) -> Any:
+    result = _without(row, rules.row)
+    if rules.choices or not isinstance(result, dict) or not isinstance(result.get("editors"), dict):
+        return result
+    editors = result["editors"]
+    converted = {column_id: _with_compatible_choices(spec) if isinstance(spec, dict) else spec
+                 for column_id, spec in editors.items()}
+    if all(converted[column_id] is editors[column_id] for column_id in editors):
+        return result
+    return {**result, "editors": converted}
+
+
+def _compatible_props(props: Any, rules: _StripRules, element_type: Optional[str],
+                      kind: Optional[str], whole: bool) -> Any:
+    """An element (whole=True) or the `set` properties of a patch of an element of
+    element_type (None: not known) without what the host does not know, copying only what
+    changes."""
+    if not isinstance(props, dict):
+        return props
+    result = _without(props, rules.element)
+    if element_type in _TOGGLE_FIELDS and not rules.toggles:
+        result = _toggle_as_field(result, element_type, whole)
+        element_type, kind = "field", _TOGGLE_FIELDS[element_type][0]
+    if element_type == "field":
+        result = _compatible_field(result, kind, rules)
+    elif element_type in _TOGGLE_FIELDS and not rules.choices:
+        result = _with_compatible_choices(result)
+    elif element_type == "button" and not rules.validation:
+        result = _without(result, frozenset({"requires_valid"}))
+    elif element_type is None:
+        result = _compatible_unknown(result, rules)
     changes: JsonObject = {}
     for key, convert in (("children", lambda child: _compatible_element(child, rules)),
                          ("columns", lambda item: _without(item, rules.column)),
-                         ("rows", lambda item: _without(item, rules.row))):
+                         ("rows", lambda item: _compatible_row(item, rules))):
         if key in result:
             value = _map_list(result[key], convert)
             if value is not result[key]:
@@ -1172,20 +1727,51 @@ def _compatible_element(element: Any, rules: _StripRules) -> Any:
     return result
 
 
-def _compatible_patch_entry(entry: Any, rules: _StripRules) -> Any:
+def _compatible_element(element: Any, rules: _StripRules) -> Any:
+    """Return the element without the properties the host does not know (and an E17c element
+    as the field an older host knows), copying only what changes."""
+    if not isinstance(element, dict):
+        return element
+    element_type = element.get("type")
+    return _compatible_props(element, rules, element_type if isinstance(element_type, str) else "",
+                             None, True)
+
+
+def _compatible_patch_entry(entry: Any, rules: _StripRules, kinds: _ElementKinds) -> Any:
     if not isinstance(entry, dict):
         return entry
     changes: JsonObject = {}
     if "set" in entry:
-        properties = _compatible_element(entry["set"], rules)
+        identifier = entry.get("id")
+        element_type, kind = (kinds.get(identifier, (None, None)) if isinstance(identifier, str)
+                              else (None, None))
+        properties = _compatible_props(entry["set"], rules, element_type, kind, False)
         if properties is not entry["set"]:
             changes["set"] = properties
     for operation in _ROW_OPERATIONS:
         if operation in entry:
-            rows = _map_list(entry[operation], lambda item: _without(item, rules.row))
+            rows = _map_list(entry[operation], lambda item: _compatible_row(item, rules))
             if rows is not entry[operation]:
                 changes[operation] = rows
     return {**entry, **changes} if changes else entry
+
+
+def _element_kinds(root: Any) -> _ElementKinds:
+    """Every element id of a view tree with its type and field kind; the first element with an
+    id wins, as on the host."""
+    found: _ElementKinds = {}
+    pending: List[Any] = [root]
+    while pending:
+        element = pending.pop()
+        if not isinstance(element, dict):
+            continue
+        identifier, element_type, kind = element.get("id"), element.get("type"), element.get("kind")
+        if isinstance(identifier, str) and isinstance(element_type, str):
+            found.setdefault(identifier, (element_type, kind if isinstance(kind, str) else None))
+        children = element.get("children")
+        if isinstance(children, list):
+            pending.extend(reversed(children))
+    return found
 
 
 class Plugin:
@@ -1223,8 +1809,12 @@ class Plugin:
         self.tooltip_handlers: Dict[Tuple[str, Optional[str]], TooltipHandler] = {}
         self.menu_populate_handlers: Dict[Tuple[str, Optional[str]], MenuPopulateHandler] = {}
         self.command_handlers: Dict[Tuple[Optional[str], Optional[str]], CommandHandler] = {}
+        self.complete_handlers: Dict[Tuple[str, Optional[str]], CompleteHandler] = {}
         self.queries: Dict[str, Query] = {}
         self.lanes: Dict[str, _QueryLane] = {}
+        # The element types of each view's last update() on an older host, for patch(), by
+        # (view id, window id); "" is an update sent to every window.
+        self._view_elements: Dict[Tuple[str, str], _ElementKinds] = {}
 
     def action(self, identifier: str) -> Callable[[Action], Action]:
         def register(callback: Action) -> Action:
@@ -1333,6 +1923,27 @@ class Plugin:
         self.notify(MENU_UPDATE, params)
         return True
 
+    # Field completion (docs/plugin-sdk-advanced.md, section 8.2).
+    def complete(self, view_id: str, element_id: Optional[str] = None
+                 ) -> Callable[[CompleteHandler], CompleteHandler]:
+        """Register handler(CompleteQuery) for the completion of one field with `completion`
+        (a text field or an editable choice field), or of every other such field of the view
+        when element_id is None (an element's own handler wins; a
+        @plugin.query("field/complete") handler is the last fallback, its result unchanged).
+
+        The handler runs on the field/complete lane (latest wins: a newer query replaces a
+        waiting one; default timeout 500 ms) and returns a list of items (strings or
+        completion_item()), a dict {"items": [...]} or None (no completions). The SDK keeps
+        the first 100 items; any other return value answers error -32000. plugin.json must
+        list field/complete (and query/cancel) in `handles`."""
+        if not view_id or element_id == "":
+            raise ValueError("A completion handler needs a view id (and a non-empty element id)")
+
+        def register(handler: CompleteHandler) -> CompleteHandler:
+            self.complete_handlers[(view_id, element_id)] = handler
+            return handler
+        return register
+
     def handled_methods(self) -> List[str]:
         """The host-to-plugin methods the registered handlers answer (`features`)."""
         methods = set(self.query_handlers)
@@ -1340,6 +1951,8 @@ class Plugin:
             methods.add(TOOLTIP_RESOLVE)
         if self.menu_populate_handlers:
             methods.add(MENU_POPULATE)
+        if self.complete_handlers:
+            methods.add(FIELD_COMPLETE)
         if methods:
             methods.add(QUERY_CANCEL)
         if self.command_handlers:
@@ -1426,26 +2039,56 @@ class Plugin:
             row_keys |= _TOOLTIP_ROW_KEYS
         if not self.supports("views", 2):
             element |= _ACCESSIBLE_KEYS
-        if not (element or column_keys or row_keys):
+        choices, toggles, field_kinds, validation = (
+            self.supports(name) for name in ("choices", "toggles", "field_kinds", "validation"))
+        if not (element or column_keys or row_keys) and choices and toggles and field_kinds \
+                and validation:
             return None
-        return _StripRules(element, column_keys, row_keys)
+        return _StripRules(element, column_keys, row_keys, choices, toggles, field_kinds,
+                           validation)
 
     def update(self, view_id: str, root: JsonObject, window_id: Optional[str] = None) -> None:
-        """Replace a view's element tree (in every window without window_id)."""
+        """Replace a view's element tree (in every window without window_id). On an older host
+        the tree is sent without what the host does not know (see _strip_rules), and E17c
+        elements as the fields it knows; the caller's tree is not changed."""
         rules = self._strip_rules()
+        if rules is not None:
+            elements = _element_kinds(root)  # patch() converts by the element's type
+            with self.lock:
+                if not window_id:  # every window now shows this tree
+                    for key in [key for key in self._view_elements if key[0] == view_id]:
+                        del self._view_elements[key]
+                self._view_elements[(view_id, window_id or "")] = elements
         params: JsonObject = {
             "view_id": view_id, "root": root if rules is None else _compatible_element(root, rules)}
         if window_id:
             params["window_id"] = window_id
         self.notify("view/update", params)
 
+    def _patch_elements(self, view_id: str, window_id: str) -> _ElementKinds:
+        """The element types a patch() for this window converts by (the caller holds lock): the
+        window's own tree, else the tree sent to every window; a patch for every window uses
+        the types of all of the view's trees."""
+        for key in ((view_id, window_id), (view_id, "")):
+            if key in self._view_elements:
+                return self._view_elements[key]
+        merged: _ElementKinds = {}
+        if not window_id:
+            for (view, _window), kinds in self._view_elements.items():
+                if view == view_id:
+                    merged.update(kinds)
+        return merged
+
     def patch(self, view_id: str, changes: Sequence[JsonObject],
               window_id: Optional[str] = None) -> None:
-        """Apply set_props()/row operation entries to existing elements."""
+        """Apply set_props()/row operation entries to existing elements. On an older host they
+        are converted like update() converts the elements of the view's last tree."""
         rules = self._strip_rules()
         entries = list(changes)
         if rules is not None:
-            entries = [_compatible_patch_entry(entry, rules) for entry in entries]
+            with self.lock:
+                elements = self._patch_elements(view_id, window_id or "")
+            entries = [_compatible_patch_entry(entry, rules, elements) for entry in entries]
         params: JsonObject = {"view_id": view_id, "patch": entries}
         if window_id:
             params["window_id"] = window_id
@@ -1580,7 +2223,8 @@ class Plugin:
     def _has_query_handler(self, method: str) -> bool:
         return (method in self.query_handlers
                 or (method == TOOLTIP_RESOLVE and bool(self.tooltip_handlers))
-                or (method == MENU_POPULATE and bool(self.menu_populate_handlers)))
+                or (method == MENU_POPULATE and bool(self.menu_populate_handlers))
+                or (method == FIELD_COMPLETE and bool(self.complete_handlers)))
 
     def _submit_query(self, identifier: Any, method: str, params: JsonObject) -> None:
         if self.stopping.is_set():
@@ -1644,6 +2288,11 @@ class Plugin:
                         or self.menu_populate_handlers.get((query.menu_id, None)))
             if populate is not None:
                 return _menu_answer(populate(query))
+        if isinstance(query, CompleteQuery):
+            complete = (self.complete_handlers.get((query.view_id, query.element_id))
+                        or self.complete_handlers.get((query.view_id, None)))
+            if complete is not None:
+                return _complete_answer(complete(query))
         query_handler = self.query_handlers.get(query.method)
         return None if query_handler is None else query_handler(query)
 
