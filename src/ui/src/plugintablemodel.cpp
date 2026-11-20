@@ -11,6 +11,7 @@
 #include <QEvent>
 #include <QFont>
 #include <QGuiApplication>
+#include <QJsonDocument>
 #include <QLineEdit>
 #include <QLocale>
 #include <QPainter>
@@ -238,6 +239,20 @@ bool sameValue( const QJsonValue& left, const QJsonValue& right )
            } );
 }
 
+QStringList boundedIds( const QStringList& ids, qsizetype budget )
+{
+    QStringList kept;
+    for ( const auto& id : ids ) {
+        // The id as a JSON string with its separator (escapes included).
+        budget -= QJsonDocument( QJsonArray{ id } ).toJson( QJsonDocument::Compact ).size() - 1;
+        if ( budget < 0 ) {
+            break;
+        }
+        kept.append( id );
+    }
+    return kept;
+}
+
 QString plainToolTip( const QString& tip )
 {
     return Qt::mightBeRichText( tip ) ? Qt::convertFromPlainText( tip, Qt::WhiteSpaceNormal ) : tip;
@@ -335,9 +350,27 @@ QVariant PluginTableModel::data( const QModelIndex& index, int role ) const
         }
         // E17c: a committed choice with an icon shows it in the cell (section 8.4).
         const auto editor = editorFor( index );
-        // The first choice whose label is the cell text, as when the editor opens; separators and
-        // section titles are no choices.
+        // Labels can repeat: the choice of the edit not confirmed yet, else of the editor's
+        // starting value, as when the editor opens, as long as the cell shows its label; else the
+        // first choice whose label is the cell text. Separators and section titles are no choices.
         if ( editor.value( "kind" ) == "choice" ) {
+            const auto pending = row.pending.constFind( index.column() );
+            const auto chosen
+                = pending != row.pending.cend() ? pending->value : editor.value( "value" );
+            if ( !chosen.isUndefined() && !chosen.isNull() && !chosen.isArray()
+                 && !chosen.isObject() ) {
+                for ( const auto& choice : editor.value( "choices" ).toArray() ) {
+                    const auto object = choice.toObject();
+                    if ( object.contains( "type" ) || choiceValue( choice ) != chosen
+                         || choiceLabel( choice ) != value ) {
+                        continue;
+                    }
+                    if ( !object.contains( "icon" ) ) {
+                        return {};
+                    }
+                    return iconFor( object.value( "icon" ) );
+                }
+            }
             for ( const auto& choice : editor.value( "choices" ).toArray() ) {
                 const auto object = choice.toObject();
                 if ( object.contains( "type" ) || choiceLabel( choice ) != value ) {
@@ -844,8 +877,10 @@ bool PluginTableProxy::lessThan( const QModelIndex& left, const QModelIndex& rig
     const auto a = left.data( SortRole );
     const auto b = right.data( SortRole );
     if ( sortAs == QLatin1String( "number" ) ) {
-        // Text that is no finite number ("nan" and "inf" included) sorts after every number, so
-        // the order stays a strict weak ordering.
+        // Text that is no finite number ("nan" and "inf" included) sorts after every number, in
+        // both orders: the proxy reverses lessThan for a descending sort, so the answer for a
+        // number against text follows the order. Within one order this stays a strict weak
+        // ordering. (This file is built without fast-math: std::isfinite must see NaN.)
         bool leftNumeric = false;
         bool rightNumeric = false;
         const auto x = a.toString().toDouble( &leftNumeric );
@@ -853,7 +888,7 @@ bool PluginTableProxy::lessThan( const QModelIndex& left, const QModelIndex& rig
         leftNumeric = leftNumeric && std::isfinite( x );
         rightNumeric = rightNumeric && std::isfinite( y );
         if ( leftNumeric != rightNumeric ) {
-            return leftNumeric;
+            return sortOrder() == Qt::AscendingOrder ? leftNumeric : rightNumeric;
         }
         return leftNumeric ? x < y : a.toString().compare( b.toString(), Qt::CaseInsensitive ) < 0;
     }

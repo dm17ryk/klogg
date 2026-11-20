@@ -24,6 +24,8 @@
 #include <QStandardItemModel>
 #include <QTableView>
 #include <QTest>
+#include <QTextCursor>
+#include <QTextDocument>
 #include <catch2/catch.hpp>
 #include <limits>
 #include <memory>
@@ -64,7 +66,9 @@ struct View {
     PluginView view;
     QSignalSpy events;
     QStringList asked;
+    QList<int> cursors;
     QList<int> timeouts;
+    QStringList iconsAsked; // the icon references the view resolved, in order
     int confirmations = 0;
     QString colorAnswer = QStringLiteral( "#12ab34" );
 
@@ -73,13 +77,15 @@ struct View {
         , events( &view, &PluginView::eventRaised )
     {
         PluginViewQueries queries;
-        queries.icon = []( const QJsonValue& reference ) {
+        queries.icon = [ this ]( const QJsonValue& reference ) {
+            iconsAsked.append( reference.toString() );
             return reference.toString().startsWith( "builtin:" ) ? QIcon( QPixmap( 16, 16 ) )
                                                                  : QIcon{};
         };
         queries.complete = [ this ]( const QJsonObject& params, int timeoutMs,
                                      std::function<void( const QJsonArray& )> done ) {
             asked.append( params.value( "text" ).toString() );
+            cursors.append( params.value( "cursor" ).toInt( -1 ) );
             timeouts.append( timeoutMs );
             QJsonArray items;
             for ( const auto* name : { "alpha", "alps", "beta" } ) {
@@ -516,6 +522,118 @@ TEST_CASE( "E17c dropped bounds reset, colors need six digits, disabled labels s
     view.applyPatch( { QJsonObject{ { "id", "board" }, { "set", QJsonObject{ { "choices", boards } } } } } );
     REQUIRE( board->currentIndex() == -1 );
     REQUIRE( view.inputs().value( "board" ) == "Board two" );
+}
+
+TEST_CASE( "E17c roots reset dropped looks, empty typed text stays, inputs stay bounded",
+           "[ui][workbench][E17]" )
+{
+    const auto root = [ & ]( bool looks ) {
+        return column(
+            { field( "notes", "multiline",
+                     looks ? QJsonObject{ { "rows", 10 }, { "monospace", true } } : QJsonObject{} ),
+              field( "board", "choice",
+                     { { "editable", true }, { "choices", QJsonArray{ "one", "two" } } } ),
+              field( "name", "text", { { "completion", true } } ) } );
+    };
+    View fixture( root( true ) );
+    auto& view = fixture.view;
+    auto* notes = fixture.get<QPlainTextEdit>( "notes" );
+    const auto fixed = QFontDatabase::systemFont( QFontDatabase::FixedFont ).family();
+    REQUIRE( notes->font().family() == fixed );
+    const auto tenRows = notes->height();
+    // A same-shaped root without monospace and rows: the default font and four rows.
+    view.setRoot( root( false ) );
+    REQUIRE( fixture.get<QPlainTextEdit>( "notes" ) == notes );
+    REQUIRE( notes->font().family() == QFont().family() );
+    REQUIRE( notes->height() < tenRows );
+
+    // An editable choice the user emptied keeps its empty text when the choices change.
+    auto* board = fixture.get<QComboBox>( "board" );
+    REQUIRE( view.inputs().value( "board" ) == "one" );
+    board->setEditText( "" );
+    view.applyPatch( { QJsonObject{ { "id", "board" },
+                                    { "set", QJsonObject{ { "choices", QJsonArray{ "three", "four" } } } } } } );
+    REQUIRE( board->currentText().isEmpty() );
+    REQUIRE( view.inputs().value( "board" ) == "" );
+    // Also across an empty choices list: the field has shown choices before, so the empty text
+    // is still the user's and the next choices do not fill it.
+    const auto setChoices = [ & ]( const QJsonArray& choices ) {
+        view.applyPatch( { QJsonObject{ { "id", "board" },
+                                        { "set", QJsonObject{ { "choices", choices } } } } } );
+    };
+    setChoices( {} );
+    setChoices( { "five", "six" } );
+    REQUIRE( board->currentText().isEmpty() );
+    REQUIRE( view.inputs().value( "board" ) == "" );
+
+    // A multiline field takes at most MaxFieldValueChars characters, so inputs never cut it.
+    notes->setPlainText( QString( PluginView::MaxFieldValueChars + 10, QLatin1Char( 'x' ) ) );
+    REQUIRE( notes->toPlainText().size() == PluginView::MaxFieldValueChars );
+    // Text inserted before the end at the limit is cut from the insertion: the text that was
+    // already there stays whole.
+    notes->setPlainText( QStringLiteral( "head" )
+                         + QString( PluginView::MaxFieldValueChars - 8, QLatin1Char( 'x' ) )
+                         + QStringLiteral( "tail" ) );
+    QTextCursor middle( notes->document() );
+    middle.setPosition( 4 );
+    middle.insertText( QStringLiteral( "INSERTED" ) );
+    const auto kept = notes->toPlainText();
+    REQUIRE( kept.size() == PluginView::MaxFieldValueChars );
+    REQUIRE( kept.startsWith( QStringLiteral( "head" ) ) );
+    REQUIRE( kept.endsWith( QStringLiteral( "tail" ) ) ); // before the fix the tail was lost
+    notes->setPlainText( QString( PluginView::MaxFieldValueChars, QLatin1Char( 'x' ) ) );
+    QTextCursor end( notes->document() );
+    end.movePosition( QTextCursor::End );
+    end.insertText( QStringLiteral( "more" ) ); // typing at the limit adds nothing
+    REQUIRE( notes->toPlainText() == QString( PluginView::MaxFieldValueChars, QLatin1Char( 'x' ) ) );
+    bool truncated = true;
+    REQUIRE( view.inputs( &truncated ).value( "notes" ).toString().size()
+             == PluginView::MaxFieldValueChars );
+    REQUIRE_FALSE( truncated ); // 64 Ki characters fit the 256 KiB of inputs
+
+    // The completion cursor counts characters: an emoji before it counts once.
+    auto* name = fixture.get<QLineEdit>( "name" );
+    name->setFocus();
+    name->setText( QString::fromUtf8( "\xF0\x9F\x98\x80" ) ); // one emoji, two UTF-16 units
+    name->setCursorPosition( 2 );
+    QTest::keyClicks( name, "a" );
+    REQUIRE( waitFor( [ & ] { return !fixture.cursors.isEmpty(); } ) );
+    REQUIRE( fixture.asked.last() == QString::fromUtf8( "\xF0\x9F\x98\x80" "a" ) );
+    REQUIRE( fixture.cursors.last() == 2 );
+}
+
+TEST_CASE( "E17c cell choice icons follow the value when labels repeat", "[ui][workbench][E17]" )
+{
+    const QJsonArray choices{ QJsonObject{ { "value", "x1" }, { "label", "Same" }, { "icon", "builtin:first" } },
+                              QJsonObject{ { "value", "x2" }, { "label", "Same" }, { "icon", "builtin:second" } } };
+    const auto table = [ & ]( const QJsonValue& start ) {
+        QJsonObject editor{ { "kind", "choice" }, { "choices", choices } };
+        if ( !start.isUndefined() ) {
+            editor.insert( "value", start );
+        }
+        return column( { QJsonObject{
+            { "type", "table" },
+            { "id", "rows" },
+            { "columns", QJsonArray{ QJsonObject{ { "id", "c" }, { "title", "C" }, { "editable", true } } } },
+            { "rows", QJsonArray{ QJsonObject{ { "id", "r1" },
+                                               { "cells", QJsonArray{ "Same" } },
+                                               { "editors", QJsonObject{ { "c", editor } } } } } } } } );
+    };
+    View byValue( table( "x2" ) );
+    const auto index = byValue.get<QTableView>( "rows" )->model()->index( 0, 0 );
+    byValue.iconsAsked.clear();
+    REQUIRE_FALSE( index.data( Qt::DecorationRole ).value<QIcon>().isNull() );
+    REQUIRE( byValue.iconsAsked == QStringList{ "builtin:second" } );
+    // Without a value the first choice with the label, as before.
+    View byLabel( table( QJsonValue::Undefined ) );
+    byLabel.iconsAsked.clear();
+    REQUIRE_FALSE( byLabel.get<QTableView>( "rows" )
+                       ->model()
+                       ->index( 0, 0 )
+                       .data( Qt::DecorationRole )
+                       .value<QIcon>()
+                       .isNull() );
+    REQUIRE( byLabel.iconsAsked == QStringList{ "builtin:first" } );
 }
 
 TEST_CASE( "E17c an edit drops the completion answer still in flight", "[ui][workbench][E17]" )

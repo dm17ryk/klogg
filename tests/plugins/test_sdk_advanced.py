@@ -196,7 +196,11 @@ class HostQueries(SdkCase):
         self.assertEqual(seen["timeout"], 1200)
         # The deadline itself, not the time left: a slow runner may start the handler after it.
         self.assertAlmostEqual(seen["deadline"] - seen["received"], 1.2, places=6)
-        self.assertTrue(0 <= seen["remaining"] <= 1.2)
+        # At most the whole budget as the SDK computed it: on a coarse clock (Windows) the handler
+        # may run at the very tick the frame arrived, and received + 1.2 - received can round to
+        # just above 1.2, so the bound is that exact difference, not the literal.
+        self.assertGreaterEqual(seen["remaining"], 0)
+        self.assertLessEqual(seen["remaining"], seen["deadline"] - seen["received"])
         self.assertEqual(seen["method"], "tooltip/resolve")
         self.assertTrue(seen["id"].startswith("q:"))
         self.assertTrue(seen["thread"].startswith("plugin-query-tooltip/resolve"))

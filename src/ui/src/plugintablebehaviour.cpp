@@ -357,8 +357,9 @@ QStringList PluginTableBehaviour::selectedRowIds( int maximum, int* count ) cons
 
 QJsonObject PluginTableBehaviour::menuTarget( const QString& rowId, const QString& columnId ) const
 {
+    // At most 1,000 ids and MaxIdBytes of them; selected_count stays the full count.
     int count = 0;
-    const auto ids = selectedRowIds( pluginview::MaxTableIds, &count );
+    const auto ids = pluginview::boundedIds( selectedRowIds( pluginview::MaxTableIds, &count ) );
     return { { "row_id", rowId.isEmpty() ? QJsonValue() : QJsonValue( rowId ) },
              { "column_id", columnId.isEmpty() ? QJsonValue() : QJsonValue( columnId ) },
              { "selected_ids", QJsonArray::fromStringList( ids ) },
@@ -557,15 +558,16 @@ bool PluginTableBehaviour::moveRows( const QStringList& rowIds, const QString& b
     if ( !reorderAllowed() || rowIds.isEmpty() || rowIds.contains( before ) || !hooks_.emitEvent ) {
         return false;
     }
-    QJsonArray ids;
+    QStringList known;
     for ( const auto& id : rowIds ) {
-        if ( ids.size() >= pluginview::MaxTableIds ) {
+        if ( known.size() >= pluginview::MaxTableIds ) {
             break;
         }
         if ( model_->rowOf( id ) >= 0 ) {
-            ids.append( id );
+            known.append( id );
         }
     }
+    const auto ids = QJsonArray::fromStringList( pluginview::boundedIds( known ) );
     if ( ids.isEmpty() ) {
         return false;
     }
@@ -579,8 +581,9 @@ bool PluginTableBehaviour::moveRows( const QStringList& rowIds, const QString& b
 void PluginTableBehaviour::requestCheck( const QString& rowId, bool checked )
 {
     // A Shift+click sets the range from the last clicked check box, in shown order. The range is
-    // walked from the clicked row back toward the anchor, so a range over the id limit still
-    // holds the row the user clicked.
+    // walked from the clicked row back toward the anchor, so a range over the id limit (1,000
+    // ids, MaxIdBytes of them) still holds the row the user clicked; the rows that change are
+    // exactly the ones the event reports.
     QStringList ids{ rowId };
     if ( ( QGuiApplication::keyboardModifiers() & Qt::ShiftModifier ) && !checkAnchor_.isEmpty()
          && checkAnchor_ != rowId ) {
@@ -590,12 +593,13 @@ void PluginTableBehaviour::requestCheck( const QString& rowId, bool checked )
             ids.clear();
             const int step = from < to ? -1 : 1;
             for ( int row = to;; row += step ) {
-                ids.prepend( rowIdAt( proxy_->index( row, 0 ) ) );
+                ids.append( rowIdAt( proxy_->index( row, 0 ) ) ); // the clicked row first
                 if ( row == from || ids.size() >= pluginview::MaxTableIds ) {
                     break;
                 }
             }
-            if ( step > 0 ) {
+            ids = pluginview::boundedIds( ids );
+            if ( step < 0 ) {
                 std::reverse( ids.begin(), ids.end() ); // shown order
             }
         }

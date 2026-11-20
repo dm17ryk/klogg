@@ -91,8 +91,14 @@ const QStringList CommonKeys{ "id",
                               "tooltip_timeout_ms",
                               "accessible_name",
                               "accessible_description" };
-// Properties that keep their state when a same-shaped root omits them.
-const QStringList KeptWhenAbsent{ "value", "rows", "columns", "kind", "children", "nodes", "roots" };
+// Properties that keep their state when a same-shaped root omits them. `rows` and `columns` are
+// a table's content; on a field (multiline rows, inline choice columns) they are looks, which a
+// root that omits them returns to their defaults. E17e: a tree's `nodes` and `columns` and a
+// file tree's `roots` and `columns` are content too.
+const QStringList KeptWhenAbsent{ "value", "kind", "children" };
+const QStringList TableKeptWhenAbsent{ "rows", "columns" };
+const QStringList TreeKeptWhenAbsent{ "nodes", "columns" };
+const QStringList FileTreeKeptWhenAbsent{ "roots", "columns" };
 
 QStringList knownKeys( const QString& type )
 {
@@ -1007,6 +1013,35 @@ QWidget* PluginView::buildFieldWidget( Node& node, const QJsonObject& element, Q
         auto* edit = new QPlainTextEdit( row );
         edit->setTabChangesFocus( true );
         debounced( edit );
+        // The same limit as a line edit, in the editor itself, so inputs and events never lose a
+        // tail silently. What goes over the limit is cut from the text just inserted (a typed
+        // character, the end of a paste), never from the text that was already there, wherever
+        // the insertion happened. The change is recorded by contentsChange and trimmed in
+        // textChanged, which follows it, outside the document's own edit.
+        auto inserted = std::make_shared<std::pair<int, int>>( 0, 0 ); // position, characters
+        connect( edit->document(), &QTextDocument::contentsChange, edit,
+                 [ inserted ]( int position, int, int added ) { *inserted = { position, added }; } );
+        connect( edit, &QPlainTextEdit::textChanged, edit, [ edit, inserted ] {
+            auto* document = edit->document();
+            const auto length = document->characterCount() - 1;
+            const auto excess = length - MaxFieldValueChars;
+            if ( excess <= 0 ) {
+                return;
+            }
+            const auto end = qMin( inserted->first + inserted->second, length );
+            const auto start = qMax( inserted->first, end - excess );
+            QTextCursor cursor( document );
+            if ( start < end ) {
+                cursor.setPosition( start );
+                cursor.setPosition( end, QTextCursor::KeepAnchor );
+                cursor.removeSelectedText();
+            }
+            if ( document->characterCount() - 1 > MaxFieldValueChars ) { // not from one insertion
+                cursor.setPosition( MaxFieldValueChars );
+                cursor.movePosition( QTextCursor::End, QTextCursor::KeepAnchor );
+                cursor.removeSelectedText();
+            }
+        } );
         connect( edit, &QPlainTextEdit::textChanged, this, changedSoon );
         layout->addWidget( edit, 1 );
         node.widget = edit;
@@ -1135,10 +1170,15 @@ void PluginView::attachCompletion( Node& node, QLineEdit* edit )
             const auto field = guard->nodes_.value( id );
             const auto timeoutMs
                 = field ? field->props.value( "completion_timeout_ms" ).toInt() : 0;
+            // The protocol counts characters (Unicode code points), as Python's len(text) does;
+            // the line edit counts UTF-16 units, so an emoji before the cursor counts once.
+            const auto text = typed.left( MaxFieldValueChars );
+            const auto at = pluginfields::characterCount(
+                QStringView( text ).left( qBound( 0, cursor, static_cast<int>( text.size() ) ) ) );
             const auto sent = guard->queries_.complete(
                 { { "element_id", id },
-                  { "text", typed.left( MaxFieldValueChars ) },
-                  { "cursor", cursor } },
+                  { "text", text },
+                  { "cursor", static_cast<double>( at ) } },
                 timeoutMs, done );
             if ( sent.isEmpty() ) {
                 done( {} ); // not sent: the plugin is stopped, busy or does not complete
@@ -1396,10 +1436,14 @@ void PluginView::apply( Node& node, const QJsonObject& incoming, bool fromRoot )
     auto props = incoming;
     if ( fromRoot ) {
         // A same-shaped root describes the whole element: properties it no longer sends return
-        // to their defaults (or are dropped), except value, rows and columns, which keep state.
+        // to their defaults (or are dropped), except value and a table's rows and columns, which
+        // keep state.
         const auto defaults = defaultsFor( node.type );
         for ( auto it = previous.begin(); it != previous.end(); ++it ) {
-            if ( props.contains( it.key() ) || KeptWhenAbsent.contains( it.key() ) ) {
+            if ( props.contains( it.key() ) || KeptWhenAbsent.contains( it.key() )
+                 || ( node.type == "table" && TableKeptWhenAbsent.contains( it.key() ) )
+                 || ( node.type == "tree" && TreeKeptWhenAbsent.contains( it.key() ) )
+                 || ( node.type == "file_tree" && FileTreeKeptWhenAbsent.contains( it.key() ) ) ) {
                 continue;
             }
             if ( defaults.contains( it.key() ) ) {
@@ -1508,18 +1552,23 @@ void PluginView::apply( Node& node, const QJsonObject& incoming, bool fromRoot )
                                           node.props.value( "indicator" ) == "radio" );
             }
         }
+        // Set now, or dropped by a same-shaped root (which returns it to the default).
+        const auto touched = [ & ]( const char* key ) {
+            const QLatin1String name( key );
+            return props.contains( name ) || ( previous.contains( name ) && !node.props.contains( name ) );
+        };
         if ( auto* group = qobject_cast<ChoiceGroup*>( node.widget.data() );
-             group && ( props.contains( "orientation" ) || props.contains( "columns" ) ) ) {
+             group && ( touched( "orientation" ) || touched( "columns" ) ) ) {
             group->setShape( node.props.value( "orientation" ).toString(),
                              node.props.value( "columns" ).toInt() );
         }
         if ( auto* plain = qobject_cast<QPlainTextEdit*>( node.widget.data() ) ) {
-            if ( props.contains( "monospace" ) ) {
-                plain->setFont( props.value( "monospace" ).toBool()
+            if ( touched( "monospace" ) ) {
+                plain->setFont( node.props.value( "monospace" ).toBool()
                                     ? QFontDatabase::systemFont( QFontDatabase::FixedFont )
                                     : QFont() );
             }
-            if ( props.contains( "rows" ) || props.contains( "monospace" ) ) {
+            if ( touched( "rows" ) || touched( "monospace" ) ) {
                 const auto rows = qBound( 1, node.props.value( "rows" ).toInt( 4 ), 50 );
                 plain->setFixedHeight( plain->fontMetrics().lineSpacing() * rows
                                        + 2 * plain->frameWidth()
@@ -1528,11 +1577,6 @@ void PluginView::apply( Node& node, const QJsonObject& incoming, bool fromRoot )
         }
         // integer and slider bounds; validation reports a typed value out of them (section 8.5).
         // A bound that is not given is the kind's own: any int for integer, 0 and 100 for slider.
-        // Set now, or dropped by a same-shaped root (which resets it to the kind's default).
-        const auto touched = [ & ]( const char* key ) {
-            const QLatin1String name( key );
-            return props.contains( name ) || ( previous.contains( name ) && !node.props.contains( name ) );
-        };
         const auto setBounds = [ & ]( auto* range, int lowest, int highest ) {
             if ( touched( "min" ) || touched( "max" ) ) {
                 const auto limit = static_cast<double>( std::numeric_limits<int>::max() );

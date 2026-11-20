@@ -245,7 +245,9 @@ Hosts that announce `view_edit` also support editable table cells and the `multi
 keys (section 2.1). The Python SDK helpers are
 `table_column(id, title=None, width=None, editable=None, tooltip=None, tooltip_provider=None, tooltip_key=None)`,
 `table_row(id, cells, tone=None, tooltip=None, editors=None, tooltip_provider=None, tooltip_key=None)` and
-`editor(kind, choices=None, min=None, max=None, max_length=None, placeholder=None, value=None)`.
+`editor(kind, choices=None, min=None, max=None, max_length=None, placeholder=None, value=None,
+*, searchable=None, indicator=None)`; `searchable` (choice, multichoice) and `indicator="radio"`
+(choice) need the host feature `choices` and are removed for an older host.
 `Plugin.supports_view_edit` is true when the host announced `view_edit`; a plugin should fall back to
 read-only tables when it is false. The view-demo has an editable table.
 
@@ -492,7 +494,7 @@ host and answers field completion:
   `handler(CompleteQuery)` for a field with `completion`, or for every such field of the view
   (an element's own handler wins; a `@plugin.query("field/complete")` handler is the last
   fallback, its result unchanged). `CompleteQuery` adds `view_id`, `window_id`, `element_id`,
-  `text` and `cursor` (0 to `len(text)`) to `Query`. The handler returns a list of items
+  `text` and `cursor` (0 to `len(text)`, in characters as Python counts them) to `Query`. The handler returns a list of items
   (strings, or `completion_item(value, label=None, *, icon=None)`), a dict `{"items": [...]}`
   or None (no completions); the SDK keeps the first 100 items and answers the error `-32000`
   for any other return value or an item without a string `value`. Handlers run on the

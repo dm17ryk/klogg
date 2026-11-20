@@ -17,7 +17,9 @@
 #include <QPixmap>
 #include <QRegularExpression>
 #include <QStyle>
+#include <algorithm>
 #include <optional>
+#include <utility>
 
 namespace {
 // Built-in icons that the platform style provides.
@@ -387,15 +389,21 @@ QIcon PluginIconRegistry::resolve( const QString& pluginId, const QString& direc
                      + QApplication::palette().color( QPalette::WindowText ).name( QColor::HexArgb )
                      + ( darkTheme() ? QLatin1Char( 'd' ) : QLatin1Char( 'l' ) );
     auto& cache = resolved_[ pluginId ];
-    const auto found = cache.constFind( key );
-    if ( found != cache.cend() ) {
-        return *found;
+    const auto used = ++cache.clock;
+    if ( const auto found = cache.icons.find( key ); found != cache.icons.end() ) {
+        found->second = used;
+        return found->first;
     }
-    if ( cache.size() >= MaxResolved ) {
-        cache.clear();
+    if ( cache.icons.size() >= MaxResolved ) {
+        // The least recently used one: a table with more icon references than this keeps the
+        // icons of the rows it paints instead of loading them all again.
+        const auto oldest = std::min_element(
+            cache.icons.begin(), cache.icons.end(),
+            []( const auto& left, const auto& right ) { return left.second < right.second; } );
+        cache.icons.erase( oldest );
     }
     const auto loaded = load( pluginId, directory, reference );
-    cache.insert( key, loaded );
+    cache.icons.insert( key, { loaded, used } );
     return loaded;
 }
 

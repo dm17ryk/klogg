@@ -115,6 +115,7 @@ _CHOICE_OBJECT_KEYS = frozenset({"icon", "tooltip", "enabled"})  # inside choice
 _CHOICE_MARKERS = ("separator", "section")
 _CHOICE_FIELD_KEYS = frozenset({"indicator", "style", "searchable", "editable", "completion",
                                 "completion_timeout_ms", "orientation", "columns"})
+_EDITOR_CHOICE_KEYS = frozenset({"searchable", "indicator"})  # in table cell editors
 _FIELD_KIND_KEYS = frozenset({"rows", "monospace", "step"})
 _BOUND_KEYS = frozenset({"min", "max"})
 _VALIDATION_KEYS = frozenset({"required", "pattern", "min", "max", "min_length", "max_length",
@@ -1029,8 +1030,9 @@ def choice(value: ChoiceValue, label: Optional[str] = None, *, icon: Optional[Ic
            tooltip: Optional[str] = None, enabled: Optional[bool] = None) -> Choice:
     """A choice object for `choices` lists. `icon`, `tooltip` and `enabled` need the host
     feature choices; on an older host update() sends {value, label}, or the plain value."""
-    if isinstance(value, bool) or not isinstance(value, (str, int, float)):
-        raise ValueError("A choice value is a string or a number")
+    # NaN and infinities are no JSON numbers: the host would refuse the whole frame.
+    if isinstance(value, bool) or not (isinstance(value, str) or _is_number(value, False)):
+        raise ValueError("A choice value is a string or a finite number")
     entry: Choice = {"value": value}
     if label is not None:
         entry["label"] = label
@@ -1173,15 +1175,23 @@ def table_row(id: str, cells: Sequence[Any], tone: Optional[str] = None,
 
 def editor(kind: str, choices: Optional[Sequence[Any]] = None, min: Optional[float] = None,
            max: Optional[float] = None, max_length: Optional[int] = None,
-           placeholder: Optional[str] = None, value: Any = None) -> JsonObject:
+           placeholder: Optional[str] = None, value: Any = None, *,
+           searchable: Optional[bool] = None, indicator: Optional[str] = None) -> JsonObject:
     """A table cell editor: kind text, number, choice, multichoice or boolean (host feature view_edit).
 
     Pass it in table_row(editors={column_id: editor(...)}). value is the optional starting value
-    (a list of checked values for multichoice)."""
+    (a list of checked values for multichoice). With the host feature choices, `searchable`
+    (choice, multichoice) filters the open list as the user types and `indicator="radio"`
+    (choice) draws radio marks; update() and patch() remove both on an older host."""
+    if searchable and kind not in CHOICE_STYLES:
+        raise ValueError("searchable is for choice and multichoice editors")
+    if indicator is not None and (indicator != "radio" or kind != "choice"):
+        raise ValueError('indicator is "radio", on a choice editor')
     spec: JsonObject = {"kind": kind}
     for key, item in (("choices", list(choices) if choices is not None else None), ("min", min),
                       ("max", max), ("max_length", max_length), ("placeholder", placeholder),
-                      ("value", value)):
+                      ("value", value), ("searchable", searchable or None),
+                      ("indicator", indicator)):
         if item is not None:
             spec[key] = item
     return spec
@@ -2516,9 +2526,12 @@ def _cell_text(value: Any) -> Any:
 
 
 def _compatible_editors(editors: Any) -> Any:
+    """Cell editors for a host without choices: no searchable or indicator keys, and choices
+    an older host knows."""
     if not isinstance(editors, dict):
         return editors
-    converted = {column_id: _with_compatible_choices(spec) if isinstance(spec, dict) else spec
+    converted = {column_id: _with_compatible_choices(_without(spec, _EDITOR_CHOICE_KEYS))
+                 if isinstance(spec, dict) else spec
                  for column_id, spec in editors.items()}
     if all(converted[column_id] is editors[column_id] for column_id in editors):
         return editors

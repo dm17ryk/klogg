@@ -95,8 +95,14 @@ void fillCombo( QComboBox* combo, const QList<Choice>& choices, const IconResolv
                 bool radio )
 {
     const auto current = combo->currentData();
-    // An editable choice's value is its text: new choices never replace what the user typed.
+    // An editable choice's value is its text: new choices never replace what the user typed,
+    // an empty text included once the field has shown choices (before that there is no text).
+    // "Has shown choices" is remembered on the combo box: an empty choices list in between
+    // leaves no items, but the empty text is still the user's.
+    static constexpr char ShownProperty[] = "pluginChoicesShown";
     const auto typed = combo->isEditable() ? combo->currentText() : QString{};
+    const bool keepText
+        = combo->isEditable() && ( combo->property( ShownProperty ).toBool() || !typed.isEmpty() );
     const QSignalBlocker blocker( combo );
     combo->clear();
     auto* model = qobject_cast<QStandardItemModel*>( combo->model() );
@@ -130,8 +136,11 @@ void fillCombo( QComboBox* combo, const QList<Choice>& choices, const IconResolv
     if ( radio && dynamic_cast<RadioIndicatorDelegate*>( combo->itemDelegate() ) == nullptr ) {
         combo->setItemDelegate( new RadioIndicatorDelegate( combo ) );
     }
-    if ( !typed.isEmpty() ) {
-        const auto found = findLabel( combo, typed );
+    if ( combo->count() > 0 ) {
+        combo->setProperty( ShownProperty, true );
+    }
+    if ( keepText ) {
+        const auto found = typed.isEmpty() ? -1 : findLabel( combo, typed );
         combo->setCurrentIndex( found );
         if ( found < 0 ) {
             combo->setEditText( typed );
@@ -641,6 +650,20 @@ QString number( double value )
 }
 } // namespace
 
+qsizetype characterCount( QStringView text )
+{
+    qsizetype count = 0;
+    for ( qsizetype at = 0; at < text.size(); ++at ) {
+        // A surrogate pair is one character.
+        if ( text.at( at ).isHighSurrogate() && at + 1 < text.size()
+             && text.at( at + 1 ).isLowSurrogate() ) {
+            ++at;
+        }
+        ++count;
+    }
+    return count;
+}
+
 bool validates( const QJsonObject& props )
 {
     // By value: a later root that drops a rule leaves its neutral default (required false, an
@@ -665,7 +688,8 @@ QString validationError( const QJsonObject& props, const QJsonValue& value )
     }
     if ( value.isString() ) {
         const auto text = value.toString();
-        const auto length = static_cast<int>( text.size() );
+        // Characters as the user sees them (an emoji is one), not UTF-16 units.
+        const auto length = static_cast<int>( characterCount( text ) );
         const auto shortest = lengthRule( props, "min_length" );
         if ( shortest >= 0 && length < shortest ) {
             return translate( "At least %n character(s)", shortest );
