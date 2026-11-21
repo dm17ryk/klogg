@@ -1681,7 +1681,10 @@ reordering inside a tree. Where the design left a choice open, E17e decided as f
   user's expansion tries again. A symbolic link or junction below a root that leads out of the root
   (or nowhere) shows disabled: it is never opened, selected or checked, and paths through it are
   outside the roots. A link that stays inside its root behaves as its target. A link in a network
-  root is never resolved (a share that went away could stall the window): it shows disabled.
+  root is never resolved (a share that went away could stall the window): it shows disabled. A
+  local root that is itself a link is what it leads to now: when it leads elsewhere, the links below
+  it are judged against the new place, the view starts over and the checked paths are looked at
+  again.
 - **The native model.** Folders load lazily in the background and changes on disk appear by
   themselves. Icons are the style's folder and file icons and the type column is "Folder" or the
   file's suffix: the host never reads file contents, not even to find an icon, and never resolves

@@ -128,8 +128,14 @@ QWidget* PluginView::buildTree( Node& node, QWidget* parent )
         }
     } );
     PluginTreeBehaviour::Hooks hooks;
-    hooks.emitEvent = [ guard, id ]( const QString& type, const QJsonValue& value ) {
-        return guard && guard->emitEvent( id, type, value );
+    // Events come only from the tree the view still shows for this id (a replaced one lives on
+    // until it is deleted, and a report it deferred must not speak for its successor).
+    const auto current = [ guard, id, model ] {
+        const auto found = guard ? guard->nodes_.value( id ) : nullptr;
+        return found && found->treeModel == model;
+    };
+    hooks.emitEvent = [ guard, id, current ]( const QString& type, const QJsonValue& value ) {
+        return current() && guard->emitEvent( id, type, value );
     };
     hooks.canAct = [ guard, id, model ] {
         if ( !guard ) {
@@ -156,8 +162,8 @@ QWidget* PluginView::buildTree( Node& node, QWidget* parent )
             guard->cancelChildren( id, nodeId );
         }
     };
-    hooks.selectionChanged = [ guard, id ] {
-        if ( guard ) {
+    hooks.selectionChanged = [ guard, id, current ] {
+        if ( current() ) {
             // The plugin removed selected nodes: tell it what is still selected.
             QScopedValueRollback<bool> rollback( guard->applying_, false );
             guard->emitTreeSelection( id );
@@ -175,9 +181,12 @@ QWidget* PluginView::buildFileTree( Node& node, QWidget* parent )
     tree->setSizePolicy( QSizePolicy::Expanding, QSizePolicy::Expanding );
     const QPointer<PluginView> guard( this );
     PluginFileTreeBehaviour::Hooks hooks;
-    hooks.emitEvent = [ guard, id ]( const QString& type, const QJsonValue& value,
-                                     const QJsonObject& extra ) {
-        return guard && guard->emitEvent( id, type, value, extra );
+    hooks.emitEvent = [ guard, id, tree ]( const QString& type, const QJsonValue& value,
+                                           const QJsonObject& extra ) {
+        // Only the file tree the view still shows for this id (a replaced one lives on until it
+        // is deleted).
+        const auto found = guard ? guard->nodes_.value( id ) : nullptr;
+        return found && found->widget.data() == tree && guard->emitEvent( id, type, value, extra );
     };
     hooks.canAct = [ guard, id, tree ] {
         if ( !guard ) {

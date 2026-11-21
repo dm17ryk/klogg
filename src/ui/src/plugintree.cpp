@@ -779,7 +779,9 @@ bool PluginTreeModel::update( const QJsonArray& nodes, QString* error, QStringLi
         }
         int count = 0;
         for ( const auto& child : node.children ) {
-            count += 1 + loadedNow( *child );
+            if ( !child->placeholder ) { // a "Loading…" line is no node (it is not counted)
+                count += 1 + loadedNow( *child );
+            }
         }
         return count;
     };

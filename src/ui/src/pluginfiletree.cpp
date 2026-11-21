@@ -215,12 +215,14 @@ void PluginFileRootsModel::connectSource()
                      endResetModel();
                      return;
                  }
-                 // Roots whose own rows changed in their parent folder.
+                 // Roots whose own rows changed in their parent folder (a root that is a link may
+                 // lead elsewhere now).
                  for ( int row = 0; row < roots_.size(); ++row ) {
                      const auto& root = roots_.at( row );
                      if ( root.source.isValid() && root.source.parent() == topLeft.parent()
                           && root.source.row() >= topLeft.row()
                           && root.source.row() <= bottomRight.row() ) {
+                         scheduleRootCheck();
                          Q_EMIT dataChanged( createIndex( row, topLeft.column() ),
                                              createIndex( row, bottomRight.column() ), roles );
                      }
@@ -235,6 +237,9 @@ void PluginFileRootsModel::connectSource()
              } );
     connect( files_, &QAbstractItemModel::rowsAboutToBeInserted, this,
              [ this ]( const QModelIndex& parent, int first, int last ) {
+                 if ( rootPointers_.contains( parent.internalPointer() ) ) {
+                     scheduleRootCheck(); // a root's contents changed: it may lead elsewhere
+                 }
                  bool mapped = false;
                  const auto proxy = sourceParentMapped( parent, &mapped );
                  if ( mapped ) {
@@ -243,12 +248,16 @@ void PluginFileRootsModel::connectSource()
                  pending_.append( mapped ? 1 : 0 );
              } );
     connect( files_, &QAbstractItemModel::rowsInserted, this, [ this ] {
+        names_.clear();
         if ( !pending_.isEmpty() && pending_.takeLast() == 1 ) {
             endInsertRows();
         }
     } );
     connect( files_, &QAbstractItemModel::rowsAboutToBeRemoved, this,
              [ this ]( const QModelIndex& parent, int first, int last ) {
+                 if ( rootPointers_.contains( parent.internalPointer() ) ) {
+                     scheduleRootCheck();
+                 }
                  // A root or a folder above it goes away: the roots are looked at again after the
                  // removal.
                  for ( const auto& root : std::as_const( roots_ ) ) {
@@ -269,6 +278,7 @@ void PluginFileRootsModel::connectSource()
              } );
     connect( files_, &QAbstractItemModel::rowsRemoved, this, [ this ] {
         escapes_.clear(); // removed items free their pointers
+        names_.clear();
         // A checked item deleted or renamed on disk: the checked paths are looked at again.
         scheduleRevalidation();
         const auto state = pending_.isEmpty() ? 0 : pending_.takeLast();
@@ -295,6 +305,7 @@ void PluginFileRootsModel::connectSource()
     connect( files_, &QAbstractItemModel::layoutChanged, this, [ this ] {
         // The roots' source indexes may have moved: their pointers are looked up again.
         rebuildRootPointers();
+        names_.clear(); // rows moved
         for ( qsizetype at = 0; at < layoutProxy_.size(); ++at ) {
             changePersistentIndex( layoutProxy_.at( at ), mapFromSource( layoutSource_.at( at ) ) );
         }
@@ -306,6 +317,7 @@ void PluginFileRootsModel::connectSource()
              [ this ] { beginResetModel(); } );
     connect( files_, &QAbstractItemModel::modelReset, this, [ this ] {
         escapes_.clear();
+        names_.clear();
         for ( auto& root : roots_ ) {
             if ( !root.network || root.source.isValid() ) {
                 attachLocal( root );
@@ -321,6 +333,7 @@ void PluginFileRootsModel::setRoots( const QStringList& paths, QStringList* skip
     beginResetModel();
     roots_.clear();
     escapes_.clear();
+    names_.clear();
     for ( const auto& raw : paths ) {
         const auto network = isNetworkPath( raw );
         const auto path = normalize( raw );
@@ -545,18 +558,23 @@ QModelIndex PluginFileRootsModel::loadedItem( const Root& root, const QString& p
         if ( escapes( at ) ) {
             return {};
         }
-        QModelIndex found;
-        const auto rows = files_->rowCount( at );
-        for ( int row = 0; row < rows && !found.isValid(); ++row ) {
-            const auto child = files_->index( row, 0, at );
-            if ( files_->fileName( child ).compare( name, PathCase ) == 0 ) {
-                found = child;
+        // The folder's children by name, built once until its rows change: a pointer moving
+        // over a large loaded folder looks each item up at once.
+        auto& rowsByName = names_[ at.internalPointer() ];
+        if ( rowsByName.isEmpty() ) {
+            const auto rows = files_->rowCount( at );
+            for ( int row = 0; row < rows; ++row ) {
+                rowsByName.insert( key( files_->fileName( files_->index( row, 0, at ) ) ), row );
             }
         }
-        if ( !found.isValid() ) {
+        const auto row = rowsByName.constFind( key( name ) );
+        if ( row == rowsByName.cend() ) {
             return {};
         }
-        at = found;
+        at = files_->index( row.value(), 0, at );
+        if ( !at.isValid() ) {
+            return {};
+        }
     }
     return escapes( at ) ? QModelIndex{} : at;
 }
@@ -687,6 +705,9 @@ void PluginFileRootsModel::fetchMore( const QModelIndex& parent )
 {
     const auto source = mapToSource( parent );
     if ( source.isValid() && !escapes( source ) ) {
+        if ( isRoot( parent ) ) {
+            scheduleRootCheck(); // a root that is a link may lead elsewhere since it was attached
+        }
         files_->fetchMore( source );
     }
 }
@@ -767,6 +788,36 @@ void PluginFileRootsModel::setCheckboxes( bool checkboxes )
 bool PluginFileRootsModel::isChecked( const QString& path ) const
 {
     return checkedKeys_.contains( key( path ) );
+}
+
+void PluginFileRootsModel::scheduleRootCheck()
+{
+    if ( std::exchange( checkingRoots_, true ) ) {
+        return;
+    }
+    QTimer::singleShot( 0, this, [ this ] {
+        checkingRoots_ = false;
+        // A local root names a path: what it leads to now is the root, and links below it are
+        // judged against that. A network root is not resolved again (its links never open).
+        bool moved = false;
+        for ( auto& root : roots_ ) {
+            if ( root.network || !root.source.isValid() ) {
+                continue;
+            }
+            const auto now = resolvedPath( root.path );
+            if ( now.compare( root.canonical, PathCase ) != 0 ) {
+                root.canonical = now;
+                moved = true;
+            }
+        }
+        if ( moved ) {
+            beginResetModel();
+            escapes_.clear();
+            names_.clear();
+            endResetModel();
+            scheduleRevalidation();
+        }
+    } );
 }
 
 void PluginFileRootsModel::scheduleRevalidation()
@@ -974,9 +1025,10 @@ PluginFileTreeBehaviour::PluginFileTreeBehaviour( QTreeView* tree, Hooks hooks )
     roots_->onCheckRequested = [ this ]( const QString& path, bool checked ) {
         requestCheck( path, checked );
     };
-    // Checked files that went away on disk: the plugin hears what is still checked.
+    // Checked files that went away on disk: the plugin hears what is still checked, only from
+    // the tree its view still shows (a replaced tree lives on until it is deleted).
     roots_->onCheckedDropped = [ this ] {
-        if ( options_.checkboxes ) {
+        if ( options_.checkboxes && ( !hooks_.canAct || hooks_.canAct() ) ) {
             emitSelected();
         }
     };

@@ -1402,8 +1402,11 @@ QWidget* PluginView::buildTable( Node& node, const QJsonObject& element, QWidget
             guard->queries_.saveState( id, state );
         }
     };
-    hooks.selectionSettled = [ guard, id ] {
-        if ( guard && !guard->applying_ ) {
+    hooks.selectionSettled = [ guard, id, table ] {
+        // Only for the table the view still shows for this id: a report a replaced table
+        // deferred must not speak for its successor.
+        const auto found = guard ? guard->nodes_.value( id ) : nullptr;
+        if ( found && found->widget.data() == table && !guard->applying_ ) {
             guard->emitSelection( id );
         }
     };

@@ -116,6 +116,10 @@ private:
     // Looks at the checked paths again once the native model is done (rows removed, links
     // changed); the plugin hears when some went.
     void scheduleRevalidation();
+    // A local root is itself a link that may lead elsewhere now: once the native model is done,
+    // its resolved path is looked at again and, when it moved, the view starts over with links
+    // judged against it and the checked paths looked at again.
+    void scheduleRootCheck();
     int rootOfPath( const QString& path ) const;
     bool attachLocal( Root& root );
     void rebuildRootPointers();
@@ -127,6 +131,8 @@ private:
     QVector<Root> roots_;
     QHash<void*, int> rootPointers_; // source internal pointer of an attached root -> its row
     mutable QHash<const void*, bool> escapes_; // escapes() per source item, until it changes
+    // loadedItem(): a loaded folder's children by name (key()) -> row, until its rows change.
+    mutable QHash<const void*, QHash<QString, int>> names_;
     QVector<int> pending_; // begin/end pairs: 0 ignored, 1 forwarded, 2 reset
     QList<QPersistentModelIndex> layoutProxy_;
     QList<QPersistentModelIndex> layoutSource_;
@@ -136,6 +142,7 @@ private:
     bool selectDirs_ = true;
     bool checkboxes_ = false;
     bool revalidating_ = false; // a revalidation of the checked paths waits for the event loop
+    bool checkingRoots_ = false; // scheduleRootCheck() waits for the event loop
 };
 } // namespace pluginview
 

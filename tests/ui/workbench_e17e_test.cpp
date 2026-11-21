@@ -1242,6 +1242,27 @@ TEST_CASE( "E17e a double-click on a check box does not activate; update_nodes o
     replaceThenGrow( cilogg::plugins::MaxTreeNodes - 2 ); // 50,000
     REQUIRE( again.model()->nodeCount() == cilogg::plugins::MaxTreeNodes );
     REQUIRE( again.index( "X" ).data().toString() == "X2" );
+
+    // A "Loading…" line is no node: at 50,000 nodes, a loading node given one child and a new
+    // text changes nothing.
+    QJsonArray full;
+    for ( int at = 0; at < cilogg::plugins::MaxTreeNodes - 1; ++at ) {
+        full.append( QJsonObject{ { "id", QString( "p%1" ).arg( at ) } } );
+    }
+    full.append( QJsonObject{ { "id", "L" }, { "text", "L" }, { "has_children", true } } );
+    View loading( QJsonObject{ { "type", "tree" }, { "id", "tr" }, { "lazy", true }, { "nodes", full } } );
+    REQUIRE( loading.model()->nodeCount() == cilogg::plugins::MaxTreeNodes );
+    loading.tree()->expand( loading.index( "L" ) );
+    REQUIRE( loading.model()->isLoading( "L" ) );
+    loading.patch( QJsonObject{
+        { "id", "tr" },
+        { "update_nodes",
+          QJsonArray{ QJsonObject{ { "id", "L" },
+                                   { "text", "Changed" },
+                                   { "children", QJsonArray{ QJsonObject{ { "id", "c" } } } } } } } } );
+    REQUIRE( loading.index( "L" ).data().toString() == "L" );
+    REQUIRE_FALSE( loading.index( "c" ).isValid() );
+    REQUIRE( loading.model()->nodeCount() == cilogg::plugins::MaxTreeNodes );
 }
 
 namespace {
@@ -1381,6 +1402,32 @@ TEST_CASE( "E17e file trees keep links inside their roots, count selections, che
         REQUIRE( waitFor( [ & ] { return hopBehaviour->value( 10 ).isEmpty(); }, FileSystemWait ) );
         REQUIRE( waitFor( [ & ] { return hop.countOf( "selected" ) > heard; } ) );
         REQUIRE( hop.lastOf( "selected" ).value( "value" ).toArray().isEmpty() );
+
+        // A root that is itself a link is what it leads to now: once it leads elsewhere, the
+        // links below it are judged against the new place.
+        const auto targetA = base + "/rootA";
+        const auto targetB = base + "/rootB";
+        const auto rootLink = base + "/rootLink";
+        REQUIRE( QDir().mkpath( targetA ) );
+        REQUIRE( QDir().mkpath( targetB ) );
+        REQUIRE( touch( targetA + "/a.bin" ) );
+        REQUIRE( touch( targetB + "/b.bin" ) );
+        REQUIRE( linkDirectory( targetA, targetB + "/toA" ) );
+        REQUIRE( linkDirectory( targetA, rootLink ) );
+        View moved( QJsonObject{ { "type", "file_tree" }, { "id", "files" }, { "roots", QJsonArray{ rootLink } } } );
+        auto* movedBehaviour = moved.tree( "files" )->findChild<PluginFileTreeBehaviour*>();
+        auto* movedModel = movedBehaviour->model();
+        REQUIRE( movedModel->reaches( rootLink + "/a.bin" ) );
+        REQUIRE( unlinkDirectory( rootLink ) );
+        REQUIRE( linkDirectory( targetB, rootLink ) );
+        auto* movedFiles = movedBehaviour->findChild<QFileSystemModel*>();
+        REQUIRE( movedFiles );
+        const auto rootItem = movedFiles->index( rootLink );
+        REQUIRE( rootItem.isValid() );
+        Q_EMIT movedFiles->dataChanged( rootItem, rootItem ); // as the native model reports it
+        REQUIRE( waitFor( [ & ] { return movedModel->reaches( rootLink + "/b.bin" ); } ) );
+        REQUIRE_FALSE( movedModel->reaches( rootLink + "/toA" ) );
+        REQUIRE_FALSE( movedModel->reaches( rootLink + "/toA/a.bin" ) );
     }
     else {
         WARN( "No directory links can be made here: the link checks are skipped." );
@@ -1502,6 +1549,24 @@ TEST_CASE( "E17e file trees keep links inside their roots, count selections, che
     REQUIRE( goneBehaviour->value( 10 ).isEmpty() );
     QTest::qWait( 20 );
     REQUIRE( gone.countOf( "selected" ) == before + 1 );
+
+    // A report a replaced file tree had deferred does not speak for what replaced it.
+    View swapped( QJsonObject{ { "type", "file_tree" },
+                               { "id", "files" },
+                               { "roots", QJsonArray{ root + "/many" } },
+                               { "checkboxes", true },
+                               { "select", "files" } } );
+    QPointer<pluginview::PluginFileRootsModel> oldModel(
+        swapped.tree( "files" )->findChild<PluginFileTreeBehaviour*>()->model() );
+    swapped.view.setRoot( QJsonObject{
+        { "type", "column" },
+        { "id", "body" },
+        { "children", QJsonArray{ QJsonObject{ { "type", "label" }, { "id", "files" }, { "text", "Gone" } } } } } );
+    const auto heardBefore = swapped.events.size();
+    if ( oldModel && oldModel->onCheckedDropped ) {
+        oldModel->onCheckedDropped();
+    }
+    REQUIRE( swapped.events.size() == heardBefore );
 
     // A network root that cannot be reached closes again and keeps its expander for the next try.
     View network( QJsonObject{ { "type", "file_tree" },
