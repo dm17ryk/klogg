@@ -1125,6 +1125,21 @@
         "P2 a missing local root never attached: the nearest existing folder above it is watched"
       ],
       "allFixedWithTests": true
+    },
+    "localCodexReview137Round8": {
+      "date": "2026-11-21",
+      "pullRequest": "https://github.com/dm17ryk/klogg/pull/137",
+      "reason": "the Codex review bot is over its usage limit; Dmitry: run a local Codex review",
+      "reviewer": "codex exec -m gpt-5.6-sol, high reasoning, read-only",
+      "commit": "e25f6e68d761075aa4a99aa33e910e923fa9c999",
+      "reviewedHead": "16e74f26cabbd2dfb58e1c7ea404498d2413478c",
+      "findings": [
+        "P2 a tree without selection ignored the patch's current: it now moves the keyboard focus",
+        "P2 columns [] after a hidden first column left the implicit column hidden: it is shown",
+        "P2 a root link whose target went stayed attached with no target: it is missing until the target is back, its checked paths are dropped and the target's folder is watched",
+        "P2 the check box repaint looked paths up on disk: it uses the loaded items only"
+      ],
+      "allFixedWithTests": true
     }
   }
 }
