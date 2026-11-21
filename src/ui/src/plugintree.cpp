@@ -768,9 +768,9 @@ bool PluginTreeModel::update( const QJsonArray& nodes, QString* error, QStringLi
 {
     // An operation that would pass MaxNodes changes nothing: the entries' children are applied to
     // projected subtree sizes, in order, before any node changes. A replaced subtree counts as the
-    // children it got, whichever entry came first; a node below a replaced one is gone by then. An
-    // id the tree does not hold yet (a node an earlier entry adds) counts as adding its children
-    // and removing nothing, which can only refuse more.
+    // children it got, whichever entry came first. A node the tree does not hold yet, or one below
+    // a node an earlier entry replaces (an earlier entry may give it again, with that id), counts
+    // as adding all its children and removing nothing: never less than the change it can make.
     std::unordered_map<const Node*, int> loadedAfter;
     const std::function<int( const Node& )> loadedNow = [ & ]( const Node& node ) {
         if ( const auto found = loadedAfter.find( &node ); found != loadedAfter.end() ) {
@@ -799,6 +799,7 @@ bool PluginTreeModel::update( const QJsonArray& nodes, QString* error, QStringLi
             gone = loadedAfter.count( above ) > 0;
         }
         if ( gone ) {
+            projected += countNodes( children, 1 );
             continue;
         }
         const auto adding = countNodes( children, depthOf( node->id ) + 1 );

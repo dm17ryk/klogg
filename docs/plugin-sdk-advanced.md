@@ -1606,7 +1606,8 @@ reordering inside a tree. Where the design left a choice open, E17e decided as f
   column must be `editable`) and `drag` (accepted and ignored until E17g). A node without an id,
   or with the id of an earlier node, is skipped with a warning.
 - **Limits.** 50,000 nodes per tree and depth 64: an operation that would pass 50,000 nodes changes
-  nothing and logs a warning; nodes below depth 64 are dropped with a warning. Ids and texts are at
+  nothing and logs a warning (it is counted before anything changes; in `update_nodes`, children
+  given to a node that an earlier entry of the same operation sets or removes count in full); nodes below depth 64 are dropped with a warning. Ids and texts are at
   most 4,096 characters, as in tables.
 - **Lazy children.** In a tree with `lazy`, expanding a node with `has_children` and no children
   shows a "Loading…" child and sends `tree/children` `{view_id, window_id, element_id, node_id,
@@ -1685,7 +1686,9 @@ reordering inside a tree. Where the design left a choice open, E17e decided as f
   `set: {value: [...]}` selects (or checks) those paths and reveals the first; paths outside the
   roots, missing ones and those that cannot be selected (or checked) there, such as a folder with
   `select: "files"` or a greyed file, are ignored. A patch entry `expand: [paths]` opens folders.
-  New `roots` drop the checked paths that are no longer in a root, without an event.
+  New `roots` and options that make a checked path ineligible (`select`, `filters`, hidden files)
+  drop it without an event. A checked file deleted or renamed on disk is dropped too, and the
+  plugin gets `selected` with the paths still checked.
 - **Events.** `selected` (value: the paths) and `activated` (`{path}`: a double-click or Enter on
   a file; on a folder it expands). With `checkboxes`, checking sends `selected` with the checked
   paths and the row highlight only marks the current item.

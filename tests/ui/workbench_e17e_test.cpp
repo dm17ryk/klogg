@@ -1150,6 +1150,34 @@ TEST_CASE( "E17e a double-click on a check box does not activate; update_nodes o
     REQUIRE( nested.model()->nodeCount() == cilogg::plugins::MaxTreeNodes );
     REQUIRE_FALSE( nested.index( "D" ).isValid() );
     REQUIRE( nested.index( "A" ).data().toString() == "Changed" );
+
+    // A node that an earlier entry gives again, with its id, counts its new children in full.
+    View again( QJsonObject{
+        { "type", "tree" },
+        { "id", "tr" },
+        { "nodes", QJsonArray{ QJsonObject{
+                       { "id", "A" },
+                       { "text", "A" },
+                       { "children", QJsonArray{ QJsonObject{ { "id", "X" }, { "text", "x" } } } } } } } } );
+    const auto replaceThenGrow = [ & ]( int count ) {
+        QJsonArray fresh;
+        for ( int at = 0; at < count; ++at ) {
+            fresh.append( QJsonObject{ { "id", QString( "y%1" ).arg( at ) } } );
+        }
+        again.patch( QJsonObject{
+            { "id", "tr" },
+            { "update_nodes",
+              QJsonArray{ QJsonObject{ { "id", "A" },
+                                       { "children", QJsonArray{ QJsonObject{ { "id", "X" },
+                                                                              { "text", "x" } } } } },
+                          QJsonObject{ { "id", "X" }, { "text", "X2" }, { "children", fresh } } } } } );
+    };
+    replaceThenGrow( cilogg::plugins::MaxTreeNodes - 1 ); // 2 + 49,999
+    REQUIRE( again.model()->nodeCount() == 2 );
+    REQUIRE( again.index( "X" ).data().toString() == "x" );
+    replaceThenGrow( cilogg::plugins::MaxTreeNodes - 2 ); // 50,000
+    REQUIRE( again.model()->nodeCount() == cilogg::plugins::MaxTreeNodes );
+    REQUIRE( again.index( "X" ).data().toString() == "X2" );
 }
 
 namespace {
@@ -1200,7 +1228,8 @@ TEST_CASE( "E17e file trees keep links inside their roots, count selections, che
     auto* tree = fixture.tree( "files" );
     auto* behaviour = tree->findChild<PluginFileTreeBehaviour*>();
     auto* model = behaviour->model();
-    const auto top = model->index( 0, 0 );
+    // Persistent: the native model sorts its rows later on, and plain indexes would go stale.
+    const QPersistentModelIndex top( model->index( 0, 0 ) );
     tree->expand( top );
     const auto child = [ & ]( const QModelIndex& parent, const QString& name ) {
         for ( int row = 0; row < model->rowCount( parent ); ++row ) {
@@ -1216,7 +1245,7 @@ TEST_CASE( "E17e file trees keep links inside their roots, count selections, che
     if ( linked ) {
         // A link that leads out of its root shows disabled and never opens; nothing through it is
         // found, revealed, opened or selected.
-        const auto out = child( top, "out" );
+        const QPersistentModelIndex out( child( top, "out" ) );
         REQUIRE( model->flags( out ) == Qt::NoItemFlags );
         REQUIRE_FALSE( model->hasChildren( out ) );
         tree->expand( out );
@@ -1238,9 +1267,14 @@ TEST_CASE( "E17e file trees keep links inside their roots, count selections, che
             REQUIRE_FALSE( fixture.view.resolveTooltip( "files", {}, {}, path, false, {}, &error ) );
             REQUIRE_FALSE( fixture.view.elementMenu( "files", {}, path, &menuId, &target, &error ) );
         }
-        std::unique_ptr<QMenu> menu(
-            fixture.view.buildElementMenu( "files", tree->visualRect( out ).center() ) );
+        tree->scrollTo( out );
+        QCoreApplication::processEvents();
+        const auto at = tree->visualRect( out ).center();
+        REQUIRE( tree->visualRect( out ).isValid() );
+        REQUIRE( tree->indexAt( at ).sibling( tree->indexAt( at ).row(), 0 ) == QModelIndex( out ) );
+        std::unique_ptr<QMenu> menu( fixture.view.buildElementMenu( "files", at ) );
         REQUIRE( menu );
+        INFO( "node_id " << fixture.menuTarget.value( "node_id" ).toString().toStdString() );
         REQUIRE( fixture.menuTarget.value( "node_id" ).isNull() );
         // One that stays inside the root opens like its target.
         REQUIRE( model->hasChildren( child( top, "in" ) ) );
@@ -1263,7 +1297,7 @@ TEST_CASE( "E17e file trees keep links inside their roots, count selections, che
 
     // A selection is counted without a path for every row; only the first ones, in shown order,
     // get one, and a row selected twice counts once.
-    const auto folder = child( top, "many" );
+    const QPersistentModelIndex folder( child( top, "many" ) );
     tree->expand( folder );
     REQUIRE( waitFor( [ & ] { return model->rowCount( folder ) == 30; }, FileSystemWait ) );
     auto* selection = tree->selectionModel();
@@ -1310,6 +1344,36 @@ TEST_CASE( "E17e file trees keep links inside their roots, count selections, che
     picks.patch( QJsonObject{ { "id", "files" },
                               { "set", QJsonObject{ { "roots", QJsonArray{ root + "/inside" } } } } } );
     REQUIRE( picked->value( 10 ) == QStringList{ root + "/inside/x.bin" } );
+
+    // A checked file deleted on disk is dropped and the plugin hears what is still checked;
+    // options that make a checked file ineligible drop it without an event.
+    View gone( QJsonObject{ { "type", "file_tree" },
+                            { "id", "files" },
+                            { "roots", QJsonArray{ root + "/many" } },
+                            { "filters", QJsonArray{ "*.bin" } },
+                            { "checkboxes", true },
+                            { "select", "files" } } );
+    auto* goneTree = gone.tree( "files" );
+    auto* goneBehaviour = goneTree->findChild<PluginFileTreeBehaviour*>();
+    auto* goneModel = goneBehaviour->model();
+    goneTree->expand( goneModel->index( 0, 0 ) );
+    REQUIRE( waitFor( [ & ] { return goneModel->rowCount( goneModel->index( 0, 0 ) ) == 30; },
+                      FileSystemWait ) );
+    gone.patch( QJsonObject{
+        { "id", "files" },
+        { "set", QJsonObject{ { "value", QJsonArray{ root + "/many/f10.bin",
+                                                     root + "/many/f11.bin" } } } } } );
+    REQUIRE( goneBehaviour->value( 10 ) == QStringList{ root + "/many/f10.bin", root + "/many/f11.bin" } );
+    const auto before = gone.countOf( "selected" );
+    REQUIRE( QFile::remove( root + "/many/f11.bin" ) );
+    REQUIRE( waitFor( [ & ] { return goneBehaviour->value( 10 ) == QStringList{ root + "/many/f10.bin" }; },
+                      FileSystemWait ) );
+    REQUIRE( waitFor( [ & ] { return gone.countOf( "selected" ) == before + 1; } ) );
+    REQUIRE( gone.lastOf( "selected" ).value( "value" ).toArray() == QJsonArray{ root + "/many/f10.bin" } );
+    gone.patch( QJsonObject{ { "id", "files" }, { "set", QJsonObject{ { "select", "dirs" } } } } );
+    REQUIRE( goneBehaviour->value( 10 ).isEmpty() );
+    QTest::qWait( 20 );
+    REQUIRE( gone.countOf( "selected" ) == before + 1 );
 
     // A network root that cannot be reached closes again and keeps its expander for the next try.
     View network( QJsonObject{ { "type", "file_tree" },

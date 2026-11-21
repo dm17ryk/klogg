@@ -67,9 +67,15 @@ public:
     }
     void setCheckedPaths( const QStringList& paths );
     bool isChecked( const QString& path ) const;
-    // Set by the behaviour: whether the user may act now, and the user's check box changes.
+    // Drops the checked paths that are gone or can no longer be checked (a file deleted or
+    // renamed, options that make it ineligible); true when some went. Those of a network root
+    // not reached yet stay while they lie in it.
+    bool revalidateChecked();
+    // Set by the behaviour: whether the user may act now, the user's check box changes, and
+    // checked paths that went away on disk (the plugin hears what is still checked).
     std::function<bool()> canEdit;
     std::function<void( const QString& path, bool checked )> onCheckRequested;
+    std::function<void()> onCheckedDropped;
 
     // Paths: forward slashes, no trailing slash (but "C:/" and "/"), cleaned.
     static QString normalize( const QString& path );
@@ -121,6 +127,7 @@ private:
     bool selectFiles_ = true;
     bool selectDirs_ = true;
     bool checkboxes_ = false;
+    bool revalidating_ = false; // a revalidation of the checked paths waits for the event loop
 };
 } // namespace pluginview
 

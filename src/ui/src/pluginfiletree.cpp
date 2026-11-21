@@ -238,6 +238,16 @@ void PluginFileRootsModel::connectSource()
              } );
     connect( files_, &QAbstractItemModel::rowsRemoved, this, [ this ] {
         escapes_.clear(); // removed items free their pointers
+        // A checked item deleted or renamed on disk: the checked paths are looked at again once
+        // the model is done (looking them up may add items).
+        if ( !checked_.isEmpty() && !std::exchange( revalidating_, true ) ) {
+            QTimer::singleShot( 0, this, [ this ] {
+                revalidating_ = false;
+                if ( revalidateChecked() && onCheckedDropped ) {
+                    onCheckedDropped();
+                }
+            } );
+        }
         const auto state = pending_.isEmpty() ? 0 : pending_.takeLast();
         if ( state == 1 ) {
             endRemoveRows();
@@ -699,6 +709,31 @@ bool PluginFileRootsModel::isChecked( const QString& path ) const
     return checkedKeys_.contains( key( path ) );
 }
 
+bool PluginFileRootsModel::revalidateChecked()
+{
+    QStringList kept;
+    for ( const auto& path : std::as_const( checked_ ) ) {
+        const auto row = rootOfPath( path );
+        if ( row < 0 ) {
+            continue;
+        }
+        // A network root not reached yet is not touched: its paths stay.
+        bool checkable = roots_.at( row ).network && !roots_.at( row ).source.isValid();
+        if ( !checkable ) {
+            const auto index = indexOfPath( path );
+            checkable = index.isValid() && flags( index ).testFlag( Qt::ItemIsUserCheckable );
+        }
+        if ( checkable ) {
+            kept.append( path );
+        }
+    }
+    if ( kept.size() == checked_.size() ) {
+        return false;
+    }
+    setCheckedPaths( kept );
+    return true;
+}
+
 void PluginFileRootsModel::setCheckedPaths( const QStringList& paths )
 {
     QStringList kept;
@@ -861,6 +896,12 @@ PluginFileTreeBehaviour::PluginFileTreeBehaviour( QTreeView* tree, Hooks hooks )
     roots_->onCheckRequested = [ this ]( const QString& path, bool checked ) {
         requestCheck( path, checked );
     };
+    // Checked files that went away on disk: the plugin hears what is still checked.
+    roots_->onCheckedDropped = [ this ] {
+        if ( options_.checkboxes ) {
+            emitSelected();
+        }
+    };
     tree->setModel( roots_ );
     tree->setUniformRowHeights( true );
     tree->setSelectionBehavior( QAbstractItemView::SelectRows );
@@ -948,6 +989,16 @@ void PluginFileTreeBehaviour::setOptions( const Options& options )
                 hooks_.warn( QStringLiteral( "file-root:" ) + problem.left( 128 ), problem );
             }
         }
+    }
+    // Options that make a checked item ineligible (what can be selected, filters, hidden files)
+    // drop it; the plugin changed them, so nothing is sent.
+    const bool eligibility = previous.select != options.select
+                             || previous.filters != options.filters
+                             || previous.hideFiltered != options.hideFiltered
+                             || previous.showFiles != options.showFiles
+                             || previous.showHidden != options.showHidden;
+    if ( !first && eligibility ) {
+        roots_->revalidateChecked();
     }
     applyColumns();
     applySelectionMode();
