@@ -1594,7 +1594,7 @@ reordering inside a tree. Where the design left a choice open, E17e decided as f
 
 - **Element keys.** `columns` (as table columns: a string id or `{id, title, width, align, hidden,
   min_width, editable, tooltip, tooltip_provider, tooltip_key, icon}`; without columns the tree has
-  one column and no header), `nodes`, `selection` (`none` by default, `single`, `multi`),
+  one column and no header, shown also when an earlier first column was `hidden`), `nodes`, `selection` (`none` by default, `single`, `multi`),
   `toggle_selection` (with `multi`), `checkboxes`, `auto_tristate`, `lazy`, `expand_events`,
   `header` (default true when columns are given), `context_menu`, `copy` (default true), `export`
   (default false) and `reorderable` (default false), besides the common keys.
@@ -1628,7 +1628,8 @@ reordering inside a tree. Where the design left a choice open, E17e decided as f
   replaces the node's children), `insert_nodes` (under `parent`, before `before`; at the end
   without `before`), `remove_nodes` (ids; descendants go too), `expand` and `collapse` (ids;
   expanding a lazy node loads it), and the selection patch `select`, `current`, `scroll_to`, which
-  expands the ancestors of `current` and `scroll_to` and never sends `selected`. `parent` applies to
+  expands the ancestors of `current` and `scroll_to` and never sends `selected` (`current` moves the
+  keyboard focus also in a tree with `selection` `none`, where Enter, Space and Copy act on it). `parent` applies to
   `replace_nodes` and `insert_nodes` of the entry. A root (`view/update`) with the same shape
   replaces the nodes only when they differ from the ones it last set; expanded nodes and the
   selection are kept by id across a replacement.
@@ -1686,7 +1687,10 @@ reordering inside a tree. Where the design left a choice open, E17e decided as f
   root is never resolved (a share that went away could stall the window): it shows disabled. A
   local root that is itself a link is what it leads to now: when it leads elsewhere, the links below
   it are judged against the new place, the view starts over and the checked paths are looked at
-  again.
+  again. When it leads nowhere (its target was deleted), it is a root that does not exist: it shows
+  greyed, what was checked in it is dropped (the plugin hears `selected`), and it shows its contents
+  by itself once its target is back (the nearest existing folder above the target is watched too;
+  the link is read, never followed).
 - **The native model.** Folders load lazily in the background and changes on disk appear by
   themselves. Icons are the style's folder and file icons and the type column is "Folder" or the
   file's suffix: the host never reads file contents, not even to find an icon, and never resolves

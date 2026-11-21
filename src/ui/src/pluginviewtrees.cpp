@@ -247,6 +247,12 @@ void PluginView::applyTree( Node& node, const QJsonObject& props, const QJsonObj
                 }
                 tree->setColumnHidden( column, info.hidden );
             }
+            // The one implicit column of a tree without columns is always shown, also when an
+            // earlier first column was hidden.
+            for ( int column = static_cast<int>( columns.size() ); column < model->columnCount();
+                  ++column ) {
+                tree->setColumnHidden( column, false );
+            }
         }
     }
     // Options before the nodes: they decide how nodes show (check boxes, lazy children).

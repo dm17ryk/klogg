@@ -1402,11 +1402,11 @@ void PluginTreeBehaviour::select( const QJsonValue& ids, const QJsonValue& curre
         selection->select( chosen, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows );
     }
     if ( current.isString() && model_->contains( current.toString() ) ) {
+        // The keyboard focus, also without selection (Enter, Space and Copy act on it), as in
+        // tables.
         ensureVisible( current.toString() );
-        if ( selectable ) {
-            selection->setCurrentIndex( model_->indexOf( current.toString() ),
-                                        QItemSelectionModel::NoUpdate );
-        }
+        selection->setCurrentIndex( model_->indexOf( current.toString() ),
+                                    QItemSelectionModel::NoUpdate );
     }
     if ( scrollTo.isString() && model_->contains( scrollTo.toString() ) ) {
         ensureVisible( scrollTo.toString() );

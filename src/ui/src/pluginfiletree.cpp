@@ -401,7 +401,9 @@ bool PluginFileRootsModel::attachLocal( Root& root )
 {
     root.source = QPersistentModelIndex();
     root.canonical.clear();
-    if ( !files_ || !QFileInfo::exists( root.path ) ) {
+    // A root that leads nowhere (missing, or a link whose target is gone) is missing.
+    const auto canonical = files_ ? resolvedPath( root.path ) : QString{};
+    if ( canonical.isEmpty() ) {
         root.missing = true;
         return false;
     }
@@ -409,7 +411,7 @@ bool PluginFileRootsModel::attachLocal( Root& root )
     root.missing = !source.isValid();
     if ( source.isValid() ) {
         root.source = QPersistentModelIndex( source.sibling( source.row(), 0 ) );
-        root.canonical = resolvedPath( root.path );
+        root.canonical = canonical;
     }
     return source.isValid();
 }
@@ -538,7 +540,7 @@ bool PluginFileRootsModel::reaches( const QString& path ) const
     }
     const auto& root = roots_.at( row );
     if ( normalized.compare( root.path, PathCase ) == 0 ) {
-        return true; // the root's own item
+        return !root.missing; // the root's own item, unless it leads nowhere
     }
     // A network root that was not reached is not touched for a tooltip or a menu.
     if ( !root.source.isValid() || root.canonical.isEmpty() ) {
@@ -839,23 +841,34 @@ bool PluginFileRootsModel::isChecked( const QString& path ) const
 void PluginFileRootsModel::watchMissingRoots()
 {
     // The nearest existing folder above each local root that is not attached: the root appears
-    // in it. A network root is only tried again when the user expands it.
+    // in it. For a root that is a link leading nowhere, also the nearest one above its target
+    // (the link is read, never followed). A network root is only tried again when the user
+    // expands it.
     QStringList wanted;
-    for ( const auto& root : std::as_const( roots_ ) ) {
-        if ( root.network || root.source.isValid() ) {
-            continue;
-        }
-        QString at = root.path;
-        for ( int depth = 0; depth < 64; ++depth ) {
+    const auto watchAbove = [ &wanted ]( QString at ) {
+        for ( int depth = 0; depth < 64 && !at.isEmpty(); ++depth ) {
             const auto above = normalize( QFileInfo( at ).absolutePath() );
             if ( above.isEmpty() || above.compare( at, PathCase ) == 0 ) {
-                break;
+                return;
             }
             at = above;
             if ( QFileInfo( at ).isDir() ) {
                 wanted.append( at );
-                break;
+                return;
             }
+        }
+    };
+    for ( const auto& root : std::as_const( roots_ ) ) {
+        if ( root.network || root.source.isValid() ) {
+            continue;
+        }
+        watchAbove( root.path );
+        const QFileInfo link( root.path );
+        const auto target = link.isJunction()        ? link.junctionTarget()
+                            : link.isSymbolicLink() ? link.symLinkTarget()
+                                                    : QString{};
+        if ( !target.isEmpty() ) {
+            watchAbove( normalize( target ) );
         }
     }
     wanted.removeDuplicates();
@@ -887,7 +900,7 @@ void PluginFileRootsModel::retryMissingRoots()
 {
     for ( int row = 0; row < roots_.size(); ++row ) {
         const auto& root = roots_.at( row );
-        if ( !root.network && !root.source.isValid() && QFileInfo::exists( root.path ) ) {
+        if ( !root.network && !root.source.isValid() && !resolvedPath( root.path ).isEmpty() ) {
             attach( row );
         }
     }
@@ -902,25 +915,38 @@ void PluginFileRootsModel::scheduleRootCheck()
     QTimer::singleShot( 0, this, [ this ] {
         checkingRoots_ = false;
         // A local root names a path: what it leads to now is the root, and links below it are
-        // judged against that. A network root is not resolved again (its links never open).
-        bool moved = false;
-        for ( auto& root : roots_ ) {
+        // judged against that. One that leads nowhere now (a link whose target went) is missing
+        // until it leads somewhere again. A network root is not resolved again (its links never
+        // open).
+        QHash<int, QString> moved; // row -> resolved path now, empty when it leads nowhere
+        for ( int row = 0; row < roots_.size(); ++row ) {
+            const auto& root = roots_.at( row );
             if ( root.network || !root.source.isValid() ) {
                 continue;
             }
             const auto now = resolvedPath( root.path );
-            if ( now.compare( root.canonical, PathCase ) != 0 ) {
-                root.canonical = now;
-                moved = true;
+            if ( now.isEmpty() || now.compare( root.canonical, PathCase ) != 0 ) {
+                moved.insert( row, now );
             }
         }
-        if ( moved ) {
-            beginResetModel();
-            escapes_.clear();
-            clearNames();
-            endResetModel();
-            scheduleRevalidation();
+        if ( moved.isEmpty() ) {
+            return;
         }
+        beginResetModel();
+        for ( auto it = moved.cbegin(); it != moved.cend(); ++it ) {
+            auto& root = roots_[ it.key() ];
+            root.canonical = it.value();
+            if ( it.value().isEmpty() ) {
+                root.source = QPersistentModelIndex();
+                root.missing = true;
+            }
+        }
+        rebuildRootPointers();
+        escapes_.clear();
+        clearNames();
+        endResetModel();
+        scheduleRevalidation();
+        watchMissingRoots();
     } );
 }
 
@@ -982,7 +1008,8 @@ void PluginFileRootsModel::setCheckedPaths( const QStringList& paths )
     touched.append( kept );
     checked_ = kept;
     checkedKeys_ = keys;
-    // Repaint the boxes of loaded items only; nothing is fetched for this.
+    // Repaint the boxes of loaded items only, found by name: nothing is looked up on disk or on
+    // the network for this (an item that is not loaded is not shown).
     for ( const auto& path : std::as_const( touched ) ) {
         const auto row = rootOfPath( path );
         if ( row < 0 || !roots_.at( row ).source.isValid() || !files_ ) {
@@ -990,7 +1017,7 @@ void PluginFileRootsModel::setCheckedPaths( const QStringList& paths )
         }
         const auto proxy = path.compare( roots_.at( row ).path, PathCase ) == 0
                                ? createIndex( row, NameColumn )
-                               : mapFromSource( files_->index( path ) );
+                               : mapFromSource( loadedItem( roots_.at( row ), path ) );
         if ( proxy.isValid() ) {
             Q_EMIT dataChanged( proxy, proxy, { Qt::CheckStateRole } );
         }

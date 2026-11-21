@@ -493,6 +493,11 @@ TEST_CASE( "E17e tree patches keep expansion and selection by id", "[ui][workben
     REQUIRE( tree->isExpanded( fixture.index( "bench" ) ) );
     REQUIRE( fixture.behaviour()->selectedNodeIds( 10 ) == QStringList{ "b1", "spare" } );
     REQUIRE( fixture.behaviour()->currentNodeId() == "b1" );
+    // A tree without selection takes `current` too: Enter, Space and Copy act on it.
+    View unselectable( boardsTree( { { "selection", "none" } } ) );
+    unselectable.patch( QJsonObject{ { "id", "tr" }, { "current", "b2" } } );
+    REQUIRE( unselectable.behaviour()->currentNodeId() == "b2" );
+    REQUIRE( unselectable.behaviour()->selectedNodeIds( 10 ).isEmpty() );
     // A patch changing a node drops its cached tooltips.
     QString error;
     REQUIRE( fixture.view.resolveTooltip( "tr", {}, "state", "b1", true,
@@ -1152,6 +1157,26 @@ TEST_CASE( "E17e boxes need checkboxes, collapsing cancels a load, new columns p
     cells.view.setRoot( rootWith( 2 ) );
     REQUIRE( cells.model()->columnCount() == 2 );
     REQUIRE( cells.index( "r", 1 ).data().toString() == "right" );
+
+    // A tree whose first column was hidden shows its one implicit column once the columns go.
+    const auto hiddenFirst = []( const QJsonArray& columns ) {
+        return QJsonObject{ { "type", "column" },
+                            { "id", "body" },
+                            { "children", QJsonArray{ QJsonObject{ { "type", "tree" },
+                                                                   { "id", "tr" },
+                                                                   { "columns", columns },
+                                                                   { "nodes", QJsonArray{ treeNode( "r", { "left" } ) } } } } } };
+    };
+    View implicit( hiddenFirst( QJsonArray{ QJsonObject{ { "id", "a" }, { "hidden", true } },
+                                            QJsonObject{ { "id", "b" } } } )
+                       .value( "children" )
+                       .toArray()
+                       .first()
+                       .toObject() );
+    REQUIRE( implicit.tree()->isColumnHidden( 0 ) );
+    implicit.view.setRoot( hiddenFirst( QJsonArray{} ) );
+    REQUIRE( implicit.model()->columnCount() == 1 );
+    REQUIRE_FALSE( implicit.tree()->isColumnHidden( 0 ) );
 }
 
 TEST_CASE( "E17e a double-click on a check box does not activate; update_nodes over the limit "
@@ -1462,6 +1487,52 @@ TEST_CASE( "E17e file trees keep links inside their roots, count selections, che
         REQUIRE( waitFor( [ & ] { return movedModel->reaches( rootLink + "/b.bin" ); } ) );
         REQUIRE_FALSE( movedModel->reaches( rootLink + "/toA" ) );
         REQUIRE_FALSE( movedModel->reaches( rootLink + "/toA/a.bin" ) );
+
+        // A root that is a link whose target goes leads nowhere: it shows missing, what was
+        // checked in it goes (the plugin hears it), and it comes back by itself with the target.
+        const auto vanishing = base + "/vanishing";
+        const auto vanishingLink = base + "/vanishingLink";
+        REQUIRE( QDir().mkpath( vanishing ) );
+        REQUIRE( touch( vanishing + "/v.bin" ) );
+        REQUIRE( linkDirectory( vanishing, vanishingLink ) );
+        View lost( QJsonObject{ { "type", "file_tree" },
+                                { "id", "files" },
+                                { "roots", QJsonArray{ vanishingLink } },
+                                { "checkboxes", true },
+                                { "select", "files" } } );
+        auto* lostBehaviour = lost.tree( "files" )->findChild<PluginFileTreeBehaviour*>();
+        auto* lostModel = lostBehaviour->model();
+        REQUIRE( lostModel->isAttached( 0 ) );
+        lost.patch( QJsonObject{
+            { "id", "files" },
+            { "set", QJsonObject{ { "value", QJsonArray{ vanishingLink + "/v.bin" } } } } } );
+        REQUIRE( lostBehaviour->value( 10 ) == QStringList{ vanishingLink + "/v.bin" } );
+        const auto heardLost = lost.countOf( "selected" );
+        if ( QDir( vanishing ).removeRecursively() ) {
+            auto* lostFiles = lostBehaviour->findChild<QFileSystemModel*>();
+            REQUIRE( lostFiles );
+            const auto lostItem = lostFiles->index( vanishingLink );
+            if ( lostItem.isValid() ) {
+                Q_EMIT lostFiles->dataChanged( lostItem, lostItem ); // as the native model reports it
+            }
+            REQUIRE( waitFor( [ & ] { return !lostModel->isAttached( 0 ); }, FileSystemWait ) );
+            const auto lostRoot = lostModel->index( 0, 0 );
+            REQUIRE_FALSE( lostModel->hasChildren( lostRoot ) );
+            REQUIRE_FALSE( lostModel->flags( lostRoot ).testFlag( Qt::ItemIsSelectable ) );
+            REQUIRE_FALSE( lostModel->reaches( vanishingLink ) );
+            REQUIRE_FALSE( lostModel->reaches( vanishingLink + "/v.bin" ) );
+            REQUIRE( waitFor( [ & ] { return lostBehaviour->value( 10 ).isEmpty(); } ) );
+            REQUIRE( waitFor( [ & ] { return lost.countOf( "selected" ) > heardLost; } ) );
+            // The folder may stay delete-pending for a moment while a watcher lets it go.
+            REQUIRE( waitFor( [ & ] { return QDir().mkpath( vanishing ); }, FileSystemWait ) );
+            REQUIRE( touch( vanishing + "/w.bin" ) );
+            REQUIRE( waitFor( [ & ] { return lostModel->isAttached( 0 ); }, FileSystemWait ) );
+            REQUIRE( lostModel->reaches( vanishingLink ) );
+            REQUIRE( lostModel->reaches( vanishingLink + "/w.bin" ) );
+        }
+        else {
+            WARN( "The link's target could not be deleted here: the dangling root checks are skipped." );
+        }
     }
     else {
         WARN( "No directory links can be made here: the link checks are skipped." );
