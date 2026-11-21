@@ -446,6 +446,31 @@ TEST_CASE( "Pack previews are namespaced, preceded by the user's and never saved
         CHECK( manager.replacedByUser( "Pack frame" ) );
         CHECK( !manager.copyPackPreview( "Pack frame" ).isEmpty() );
     }
+    SECTION( "a copy of a preview of a pack that is not enabled keeps that preview's on/off state" )
+    {
+        // Another, enabled pack has a preview of the same name, switched on.
+        const auto other = parsedPack( "b.pack", "Pack B", packPreviews( "Shared" ) );
+        manager.setPackPreviews( { other } );
+        // Switched off by its definition.
+        const auto off = parsedPack( "a.pack", "Pack A",
+                                     QString::fromUtf8( packPreviews( "Shared" ) )
+                                         .replace( "\"name\": \"Shared\"",
+                                                   "\"name\": \"Shared\", \"enabled\": false" )
+                                         .toUtf8() );
+        CHECK( manager.copyPreviewFrom( off, "Shared", "Shared (mine)" ).isEmpty() );
+        REQUIRE( manager.findByName( "Shared (mine)" ) );
+        CHECK_FALSE( manager.findByName( "Shared (mine)" )->enabled );
+        // Switched off by the choice saved for it while its pack was enabled.
+        const auto alone = parsedPack( "c.pack", "Pack C", packPreviews( "Alone" ) );
+        manager.setPackPreviews( { alone } );
+        manager.setEnabled( "Alone", false );
+        manager.setPackPreviews( {} );
+        CHECK( manager.copyPreviewFrom( alone, "Alone", "Alone (mine)" ).isEmpty() );
+        REQUIRE( manager.findByName( "Alone (mine)" ) );
+        CHECK_FALSE( manager.findByName( "Alone (mine)" )->enabled );
+        manager.setPackPreviews( { alone } );
+        manager.setEnabled( "Alone", true );
+    }
     SECTION( "a copy under another name never replaces an enabled pack's preview" )
     {
         const auto a = parsedPack( "a.pack", "Pack A", packPreviews( "A frame" ) );

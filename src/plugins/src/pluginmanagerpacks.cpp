@@ -368,7 +368,9 @@ QString PluginManager::packContentDirectory( const QString& pluginId ) const
 
 QString PluginManager::packRevision( const QString& pluginId ) const
 {
-    return PackStore( packStoreRoot(), pluginId ).localTip();
+    // What the content folder holds (not the store's tip): an edit whose files could not be
+    // written yet keeps the folder, and its repair later changes this, so what loads follows it.
+    return PackStore( packStoreRoot(), pluginId ).contentRevision();
 }
 
 QString PluginManager::ensurePackStore( const QString& id, const Manifest& installed,
@@ -712,10 +714,20 @@ Result PluginManager::managePack( const QString& operation, const QString& id,
     }
     // A pack installed before its store existed gets one now, from its installed folder; a
     // damaged store is rebuilt with the local edits.
+    const auto contentBefore = packRevision( id );
     if ( const auto error = ensurePackStore( id, manifest, true ); !error.isEmpty() ) {
         return { error, {} };
     }
     PackStore store( packStoreRoot(), id );
+    // The content folder written again on the way (a repair after an edit whose files could not
+    // be written, a recovered update) changes what loads: the summary and listeners follow it,
+    // also for an operation that only reads.
+    if ( packRevision( id ) != contentBefore ) {
+        const auto content = store.contentFromUnfinishedUpdate() ? QString{} : store.contentDirectory();
+        it->second->pack = packSummary( manifest.json, content.isEmpty() ? manifest.directory : content );
+        it->second->pack[ "localEdits" ] = static_cast<int>( store.localEdits().size() );
+        Q_EMIT changed();
+    }
     const auto path = options.value( "path" ).toString();
     const bool enabled = settings_.value( configurationKey( id ) + "enabled", false ).toBool();
     const auto listing = [ &store ] {

@@ -473,10 +473,24 @@ QString PreviewManager::copyPreviewFrom( const PreviewPackSource& pack, const QS
     };
     auto copy = *original;
     copy.name = target;
-    const auto current = std::find_if(
-        packPreviews_.cbegin(), packPreviews_.cend(),
-        [ &name ]( const auto& preview ) { return preview.name == name; } );
-    copy.enabled = current != packPreviews_.cend() ? current->enabled : true;
+    // The source preview's on/off state: as applied while its pack is enabled, otherwise its own
+    // (its definition, then the choice saved for it), never another pack's preview of that name.
+    const bool applied = packOrigins_.contains( name ) && packOrigins_.value( name ).packId == pack.packId;
+    const auto current = applied ? std::find_if( packPreviews_.cbegin(), packPreviews_.cend(),
+                                                 [ &name ]( const auto& preview ) {
+                                                     return preview.name == name;
+                                                 } )
+                                 : packPreviews_.cend();
+    if ( current != packPreviews_.cend() ) {
+        copy.enabled = current->enabled;
+    }
+    else {
+        const auto state
+            = PersistentInfo::getSettings( app_settings{} ).value( PackPreviewStateKey ).toMap();
+        const auto key = packItemKey( pack.packId, name );
+        copy.enabled = state.contains( key ) ? state.value( key ).toBool()
+                                             : !original->hasEnabled || original->enabled;
+    }
     copy.hasEnabled = true;
     if ( !suffix.isEmpty() ) {
         rewriteReferences( copy.fields, rename );

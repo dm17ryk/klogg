@@ -896,20 +896,16 @@ bool PackStore::hasJournal() const
 
 bool PackStore::contentFromUnfinishedUpdate() const
 {
-    if ( !hasJournal() ) {
-        return false;
-    }
-    QFile journal( journalPath() );
-    const auto before = journal.open( QIODevice::ReadOnly )
-                            ? QJsonDocument::fromJson( journal.read( 64 * 1024 ) )
-                                  .object()
-                                  .value( "local" )
-                                  .toString()
-                            : QString{};
+    // Whenever a journal is there: the folder is replaced before its revision is recorded, so the
+    // record cannot tell an unfinished update's folder from the one before it.
+    return hasJournal();
+}
+
+QString PackStore::contentRevision() const
+{
     QFile marker( QDir( root_ ).filePath( packId_ + QStringLiteral( "/current.revision" ) ) );
-    const auto recorded
-        = marker.open( QIODevice::ReadOnly ) ? QString::fromLatin1( marker.read( 64 ) ).trimmed() : QString{};
-    return before.isEmpty() || recorded != before;
+    return marker.open( QIODevice::ReadOnly ) ? QString::fromLatin1( marker.read( 64 ) ).trimmed()
+                                              : QString{};
 }
 
 QString PackStore::recoverInterruptedUpdate( const PackFiles* installed,

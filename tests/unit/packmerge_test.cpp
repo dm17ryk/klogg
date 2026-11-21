@@ -9,6 +9,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QProcess>
+#include <QSignalSpy>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 
@@ -1418,8 +1419,9 @@ TEST_CASE( "A content folder an unfinished update wrote is not loaded", "[packme
     REQUIRE( store.commitEdit( second, packcanonical::itemBytes( edited ), "Edit" ).isEmpty() );
     CHECK_FALSE( store.contentFromUnfinishedUpdate() );
     REQUIRE( store.beginUpdate( store.tips() ).isEmpty() );
-    // The folder still holds the content from before the update.
-    CHECK_FALSE( store.contentFromUnfinishedUpdate() );
+    // Whenever a journal is there: the folder is replaced before its revision is recorded, so
+    // the record cannot tell which folder is in place.
+    CHECK( store.contentFromUnfinishedUpdate() );
     auto v2Previews = QJsonDocument::fromJson( Previews ).object();
     auto previews = v2Previews[ "previews" ].toArray();
     auto frame = previews[ 1 ].toObject();
@@ -1434,6 +1436,46 @@ TEST_CASE( "A content folder an unfinished update wrote is not loaded", "[packme
     CHECK( store.contentFromUnfinishedUpdate() );
     store.endUpdate();
     CHECK_FALSE( store.contentFromUnfinishedUpdate() );
+}
+
+TEST_CASE( "A content folder written again by a reading operation is announced", "[packmerge][E16]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    PluginManager manager( root.filePath( "data" ), root.filePath( "none" ) );
+    const auto id = QStringLiteral( "org.example.pack" );
+    const auto second = QStringLiteral( "previews/%53econd.json" );
+    const auto v1 = writePackage( root.filePath( "v1" ), "1.0.0", Previews, "-- a\n" );
+    REQUIRE( finished( manager, manager.manage( "install", {}, { { "path", v1 } } ) )[ "state" ]
+             == "completed" );
+    const auto before = manager.packRevision( id );
+    REQUIRE( !before.isEmpty() );
+    // Something holds a file in the staging folder: on Windows the edit's files cannot be
+    // written yet (elsewhere the folder is cleared and they are written at once).
+    const auto stale = root.filePath( "data/pack-store/org.example.pack/current.new/lua/stale.lua" );
+    REQUIRE( QDir().mkpath( QFileInfo( stale ).absolutePath() ) );
+    QFile held( stale );
+    REQUIRE( held.open( QIODevice::WriteOnly ) );
+    held.write( "-- stale\n" );
+    held.flush();
+    auto item = QJsonDocument::fromJson( Previews ).object()[ "previews" ].toArray()[ 0 ].toObject();
+    item[ "regex" ] = "^EDITED$";
+    const auto edit = manager.manage(
+        "pack_edit", id, { { "path", second }, { "content", QString::fromUtf8( QJsonDocument( item ).toJson() ) } } );
+    held.close();
+    if ( edit.ok() ) {
+        CHECK( manager.packRevision( id ) != before );
+        return;
+    }
+    // The edit is saved, but the folder still holds the content from before.
+    CHECK( edit.error.contains( "could not be written yet" ) );
+    CHECK( manager.packRevision( id ) == before );
+    // An operation that only reads writes it again, and says so.
+    QSignalSpy changed( &manager, &PluginManager::changed );
+    REQUIRE( manager.manage( "pack_files", id, {} ).ok() );
+    CHECK( manager.packRevision( id ) != before );
+    CHECK( changed.count() >= 1 );
+    CHECK( readFile( manager.packContentDirectory( id ) + "/previews.json" ).contains( "^EDITED$" ) );
 }
 
 TEST_CASE( "A conflict on a field with an empty name is settled as a whole item", "[packmerge][E16]" )

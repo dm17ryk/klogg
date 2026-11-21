@@ -815,9 +815,9 @@ removes it once the package folder is replaced or the store put back; a journal 
 when the pack is next read (at startup too) is finished: if the package folder already holds
 what the store's `upstream` holds and `upstream` moved on from the journal's tip, the update had
 completed and only the journal goes (an update moves `upstream` first and an undo puts it back
-last, `local` first, so an undo that stopped part-way is done again; while a journal that
-could not be acted on is there and the content folder no longer holds the `local` commit it
-recorded, the pack loads its installed folder, never content of a version that was not installed);
+last, `local` first, so an undo that stopped part-way is done again; while a journal that could
+not be acted on is there, the pack loads its installed folder, never content of a version that
+was not installed, as the content folder is replaced before its revision is recorded);
 otherwise CILogg ended part-way (between the branch moves or before the package swap, whatever
 the versions) and the store is put back to those tips, so a later update merges anew. A journal
 is read strictly (a missing or malformed field, the tips included, is never taken as "there was
@@ -840,7 +840,9 @@ preview routes at their limit of 128, or another route of the user's already und
 name, which it would decode with) is not made, never left with a wrong route, and Keep Both
 checks the routes of all its copies at Apply. A copy under another name (Keep Both's
 "<name> (mine)") never takes the name of a preview of any installed pack, enabled or not, which
-it would replace. Arrays of named elements (preview fields) merge their order too: a side that
+it would replace, and keeps its source preview's on/off state (as applied while that pack is
+enabled, otherwise its definition and the choice saved for it). Arrays of named elements
+(preview fields) merge their order too: a side that
 keeps the installed order leaves the order to the other, an element one side added keeps its
 place, and two different reorderings are one conflict of the list. A copied block is renamed also when an enabled
 pack's block has its name (a pack block literally named `<other-pack-id>/<name>`), which would
@@ -857,7 +859,9 @@ the pack is installed again (a removal that could not finish) is set aside as
 `<name>.orphaned-<time>`, never merged into the new install. `pack_edit` takes exactly one
 of `content` and `remove`, and no content file of a pack may be its `plugin.json` or previews
 file, which CILogg writes itself, or differ from another only in case. The content folder's
-`local` commit is recorded beside it (`current.revision`). The folder is written into a staging
+`local` commit is recorded beside it (`current.revision`), and what loads follows that record:
+a pack operation that writes the folder again (a repair after an edit whose files could not be
+written), also one that only reads, tells the listeners. The folder is written into a staging
 folder that is cleared first (retried like a rename): one that cannot be cleared stops the write,
 so a stale file is never published. A folder left behind by a replace
 that failed (a rename refused while a file is held; it is retried for about 1.5 s) is written
