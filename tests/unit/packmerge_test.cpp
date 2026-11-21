@@ -1245,7 +1245,7 @@ TEST_CASE( "Resolutions keep an item's name and its bytes", "[packmerge][E16]" )
     CHECK( renamed[ "error" ].toString().contains( "Invalid merge resolution" ) );
     // A path that does not fit the item's structure (the item itself as a named array, an
     // element of a text field) would rewrite more than one field.
-    for ( const auto* field : { "@x", "regex/@x" } ) {
+    for ( const auto* field : { "@x", "regex/@x", "/x", "fields//x" } ) {
         INFO( field );
         const auto misfit = attempt( { secondChoice,
                                        QVariantMap{ { "path", lua }, { "take", "theirs" } },
@@ -1295,6 +1295,54 @@ TEST_CASE( "Resolutions keep an item's name and its bytes", "[packmerge][E16]" )
     CHECK( std::none_of( edits.cbegin(), edits.cend(), [ &lua ]( const QVariant& file ) {
         return file.toMap().value( "path" ).toString() == lua;
     } ) );
+}
+
+TEST_CASE( "A version without a previews document takes the previews with it", "[packmerge][E16]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    PluginManager manager( root.filePath( "data" ), root.filePath( "none" ) );
+    const auto id = QStringLiteral( "org.example.pack" );
+    const auto second = QStringLiteral( "previews/%53econd.json" );
+    const auto v1 = writePackage( root.filePath( "v1" ), "1.0.0", Previews, "-- a\n" );
+    REQUIRE( finished( manager, manager.manage( "install", {}, { { "path", v1 } } ) )[ "state" ]
+             == "completed" );
+    auto item = QJsonDocument::fromJson( Previews ).object()[ "previews" ].toArray()[ 0 ].toObject();
+    item[ "regex" ] = "^MINE$";
+    REQUIRE( manager.manage( "pack_edit", id,
+                             { { "path", second },
+                               { "content", QString::fromUtf8( QJsonDocument( item ).toJson() ) } } )
+                 .ok() );
+    // Version 2 has only its Lua file: no previews document.
+    const auto v2 = writePackage( root.filePath( "v2" ), "1.1.0", Previews, "-- b\n" );
+    {
+        auto manifest = packManifest( "1.1.0" );
+        auto contents = manifest[ "content" ].toObject();
+        contents.remove( "previews" );
+        manifest[ "content" ] = contents;
+        QFile file( v2 + "/plugin.json" );
+        REQUIRE( file.open( QIODevice::WriteOnly | QIODevice::Truncate ) );
+        file.write( QJsonDocument( manifest ).toJson() );
+    }
+    REQUIRE( QFile::remove( v2 + "/previews.json" ) );
+    // Keeping yours keeps nothing that could load: the edited preview goes, and the user is told.
+    const auto updated = finished(
+        manager, manager.manage( "install", {}, { { "path", v2 }, { "strategy", "keep_mine" } } ) );
+    INFO( updated[ "error" ].toString().toStdString() );
+    REQUIRE( updated[ "state" ] == "completed" );
+    CHECK( updated[ "result" ].toMap()[ "droppedEdits" ].toStringList().contains( "Second" ) );
+    const auto files = manager.manage( "pack_files", id, {} ).payload[ "files" ].toList();
+    CHECK( std::none_of( files.cbegin(), files.cend(), []( const QVariant& file ) {
+        return file.toMap().value( "kind" ).toString() == "preview";
+    } ) );
+    // Nor does a revert bring a preview back.
+    const auto history
+        = manager.manage( "pack_history", id, { { "path", second } } ).payload[ "commits" ].toList();
+    REQUIRE( !history.isEmpty() );
+    const auto reverted = manager.manage(
+        "pack_reset", id, { { "path", second }, { "commit", history.last().toMap()[ "commit" ] } } );
+    CHECK( !reverted.ok() );
+    CHECK( reverted.error.contains( "no previews document" ) );
 }
 
 TEST_CASE( "A merge result stays within the preview limits", "[packmerge][E16]" )

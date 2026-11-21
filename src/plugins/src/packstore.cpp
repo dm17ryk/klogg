@@ -785,10 +785,18 @@ QString PackStore::planRestore( const QString& storePath, const QString& commitI
     }
     else if ( target.contains( storePath ) ) {
         // The manifest decides which files a pack has: a file this version does not list would
-        // never reach the content folder, an edit with no effect.
+        // never reach the content folder, an edit with no effect; nor would a preview or block of
+        // a version without a previews document.
         if ( kind == QLatin1String( "file" ) && !current.contains( storePath ) ) {
             return QStringLiteral( "This version of the pack has no such file; its manifest "
                                    "decides which files it has." );
+        }
+        PackContent content;
+        const auto manifest = QJsonDocument::fromJson( current.value( ManifestPath ) ).object();
+        if ( kind != QLatin1String( "file" )
+             && ( !validatePackManifest( manifest, &content ).isEmpty() || content.previews.isEmpty() ) ) {
+            return QStringLiteral( "This version of the pack has no previews document; its "
+                                   "manifest decides what the pack has." );
         }
         stored->insert( storePath, target.value( storePath ) );
     }

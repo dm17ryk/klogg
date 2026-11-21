@@ -896,7 +896,7 @@ changed differently, or deleted on one side and changed on the other, is a confl
 | `pack_read` | `path` | `content`, `edited` |
 | `pack_edit` | `path`, exactly one of `content` or `remove: true` (previews and blocks only), optional `message` | a commit on `local`; only the pack's own items, and preview and block JSON keeps its `name` |
 | `pack_history` | optional `path` | `commits`: `commit`, `message`, `time`, `packVersion` |
-| `pack_reset` | optional `path`, optional `commit` (from `pack_history`) | restores the item (or, within the installed version, the whole pack) as in `commit`, or as shipped, as a new commit; never a file the installed version's manifest does not list; previews within their limits, and for an enabled pack only content that passes the pack check (like `pack_edit`) |
+| `pack_reset` | optional `path`, optional `commit` (from `pack_history`) | restores the item (or, within the installed version, the whole pack) as in `commit`, or as shipped, as a new commit; never a file the installed version's manifest does not list, nor a preview or block when it has no previews document; previews within their limits, and for an enabled pack only content that passes the pack check (like `pack_edit`) |
 
 `install` and `update` of a pack (and no other operation, which refuses them) take `strategy` (`fail`, the default; `keep_mine`;
 `take_theirs`) and `resolutions`: `{path, take: "mine"|"theirs"}` (a whole side, byte for
@@ -908,7 +908,8 @@ any side (the installed version's too) is resolved with `take` only, and `pack_r
 result (an item both sides deleted comes back only by a whole-item resolution), never names
 `name` or a field under it, and must fit the item's structure: its parent is in the item (an
 object for a member, an array for an `@element`) and the field reads back as its value
-afterwards (`@x` on the item itself, or a path through a text field, is refused). `resolutions` and `revision` belong to a merge: a first install
+afterwards (`@x` on the item itself, a path through a text field, or one with an empty segment
+such as `/x`, is refused). `resolutions` and `revision` belong to a merge: a first install
 of a pack, or an install or update of a plugin that is not a pack, refuses them (given at all,
 an empty list too). A failed merge's result also lists the new version's preview names
 (`incomingPreviews`); the merge window's Keep Both never names its copy after one. With conflicts left open the job fails with `needsMerge: true`,
@@ -930,5 +931,6 @@ them is refused. Resolutions
 name only items of the pack in the spelling `pack_files` lists, keep each item's `name`, and stay
 within 1 MiB. The files of a merge result are exactly those the new manifest lists (edited files
 it dropped are named in the job result's `droppedEdits` and `warning`; their edits stay in the
-pack's history). For an enabled pack the pack check runs on what would load: the merge result
+pack's history); a version without a previews document takes the previews and blocks with it the
+same way. For an enabled pack the pack check runs on what would load: the merge result
 when there are local edits (an item an edit deleted stays deleted), otherwise the new version.

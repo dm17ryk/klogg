@@ -274,6 +274,14 @@ bool applyResolution( PackFiles* merged, const QVariantMap& resolution, const QS
     if ( nameField || !fieldPathFits( field ) || !merged->contains( path ) ) {
         return false;
     }
+    // Every segment names a field: an empty one ("/x", "a//b", "@") would address a member with
+    // an empty name, never one of the item's fields.
+    const auto parts = field.split( '/' );
+    if ( std::any_of( parts.cbegin(), parts.cend(), []( const QString& part ) {
+             return part.isEmpty() || part == QLatin1String( "@" );
+         } ) ) {
+        return false;
+    }
     // The field's parent is in the item, and is an object for a member or an array for an element
     // (`@name`): a path through a text field, set or removed, would replace that field.
     const auto split = field.lastIndexOf( '/' );
@@ -297,15 +305,39 @@ bool applyResolution( PackFiles* merged, const QVariantMap& resolution, const QS
     return true;
 }
 
+// Whether a manifest has a previews document: without one a pack's previews and blocks never
+// reach its content folder.
+bool hasPreviewsDocument( const QJsonObject& manifest )
+{
+    PackContent content;
+    return validatePackManifest( manifest, &content ).isEmpty() && !content.previews.isEmpty();
+}
+
+// A store item of the previews document: a preview, a block, the preview order or its settings.
+bool previewsKind( const QString& kind )
+{
+    return kind == QLatin1String( "preview" ) || kind == QLatin1String( "block" )
+           || kind == QLatin1String( "order" ) || kind == QLatin1String( "meta" );
+}
+
+// Whether a store item goes with a version whose manifest is `manifest` (`listed` its files): a
+// file it no longer lists, or anything of a previews document it no longer has.
+bool goneWith( const QString& storePath, const QStringList& listed, bool previews )
+{
+    const auto kind = packcanonical::kindOf( storePath );
+    return ( kind == QLatin1String( "file" ) && !listed.contains( storePath ) )
+           || ( !previews && previewsKind( kind ) );
+}
+
 // The files of a merge result are exactly those the new version's manifest lists: a file it
-// dropped goes (also when kept by keep_mine), and a listed file is never missing.
+// dropped goes (also when kept by keep_mine), and so do the previews and blocks of a version
+// without a previews document; a listed file is never missing.
 void followManifest( PackFiles* merged, const PackFiles& shipped, const QJsonObject& manifest )
 {
     const auto listed = packcanonical::listedFiles( manifest );
+    const bool previews = hasPreviewsDocument( manifest );
     for ( auto it = merged->begin(); it != merged->end(); ) {
-        it = packcanonical::kindOf( it.key() ) == QLatin1String( "file" ) && !listed.contains( it.key() )
-                 ? merged->erase( it )
-                 : std::next( it );
+        it = goneWith( it.key(), listed, previews ) ? merged->erase( it ) : std::next( it );
     }
     for ( const auto& path : listed ) {
         if ( !merged->contains( path ) ) {
@@ -506,13 +538,17 @@ QString PluginManager::preparePackInstall( const StagedPlugin& staged, const QVa
                 .arg( item.toMap().value( "path" ).toString().left( 128 ) );
         }
     }
-    // Edited files the new version no longer has go with it; the user is told, and the edits
-    // stay in the pack's history.
+    // Edited files (or previews) the new version no longer has go with it; the user is told, and
+    // the edits stay in the pack's history.
     QStringList dropped;
+    const bool previews = hasPreviewsDocument( staged.manifest.json );
     for ( auto it = mine.cbegin(); it != mine.cend(); ++it ) {
-        if ( packcanonical::kindOf( it.key() ) == QLatin1String( "file" ) && !listed.contains( it.key() )
-             && base.value( it.key() ) != it.value() ) {
-            dropped.append( packcanonical::itemOf( it.key() ) );
+        if ( goneWith( it.key(), listed, previews ) && base.value( it.key() ) != it.value() ) {
+            const auto kind = packcanonical::kindOf( it.key() );
+            dropped.append( kind == QLatin1String( "order" ) ? QStringLiteral( "the preview order" )
+                            : kind == QLatin1String( "meta" )
+                                ? QStringLiteral( "the previews settings" )
+                                : packcanonical::itemOf( it.key() ) );
         }
     }
     if ( !dropped.isEmpty() ) {
