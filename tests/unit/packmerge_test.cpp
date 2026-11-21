@@ -1345,6 +1345,55 @@ TEST_CASE( "A version without a previews document takes the previews with it", "
     CHECK( reverted.error.contains( "no previews document" ) );
 }
 
+TEST_CASE( "A conflict on a field with an empty name is settled as a whole item", "[packmerge][E16]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    PluginManager manager( root.filePath( "data" ), root.filePath( "none" ) );
+    const auto id = QStringLiteral( "org.example.pack" );
+    const auto second = QStringLiteral( "previews/%53econd.json" );
+    // "Second" has an option with an empty name, which both sides change.
+    const auto previewsWith = []( int value ) {
+        auto document = QJsonDocument::fromJson( Previews ).object();
+        auto previews = document[ "previews" ].toArray();
+        auto item = previews[ 0 ].toObject();
+        item[ "options" ] = QJsonObject{ { "", value } };
+        previews[ 0 ] = item;
+        document[ "previews" ] = previews;
+        return QJsonDocument( document ).toJson();
+    };
+    const auto v1 = writePackage( root.filePath( "v1" ), "1.0.0", previewsWith( 0 ), "-- a\n" );
+    REQUIRE( finished( manager, manager.manage( "install", {}, { { "path", v1 } } ) )[ "state" ]
+             == "completed" );
+    auto item = QJsonDocument::fromJson(
+                    manager.manage( "pack_read", id, { { "path", second } } ).payload[ "content" ].toString().toUtf8() )
+                    .object();
+    item[ "options" ] = QJsonObject{ { "", 1 } };
+    REQUIRE( manager.manage( "pack_edit", id,
+                             { { "path", second },
+                               { "content", QString::fromUtf8( QJsonDocument( item ).toJson() ) } } )
+                 .ok() );
+    const auto v2 = writePackage( root.filePath( "v2" ), "1.1.0", previewsWith( 2 ), "-- a\n" );
+    const auto asked = finished( manager, manager.manage( "install", {}, { { "path", v2 } } ) );
+    REQUIRE( asked[ "state" ] == "failed" );
+    // A field resolution could not name "options/": the item is offered as a whole.
+    const auto conflicts = asked[ "result" ].toMap()[ "conflicts" ].toList();
+    REQUIRE( conflicts.size() == 1 );
+    CHECK( conflicts.first().toMap()[ "path" ] == second );
+    CHECK( conflicts.first().toMap()[ "field" ].toString().isEmpty() );
+    const auto kept = finished(
+        manager, manager.manage( "install", {},
+                                 { { "path", v2 },
+                                   { "resolutions", QVariantList{ QVariantMap{ { "path", second }, { "take", "mine" } } } },
+                                   { "revision", asked[ "result" ].toMap()[ "revision" ] } } ) );
+    INFO( kept[ "error" ].toString().toStdString() );
+    CHECK( kept[ "state" ] == "completed" );
+    const auto previews = QJsonDocument::fromJson( readFile( manager.packContentDirectory( id ) + "/previews.json" ) )
+                              .object()[ "previews" ]
+                              .toArray();
+    CHECK( previews[ 0 ].toObject()[ "options" ].toObject()[ "" ].toInt() == 1 );
+}
+
 TEST_CASE( "A merge result stays within the preview limits", "[packmerge][E16]" )
 {
     QTemporaryDir root;

@@ -85,9 +85,17 @@ constexpr qsizetype MaxConflictEntries = 1024;
 constexpr qsizetype MaxFieldPathChars = 4096;
 constexpr qsizetype MaxFieldPathSegments = 128;
 
+// Every segment names a field, too: an empty one ("/x", "options/" for a key "", "@") would
+// address a member with an empty name, which a resolution cannot name unambiguously.
 bool fieldPathFits( const QString& field )
 {
-    return field.size() <= MaxFieldPathChars && field.count( '/' ) < MaxFieldPathSegments;
+    if ( field.size() > MaxFieldPathChars || field.count( '/' ) >= MaxFieldPathSegments ) {
+        return false;
+    }
+    const auto parts = field.split( '/' );
+    return std::none_of( parts.cbegin(), parts.cend(), []( const QString& part ) {
+        return part.isEmpty() || part == QLatin1String( "@" );
+    } );
 }
 
 // The conflicts and conflicting items of a merge for its job result, bounded in number and size.
@@ -272,14 +280,6 @@ bool applyResolution( PackFiles* merged, const QVariantMap& resolution, const QS
     const bool nameField
         = field == QLatin1String( "name" ) || field.startsWith( QLatin1String( "name/" ) );
     if ( nameField || !fieldPathFits( field ) || !merged->contains( path ) ) {
-        return false;
-    }
-    // Every segment names a field: an empty one ("/x", "a//b", "@") would address a member with
-    // an empty name, never one of the item's fields.
-    const auto parts = field.split( '/' );
-    if ( std::any_of( parts.cbegin(), parts.cend(), []( const QString& part ) {
-             return part.isEmpty() || part == QLatin1String( "@" );
-         } ) ) {
         return false;
     }
     // The field's parent is in the item, and is an object for a member or an array for an element
