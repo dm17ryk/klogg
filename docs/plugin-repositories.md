@@ -798,7 +798,8 @@ file or the preview order, and the merge window offers no removal for them. For 
 the pack check runs on what would load: the merge result, written to the store's check folder,
 when there are edits (an item an edit deleted stays deleted, so another pack may use its name),
 otherwise the new version as shipped. The previews settings (`previews/meta.json`) are listed in
-Pack Files but not edited. A job keeps at most 4 MiB of conflict texts (jobs are kept, up to
+Pack Files but not edited; an update takes the new version's, so they never conflict and no
+resolution names them. A job keeps at most 4 MiB of conflict texts (jobs are kept, up to
 256): previews and blocks first, each file's sides once; a file past that is listed with
 `omitted` and merged as a whole side, the merge window records the whole side chosen (a file
 that is not UTF-8 may read the same for different bytes), and an automatic update keeps no

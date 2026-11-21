@@ -911,7 +911,9 @@ object for a member, an array for an `@element`) and the field reads back as its
 afterwards (`@x` on the item itself, a path through a text field, or one with an empty segment
 such as `/x`, is refused). `resolutions` and `revision` belong to a merge: a first install
 of a pack, or an install or update of a plugin that is not a pack, refuses them (given at all,
-an empty list too). A failed merge's result also lists the new version's preview names
+an empty list too), and a plugin that is running is not stopped for that. The previews settings
+(`previews/meta.json`) are the pack's: an update takes the new version's, so they never conflict
+and no resolution names them. A failed merge's result also lists the new version's preview names
 (`incomingPreviews`); the merge window's Keep Both never names its copy after one. With conflicts left open the job fails with `needsMerge: true`,
 `conflicts` (`path`, `kind`, `item`, `field`, `base`, `mine`, `theirs`; field values as JSON
 text; a file's conflict has only `base`, its sides are in `items`) and `items` (each conflicting

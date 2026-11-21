@@ -1626,6 +1626,17 @@ void PluginManager::commitWhenStopped( const StagedPlugin& staged, const QString
         QDir( staged.directory ).removeRecursively();
         return;
     }
+    // A plugin that is not a pack merges nothing: choices made for a pack merge are refused, not
+    // ignored, before the installed plugin is stopped (a strategy is only a policy and has nothing
+    // to act on).
+    const bool pack = isConfigPack( staged.manifest.json );
+    const auto& context = jobIt->second.context;
+    if ( !pack && ( context.contains( "resolutions" ) || context.contains( "revision" ) ) ) {
+        QDir( staged.directory ).removeRecursively();
+        finishJob( jobId, QStringLiteral( "Resolutions and a merge revision apply only to "
+                                          "configuration packs." ) );
+        return;
+    }
     const auto existing = entries_.find( staged.manifest.id );
     if ( existing != entries_.end() && existing->second->process
          && existing->second->process->isRunning() ) {
@@ -1653,17 +1664,10 @@ void PluginManager::commitWhenStopped( const StagedPlugin& staged, const QString
                         { "repository", source.repository } };
     // A pack's local edits merge with the new version first (design 4.6): conflicts the job's
     // strategy leaves open keep the installed version and are listed in the result.
-    const bool pack = isConfigPack( staged.manifest.json );
     PackFiles packShipped;
     std::optional<PackFiles> packMerged;
-    // A plugin that is not a pack merges nothing: choices made for a pack merge are refused, not
-    // ignored (a strategy is only a policy and has nothing to act on).
-    const auto& context = jobIt->second.context;
-    const bool mergeChoices = context.contains( "resolutions" ) || context.contains( "revision" );
-    auto error = pack           ? preparePackInstall( staged, context, &packShipped, &packMerged, &result )
-                 : mergeChoices ? QStringLiteral( "Resolutions and a merge revision apply only to "
-                                                  "configuration packs." )
-                                : QString{};
+    auto error = pack ? preparePackInstall( staged, context, &packShipped, &packMerged, &result )
+                      : QString{};
     if ( result.value( "needsMerge" ).toBool() ) {
         // Shown as "Update to X needs a merge" until an install or update of the pack succeeds.
         settings_.setValue( configurationKey( staged.manifest.id ) + "needsMerge",

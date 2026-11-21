@@ -213,7 +213,10 @@ bool applyResolution( PackFiles* merged, const QVariantMap& resolution, const QS
 {
     const auto path = resolution.value( "path" ).toString();
     const auto kind = packcanonical::kindOf( path );
-    if ( kind.isEmpty() || !known.contains( path ) || !packcanonical::isCanonical( path ) ) {
+    // The previews settings are the pack's, never edited: an update takes the new version's, so no
+    // resolution names them.
+    if ( kind.isEmpty() || kind == QLatin1String( "meta" ) || !known.contains( path )
+         || !packcanonical::isCanonical( path ) ) {
         return false;
     }
     const bool remove = resolution.value( "remove" ).toBool();
@@ -479,14 +482,26 @@ QString PluginManager::preparePackInstall( const StagedPlugin& staged, const QVa
             known.insert( it.key() );
         }
     }
-    // A file the new version's manifest no longer lists goes whatever was edited: no conflict.
+    // A file the new version's manifest no longer lists goes whatever was edited, and so does
+    // anything of a previews document it no longer has: no conflict. The previews settings
+    // (meta.json: version, $schema, ...) are the pack's, never edited: the new version's are taken.
     const auto listed = packcanonical::listedFiles( staged.manifest.json );
+    const bool previews = hasPreviewsDocument( staged.manifest.json );
     plan.conflicts.erase( std::remove_if( plan.conflicts.begin(), plan.conflicts.end(),
-                                          [ &listed ]( const PackConflict& conflict ) {
-                                              return conflict.kind == QLatin1String( "file" )
-                                                     && !listed.contains( conflict.path );
+                                          [ &listed, previews ]( const PackConflict& conflict ) {
+                                              return goneWith( conflict.path, listed, previews )
+                                                     || conflict.kind == QLatin1String( "meta" );
                                           } ),
                           plan.conflicts.end() );
+    for ( auto it = plan.merged.begin(); it != plan.merged.end(); ) {
+        it = packcanonical::kindOf( it.key() ) == QLatin1String( "meta" ) ? plan.merged.erase( it )
+                                                                         : std::next( it );
+    }
+    for ( auto it = shipped->cbegin(); it != shipped->cend(); ++it ) {
+        if ( packcanonical::kindOf( it.key() ) == QLatin1String( "meta" ) ) {
+            plan.merged.insert( it.key(), it.value() );
+        }
+    }
     // Resolutions from the merge window (or automation) settle conflicts one by one. They were
     // chosen for the edits as they were then (`revision`, the `local` commit the merge was shown
     // for): after another edit they could overwrite it, so they are dropped and the merge is
@@ -541,7 +556,6 @@ QString PluginManager::preparePackInstall( const StagedPlugin& staged, const QVa
     // Edited files (or previews) the new version no longer has go with it; the user is told, and
     // the edits stay in the pack's history.
     QStringList dropped;
-    const bool previews = hasPreviewsDocument( staged.manifest.json );
     for ( auto it = mine.cbegin(); it != mine.cend(); ++it ) {
         if ( goneWith( it.key(), listed, previews ) && base.value( it.key() ) != it.value() ) {
             const auto kind = packcanonical::kindOf( it.key() );

@@ -1253,6 +1253,13 @@ TEST_CASE( "Resolutions keep an item's name and its bytes", "[packmerge][E16]" )
         CHECK( misfit[ "state" ] == "failed" );
         CHECK( misfit[ "error" ].toString().contains( "Invalid merge resolution" ) );
     }
+    // The previews settings are the pack's, never edited: no resolution names them.
+    for ( const auto& meta : { QVariantMap{ { "path", "previews/meta.json" }, { "take", "mine" } },
+                               QVariantMap{ { "path", "previews/meta.json" }, { "field", "" }, { "remove", true } } } ) {
+        const auto settings = attempt( { secondChoice, QVariantMap{ { "path", lua }, { "take", "theirs" } }, meta } );
+        CHECK( settings[ "state" ] == "failed" );
+        CHECK( settings[ "error" ].toString().contains( "Invalid merge resolution" ) );
+    }
     // Removing under a text field would turn the text into an object.
     const auto throughText = attempt(
         { secondChoice, QVariantMap{ { "path", lua }, { "take", "theirs" } },
