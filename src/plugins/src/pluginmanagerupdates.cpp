@@ -413,6 +413,8 @@ void PluginManager::autoUpdateFinished( const Job& finished )
                         { "repository", repository },
                         { "repositoryName", record ? record->name : QString{} } };
     if ( finished.state != QLatin1String( "completed" ) ) {
+        // A pack update that conflicts with local edits is never merged silently (design 4.6).
+        update.insert( "needsMerge", finished.result.value( "needsMerge" ).toBool() );
         reportAutoUpdateFailure( update, finished.error );
         return;
     }

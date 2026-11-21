@@ -8,6 +8,7 @@
 #include "log.h"
 #include "persistentinfo.h"
 #include "previewdecodeutils.h"
+#include "previewservice.h"
 
 namespace {
 // The user's on/off choice for pack previews, per `<pack-id>/<name>`: user state, not pack
@@ -416,34 +417,50 @@ QMap<QString, PreviewFieldSpec> PreviewManager::effectiveBlocks() const
     return result;
 }
 
-QString PreviewManager::copyPackPreview( const QString& name )
+QString PreviewManager::copyPackPreview( const QString& name, const QString& copyName )
 {
-    if ( findByName( name ) ) {
-        return tr( "You already have a preview named \"%1\"." ).arg( name );
-    }
+    // The copy keeps the pack preview's name (and so replaces it), or takes `copyName` (Keep
+    // Both in the merge window: "<name> (mine)").
     const auto origin = packOrigin( name );
     if ( !origin ) {
         return tr( "\"%1\" is not a preview of an enabled pack." ).arg( name );
     }
-    const auto& pack = packSources_[ origin->packId ];
+    return copyPreviewFrom( packSources_[ origin->packId ], name, copyName );
+}
+
+QString PreviewManager::copyPreviewFrom( const PreviewPackSource& pack, const QString& name,
+                                         const QString& copyName )
+{
+    const auto target = copyName.isEmpty() ? name : copyName;
+    if ( findByName( target ) ) {
+        return tr( "You already have a preview named \"%1\"." ).arg( target );
+    }
+    // A copy under another name never takes an enabled pack preview's name: yours win, so it
+    // would replace that preview. (A copy under its own name replaces its original on purpose.)
+    if ( target != name && packOrigins_.contains( target ) ) {
+        return tr( "An enabled pack has a preview named \"%1\", which the copy would replace." )
+            .arg( target );
+    }
     const auto original
         = std::find_if( pack.previews.cbegin(), pack.previews.cend(),
                         [ &name ]( const auto& preview ) { return preview.name == name; } );
     if ( original == pack.previews.cend() ) {
-        return tr( "\"%1\" is not a preview of an enabled pack." ).arg( name );
+        return tr( "\"%1\" is not a preview of the pack." ).arg( name );
     }
     const auto closure = blockClosure( original->fields, pack.blocks );
     // Blocks whose names the user already uses are renamed, with their references
-    // (design 4.2): "<block> (<pack name>)", then a number.
+    // (design 4.2): "<block> (<pack name>)", then a number. So are names an enabled pack's block
+    // has (a pack block literally named "<other-pack-id>/<name>"): that pack's block would replace
+    // the copy's in effectiveBlocks().
     const auto collides = [ this, &closure ]( const QString& suffix ) {
         return std::any_of( closure.cbegin(), closure.cend(), [ this, &suffix ]( const auto& block ) {
-            return blocks_.contains( block + suffix );
+            return blocks_.contains( block + suffix ) || packBlocks_.contains( block + suffix );
         } );
     };
     QString suffix;
     for ( int number = 1; collides( suffix ); ++number ) {
-        suffix = number == 1 ? QStringLiteral( " (%1)" ).arg( origin->packName )
-                             : QStringLiteral( " (%1 %2)" ).arg( origin->packName ).arg( number );
+        suffix = number == 1 ? QStringLiteral( " (%1)" ).arg( pack.packName )
+                             : QStringLiteral( " (%1 %2)" ).arg( pack.packName ).arg( number );
     }
     // Only references that reach a copied block follow its new name; any other reference (to a
     // block the pack does not have) is left as it is.
@@ -455,10 +472,25 @@ QString PreviewManager::copyPackPreview( const QString& name )
         return reaches ? reference + suffix : reference;
     };
     auto copy = *original;
-    const auto current = std::find_if(
-        packPreviews_.cbegin(), packPreviews_.cend(),
-        [ &name ]( const auto& preview ) { return preview.name == name; } );
-    copy.enabled = current != packPreviews_.cend() ? current->enabled : true;
+    copy.name = target;
+    // The source preview's on/off state: as applied while its pack is enabled, otherwise its own
+    // (its definition, then the choice saved for it), never another pack's preview of that name.
+    const bool applied = packOrigins_.contains( name ) && packOrigins_.value( name ).packId == pack.packId;
+    const auto current = applied ? std::find_if( packPreviews_.cbegin(), packPreviews_.cend(),
+                                                 [ &name ]( const auto& preview ) {
+                                                     return preview.name == name;
+                                                 } )
+                                 : packPreviews_.cend();
+    if ( current != packPreviews_.cend() ) {
+        copy.enabled = current->enabled;
+    }
+    else {
+        const auto state
+            = PersistentInfo::getSettings( app_settings{} ).value( PackPreviewStateKey ).toMap();
+        const auto key = packItemKey( pack.packId, name );
+        copy.enabled = state.contains( key ) ? state.value( key ).toBool()
+                                             : !original->hasEnabled || original->enabled;
+    }
     copy.hasEnabled = true;
     if ( !suffix.isEmpty() ) {
         rewriteReferences( copy.fields, rename );
@@ -471,13 +503,23 @@ QString PreviewManager::copyPackPreview( const QString& name )
                                             ? pack.blocks.value( block )
                                             : rewriteBlock( pack.blocks.value( block ), rename ) );
     }
+    // The preview service gives up above its limits, and then drops the packs' previews: a copy
+    // that would take your previews and the enabled packs past them is refused before anything
+    // is saved (Keep Both copies after an update too).
+    if ( PreviewService::definitionsFor( effective(), effectiveBlocks() ).isEmpty() ) {
+        previews_ = previousPreviews;
+        blocks_ = previousBlocks;
+        return tr( "Copying \"%1\" would take your previews and the enabled packs past the preview "
+                   "limits (128 previews, 4,096 blocks, 1 MiB of definitions)." )
+            .arg( target );
+    }
     if ( !repository_.save( previews_, blocks_ ) ) {
         previews_ = previousPreviews;
         blocks_ = previousBlocks;
         return tr( "Failed to save previews configuration." );
     }
     LOG_INFO << "Pack preview copied name=" << name.toStdString()
-             << " pack=" << origin->packId.toStdString() << " blocks=" << closure.size()
+             << " pack=" << pack.packId.toStdString() << " blocks=" << closure.size()
              << " renamed=" << !suffix.isEmpty();
     Q_EMIT previewsChanged();
     return {};

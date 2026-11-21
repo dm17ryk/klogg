@@ -14,6 +14,7 @@
 #include <QtGlobal>
 
 #include "iconloader.h"
+#include "packcanonical.h"
 #include "previewmanager.h"
 #include "previewpackregistry.h"
 #include "previewstablemodel.h"
@@ -89,6 +90,17 @@ ImportPreviewsDialog::ImportPreviewsDialog( QWidget* parent )
                                  "previews. Updates of the pack do not change the copy." ) );
     copyButton_->setEnabled( false );
 
+    // A pack preview is edited in place; the edit is kept across updates of the pack (E16a2).
+    editButton_ = new QToolButton( this );
+    editButton_->setObjectName( QStringLiteral( "editPackPreviewButton" ) );
+    editButton_->setText( tr( "Edit..." ) );
+    editButton_->setToolButtonStyle( Qt::ToolButtonTextOnly );
+    editButton_->setAccessibleName( tr( "Edit pack preview" ) );
+    editButton_->setToolTip( tr( "Edit this pack preview in place. Updates of the pack keep your "
+                                 "edit and ask when they change the same field." ) );
+    editButton_->setEnabled( false );
+    editButton_->setVisible( false );
+
     buttonBox_ = new QDialogButtonBox( QDialogButtonBox::Close, this );
     auto* importButton = buttonBox_->addButton( tr( "Import" ), QDialogButtonBox::ActionRole );
     importButton->setObjectName( QStringLiteral( "importPreviewsButton" ) );
@@ -103,6 +115,7 @@ ImportPreviewsDialog::ImportPreviewsDialog( QWidget* parent )
              &ImportPreviewsDialog::removeSelectedPreview );
     connect( clearButton_, &QToolButton::clicked, this, &ImportPreviewsDialog::clearAllPreviews );
     connect( copyButton_, &QToolButton::clicked, this, &ImportPreviewsDialog::copySelectedPreview );
+    connect( editButton_, &QToolButton::clicked, this, &ImportPreviewsDialog::editSelectedPreview );
     connect( buttonBox_, &QDialogButtonBox::rejected, this, &QDialog::reject );
     connect( &PreviewManager::instance(), &PreviewManager::previewsChanged, this,
              &ImportPreviewsDialog::refreshTable );
@@ -116,6 +129,7 @@ ImportPreviewsDialog::ImportPreviewsDialog( QWidget* parent )
     headerLayout->addWidget( removeButton_ );
     headerLayout->addWidget( clearButton_ );
     headerLayout->addWidget( copyButton_ );
+    headerLayout->addWidget( editButton_ );
     headerLayout->addStretch();
     layout->addLayout( headerLayout );
     layout->addWidget( tableView_ );
@@ -215,6 +229,32 @@ void ImportPreviewsDialog::copySelectedPreview()
     }
 }
 
+void ImportPreviewsDialog::setPackItemEditor( PackItemEditor editor )
+{
+    packItemEditor_ = std::move( editor );
+    editButton_->setVisible( static_cast<bool>( packItemEditor_ ) );
+    updateButtons();
+}
+
+void ImportPreviewsDialog::editSelectedPreview()
+{
+    const auto index = tableView_->selectionModel() ? tableView_->selectionModel()->currentIndex()
+                                                    : QModelIndex();
+    const auto* preview = index.isValid() ? model_->previewAt( index.row() ) : nullptr;
+    if ( !packItemEditor_ || !preview || !model_->isPackRow( index.row() ) ) {
+        return;
+    }
+    const auto origin = PreviewManager::instance().packOrigin( preview->name );
+    if ( !origin ) {
+        return;
+    }
+    // Copied: the editor's save refreshes the previews, which replaces the row's preview.
+    const auto packId = origin->packId;
+    const auto path
+        = QStringLiteral( "previews/%1.json" ).arg( cilogg::plugins::packcanonical::encodeName( preview->name ) );
+    packItemEditor_( this, packId, path );
+}
+
 void ImportPreviewsDialog::clearAllPreviews()
 {
     pendingSelectionRow_ = -1;
@@ -255,8 +295,10 @@ void ImportPreviewsDialog::updateButtons()
     moveDownButton_->setEnabled( ownRow && currentRow < ownCount - 1 );
     removeButton_->setEnabled( ownRow );
     clearButton_->setEnabled( ownCount > 0 );
-    copyButton_->setEnabled( hasSelection && currentRow >= 0 && model_->isPackRow( currentRow )
-                             && !model_->isReplacedRow( currentRow ) );
+    const bool packRow = hasSelection && currentRow >= 0 && model_->isPackRow( currentRow )
+                         && !model_->isReplacedRow( currentRow );
+    copyButton_->setEnabled( packRow );
+    editButton_->setEnabled( packRow && static_cast<bool>( packItemEditor_ ) );
 }
 
 void ImportPreviewsDialog::updateDialogWidth()

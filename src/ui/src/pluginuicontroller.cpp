@@ -1,6 +1,7 @@
 #include "pluginuicontroller.h"
 #include "analysissource.h"
 #include "configpack.h"
+#include "packeditors.h"
 #include "log.h"
 #include "mainwindow.h"
 #include "pluginicons.h"
@@ -415,6 +416,16 @@ bool PluginUiController::confirmPackLua( QWidget* parent, const QString& id ) co
         }
     }
     return true;
+}
+
+void PluginUiController::editPackItem( QWidget* parent, const QString& packId,
+                                       const QString& path )
+{
+    if ( manager_ ) {
+        pluginsui::openPackItemEditor( parent, executor_, packId,
+                                       manager_->manifest( packId ).value( "name" ).toString( packId ),
+                                       path );
+    }
 }
 
 int PluginUiController::pendingUpdateCount() const
@@ -928,6 +939,16 @@ QWidget* PluginUiController::createInstalledTab( QWidget* parent )
                     state += QStringLiteral( " · " )
                              + tr( "Python decoders: requires a newer CILogg" );
                 }
+                // Local edits and an update that waits for a merge (design 3.3, 4.6).
+                if ( p.value( "localEdits" ).toInt() > 0 ) {
+                    state += QStringLiteral( " · " )
+                             + tr( "Edited locally (%1)" ).arg( p.value( "localEdits" ).toInt() );
+                }
+                if ( !p.value( "needsMerge" ).toString().isEmpty() ) {
+                    state += QStringLiteral( " · " )
+                             + tr( "Update to %1 needs a merge" )
+                                   .arg( p.value( "needsMerge" ).toString() );
+                }
             }
             const auto update = p.value( "update" ).toMap();
             if ( !update.isEmpty() ) {
@@ -1030,22 +1051,19 @@ QWidget* PluginUiController::createInstalledTab( QWidget* parent )
                 request.origin = CommanderOriginGui;
                 request.pluginOperation = "update";
                 request.pluginId = id;
-                const auto result = self->executor_( request );
-                if ( !result.ok() ) {
-                    status->setText( result.message );
-                    return;
-                }
                 status->setText( tr( "Updating %1…" ).arg( name ) );
-                pluginsui::followJob(
-                    tab, self->manager_, result.payload.value( "jobId" ).toString(),
+                // A pack with local edits may need the merge window (design 4.6).
+                pluginsui::runPackAwareInstall(
+                    tab, self->manager_, self->executor_, request, name,
                     [ status, name ]( const QVariantMap& update ) {
                         status->setText(
                             update.value( "state" ) == "completed"
                                 ? tr( "Updated %1 to %2." )
-                                      .arg( name, update.value( "result" )
-                                                      .toMap()
-                                                      .value( "version" )
-                                                      .toString() )
+                                          .arg( name, update.value( "result" )
+                                                          .toMap()
+                                                          .value( "version" )
+                                                          .toString() )
+                                      + pluginsui::jobWarningSuffix( update )
                                 : tr( "Could not update %1: %2" )
                                       .arg( name, update.value( "error" ).toString() ) );
                     } );
@@ -1150,6 +1168,22 @@ QWidget* PluginUiController::createInstalledTab( QWidget* parent )
                 if ( managed == "enable" && !confirmPackLua( tab, id ) ) {
                     return;
                 }
+                // A pack's local edits and their history go with it (design 4.6).
+                if ( managed == "remove" ) {
+                    for ( const auto& value : manager_->plugins() ) {
+                        const auto p = value.toMap();
+                        const auto edits = p.value( "localEdits" ).toInt();
+                        if ( p.value( "id" ) == id && edits > 0
+                             && QMessageBox::question(
+                                    tab, tr( "Remove Pack" ),
+                                    tr( "Remove %1? Your edits of %2 of its items, and their "
+                                        "history, are removed with it." )
+                                        .arg( p.value( "name" ).toString(), QString::number( edits ) ) )
+                                    != QMessageBox::Yes ) {
+                            return;
+                        }
+                    }
+                }
                 if ( managed == "configure" ) {
                     for ( const auto& value : manager_->plugins() ) {
                         const auto p = value.toMap();
@@ -1197,7 +1231,7 @@ QWidget* PluginUiController::createInstalledTab( QWidget* parent )
         auto* button = addButton(
             secondRow, source == "folder" ? tr( "Install Folder…" ) : tr( "Install ZIP…" ),
             "pluginInstall_" + source );
-        connect( button, &QPushButton::clicked, tab, [ this, tab, source ] {
+        connect( button, &QPushButton::clicked, tab, [ this, tab, source, status ] {
             const auto path = source == "folder"
                                   ? QFileDialog::getExistingDirectory( tab )
                                   : QFileDialog::getOpenFileName( tab, tr( "Plugin package" ), {},
@@ -1218,10 +1252,36 @@ QWidget* PluginUiController::createInstalledTab( QWidget* parent )
                 r.origin = CommanderOriginGui;
                 r.pluginOperation = "install";
                 r.pluginArguments = { { "path", path } };
-                report( executor_( r ) );
+                // Installing over an edited pack may need the merge window (design 4.6).
+                const auto name = manifest.value( "name" ).toString( QFileInfo( path ).fileName() );
+                pluginsui::runPackAwareInstall(
+                    tab, manager_, executor_, r, name, [ status, name ]( const QVariantMap& job ) {
+                        status->setText( job.value( "state" ) == "completed"
+                                             ? tr( "Installed %1." ).arg( name )
+                                                   + pluginsui::jobWarningSuffix( job )
+                                             : tr( "Could not install %1: %2" )
+                                                   .arg( name, job.value( "error" ).toString() ) );
+                    } );
             }
         } );
     }
+    // Configuration packs: their items, edited in place (design 4.6).
+    auto* packFiles = addButton( secondRow, tr( "Pack Files…" ), "pluginManage_packFiles" );
+    packFiles->setEnabled( false );
+    connect( packFiles, &QPushButton::clicked, tab, [ this, tab, selectedId ] {
+        const auto id = selectedId();
+        if ( id.isEmpty() || !manager_ ) {
+            return;
+        }
+        pluginsui::openPackFiles( tab, executor_, id,
+                                  manager_->manifest( id ).value( "name" ).toString( id ) );
+    } );
+    connect( table, &QTableWidget::itemSelectionChanged, tab, [ self, packFiles, selectedId ] {
+        if ( self && self->manager_ ) {
+            packFiles->setEnabled( cilogg::plugins::isConfigPack(
+                self->manager_->manifest( selectedId() ) ) );
+        }
+    } );
     auto* storage = addButton( secondRow, tr( "Storage Limits…" ), "pluginStorageLimits" );
     connect( storage, &QPushButton::clicked, tab, [ this, tab ] {
         if ( !manager_ ) {

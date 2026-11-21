@@ -837,6 +837,33 @@ TEST_CASE( "Secret configuration is redacted and omitted secrets survive updates
         restored.plugins()[ 0 ].toMap()[ "configuredSecrets" ].toMap()[ "token" ].toBool() );
 }
 
+TEST_CASE( "Merge choices for a plugin that is not a pack are refused before it is stopped",
+           "[plugins][E16]" )
+{
+    QTemporaryDir temp;
+    const auto shipped = QDir( temp.path() ).filePath( "shipped" );
+    package( shipped );
+    PluginManager manager( QDir( temp.path() ).filePath( "data" ), shipped );
+    REQUIRE( manager.manage( "enable", "org.test.fixture", {} ).ok() );
+    const auto started = jobId( manager.invoke( "org.test.fixture", "summary", {}, {} ) );
+    REQUIRE( waitFor( [ & ] { return finished( manager, started ); } ) );
+    REQUIRE( manager.plugins()[ 0 ].toMap()[ "state" ] == "ready" );
+    const auto update = package( QDir( temp.path() ).filePath( "update" ) );
+    auto json = manifest();
+    json[ "version" ] = "2.0.0";
+    writeFile( QDir( update ).filePath( "plugin.json" ), QJsonDocument( json ).toJson() );
+    // An empty list too: given at all, the choices of a pack merge do not apply.
+    const auto refused
+        = jobId( manager.manage( "install", {}, { { "path", update }, { "resolutions", QVariantList{} } } ) );
+    REQUIRE( waitFor( [ & ] { return finished( manager, refused ); } ) );
+    const auto job = manager.job( refused ).payload;
+    CHECK( job[ "state" ] == "failed" );
+    CHECK( job[ "error" ].toString().contains( "only to configuration packs" ) );
+    // The running plugin was not stopped for an update that could not go ahead.
+    CHECK( manager.plugins()[ 0 ].toMap()[ "state" ] == "ready" );
+    CHECK( manager.plugins()[ 0 ].toMap()[ "version" ] == "1.0.0" );
+}
+
 TEST_CASE( "Concurrent local installations serialize unknown package identities", "[plugins]" )
 {
     QTemporaryDir temp;

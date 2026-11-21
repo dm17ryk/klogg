@@ -11,6 +11,7 @@ import time
 from klogg import KloggError, app
 
 TERMINAL = ("completed", "failed", "cancelled")
+PACK_ID = "org.cilogg.example.protocol-pack"
 
 
 def manage(operation, **options):
@@ -56,11 +57,16 @@ def main():
         # E16a1: the example configuration pack the CLI installed and MCP enabled.
         report["plugins"] = app.command("get_plugins")["plugins"]
         try:
-            app.command("plugin_manage", plugin_operation="restart",
-                        plugin_id="org.cilogg.example.protocol-pack")
+            app.command("plugin_manage", plugin_operation="restart", plugin_id=PACK_ID)
             report["packRestartRefused"] = False
         except KloggError:
             report["packRestartRefused"] = True
+        # E16a2: the pack edit the CLI saved, then Reset to Pack Version for the whole pack.
+        report["packEdits"] = app.command("plugin_manage", plugin_operation="pack_edits",
+                                          plugin_id=PACK_ID)["files"]
+        app.command("plugin_manage", plugin_operation="pack_reset", plugin_id=PACK_ID)
+        report["packEditsAfterReset"] = app.command("plugin_manage", plugin_operation="pack_edits",
+                                                    plugin_id=PACK_ID)["files"]
     except Exception as error:  # reported to the parity driver, which fails the case
         report["errors"].append(f"{type(error).__name__}: {error}")
     with open(arguments["output"], "w", encoding="utf-8") as output:

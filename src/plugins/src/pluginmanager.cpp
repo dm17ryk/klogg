@@ -1,5 +1,6 @@
 #include "pluginmanager.h"
 #include "configpack.h"
+#include "packstore.h"
 #include "klogg_version.h"
 #include "log.h"
 #include "pluginfeatures.h"
@@ -207,7 +208,24 @@ void PluginManager::discover()
         auto entry = std::make_unique<Entry>();
         entry->manifest = std::move( manifest );
         if ( isConfigPack( entry->manifest.json ) ) {
-            entry->pack = packSummary( entry->manifest.json, entry->manifest.directory );
+            // The counts of the effective content (with the local edits, design 4.6); a damaged
+            // store is rebuilt here, before anything reads the pack.
+            if ( entry->manifest.valid() ) {
+                if ( const auto storeError = ensurePackStore( id, entry->manifest, false );
+                     !storeError.isEmpty() ) {
+                    LOG_WARNING << "Pack store not ready id=" << id.toStdString() << ": "
+                                << storeError.toStdString();
+                }
+            }
+            // The effective content folder whenever there is one, also while its repository
+            // does not open: the installed folder would lose the edits for this session. Not
+            // while it may hold what an unfinished update wrote, a version never installed.
+            const PackStore store( packStoreRoot(), id );
+            const auto content = packContentPending( id ) ? QString{} : store.contentDirectory();
+            entry->pack = packSummary( entry->manifest.json,
+                                       content.isEmpty() ? entry->manifest.directory : content );
+            entry->pack[ "localEdits" ]
+                = store.exists() ? static_cast<int>( store.localEdits().size() ) : 0;
         }
         if ( enabledByDefault.contains( id ) ) {
             const auto key = configurationKey( id ) + "enabled";
@@ -253,9 +271,13 @@ QVariantList PluginManager::plugins() const
         value[ "id" ] = id;
         value[ "directory" ] = entry->manifest.directory;
         value[ "kind" ] = packageKind( entry->manifest.json );
-        // Pack fields (design 4.1): `contents` and the counts of what the pack delivers.
+        // Pack fields (design 4.1): `contents` and the counts of what the pack delivers;
+        // `localEdits` and `needsMerge` (the version an update could not merge, 4.6).
         for ( auto field = entry->pack.cbegin(); field != entry->pack.cend(); ++field ) {
             value[ field.key() ] = field.value();
+        }
+        if ( !entry->pack.isEmpty() ) {
+            value[ "needsMerge" ] = settings_.value( configurationKey( id ) + "needsMerge" ).toString();
         }
         value[ "source" ] = sourceInfo( id, *entry );
         // The newest version from the source repository, if it is newer (design 3.8).
@@ -1257,6 +1279,17 @@ Result PluginManager::manage( const QString& operation, const QString& id,
     if ( options.contains( "token" ) && operation != "repository_sign_in" ) {
         return { "token applies only to repository_sign_in.", {} };
     }
+    // How a pack install or update merges with the local edits: refused elsewhere rather than
+    // ignored, so a call never reports success without the merge it asked for.
+    if ( operation != "install" && operation != "update" ) {
+        for ( const auto* key : { "strategy", "resolutions", "revision" } ) {
+            if ( options.contains( QLatin1String( key ) ) ) {
+                return { QStringLiteral( "%1 applies only to install and update." )
+                             .arg( QLatin1String( key ) ),
+                         {} };
+            }
+        }
+    }
     if ( repositoryOperation( operation ) ) {
         return manageRepositories( operation, options, origin );
     }
@@ -1271,6 +1304,29 @@ Result PluginManager::manage( const QString& operation, const QString& id,
     }
     if ( operation == "skip_update" ) {
         return skipUpdate( id, options );
+    }
+    // Configuration packs edited in place (design 4.6).
+    if ( packOperation( operation ) ) {
+        return managePack( operation, id, options );
+    }
+    // How a pack update resolves conflicts with local edits outside the merge window.
+    const auto strategy = options.value( "strategy" ).toString();
+    if ( options.contains( "strategy" ) && strategy != QLatin1String( "fail" )
+         && strategy != QLatin1String( "keep_mine" ) && strategy != QLatin1String( "take_theirs" ) ) {
+        return { "strategy is fail, keep_mine or take_theirs.", {} };
+    }
+    if ( options.contains( "resolutions" ) && !options.value( "resolutions" ).canConvert<QVariantList>() ) {
+        return { "resolutions is a list.", {} };
+    }
+    // The pack's edits the resolutions were chosen for (the failed job's result `revision`).
+    if ( options.contains( "revision" ) && options.value( "revision" ).typeId() != QMetaType::QString ) {
+        return { "revision is the revision from the failed update's result.", {} };
+    }
+    QVariantMap mergeContext;
+    for ( const auto* key : { "strategy", "resolutions", "revision" } ) {
+        if ( options.contains( QLatin1String( key ) ) ) {
+            mergeContext.insert( QLatin1String( key ), options.value( QLatin1String( key ) ) );
+        }
     }
     const auto installRoot = QDir( dataRoot_ ).filePath( "plugins" );
     // A catalog install or update first resolves its entry, so a call that names only the
@@ -1312,7 +1368,7 @@ Result PluginManager::manage( const QString& operation, const QString& id,
         }
     }
     if ( operation == "install" && options.contains( "path" ) ) {
-        const auto jobId = addJob( id, "install", {}, true );
+        const auto jobId = addJob( id, "install", mergeContext, true );
         if ( jobId.isEmpty() ) {
             return { "Too many jobs.", {} };
         }
@@ -1320,11 +1376,11 @@ Result PluginManager::manage( const QString& operation, const QString& id,
         return job( jobId );
     }
     if ( fromCatalog ) {
-        const auto jobId = addJob( target, operation,
-                                   { { "repository", package.value( "repository" ).toString() },
-                                     { "version", package.value( "version" ).toString() },
-                                     { "entryId", package.value( "entry_id" ).toString() } },
-                                   true );
+        auto context = mergeContext;
+        context.insert( "repository", package.value( "repository" ).toString() );
+        context.insert( "version", package.value( "version" ).toString() );
+        context.insert( "entryId", package.value( "entry_id" ).toString() );
+        const auto jobId = addJob( target, operation, context, true );
         if ( jobId.isEmpty() ) {
             return { "Too many jobs.", {} };
         }
@@ -1353,7 +1409,11 @@ Result PluginManager::manage( const QString& operation, const QString& id,
                  {} };
     }
     if ( pack && operation == "enable" && e.manifest.valid() && packCheck_ ) {
-        const auto refusal = packCheck_( id, e.manifest.directory, e.manifest.json );
+        // What loads is the effective content, with the local edits (design 4.6).
+        if ( const auto storeError = ensurePackStore( id, e.manifest, false ); !storeError.isEmpty() ) {
+            return { storeError, {} };
+        }
+        const auto refusal = packCheck_( id, packContentDirectory( id ), e.manifest.json );
         if ( !refusal.isEmpty() ) {
             LOG_INFO << "Configuration pack enable refused id=" << id.toStdString();
             return { refusal, {} };
@@ -1385,6 +1445,7 @@ Result PluginManager::manage( const QString& operation, const QString& id,
             settings_.setValue( configurationKey( id ) + "enabled", false );
             repositories_.clearSource( id );
             forgetUpdates( id );
+            removePackStore( id ); // a pack's local edits go with it
             entries_.erase( it );
             discover();
         }
@@ -1503,6 +1564,7 @@ void PluginManager::completeManagement( const QString& operation, const QString&
             settings_.setValue( configurationKey( id ) + "enabled", false );
             repositories_.clearSource( id );
             forgetUpdates( id );
+            removePackStore( id ); // a pack's local edits go with it
             entries_.erase( entry );
             discover();
         }
@@ -1565,6 +1627,17 @@ void PluginManager::commitWhenStopped( const StagedPlugin& staged, const QString
         QDir( staged.directory ).removeRecursively();
         return;
     }
+    // A plugin that is not a pack merges nothing: choices made for a pack merge are refused, not
+    // ignored, before the installed plugin is stopped (a strategy is only a policy and has nothing
+    // to act on).
+    const bool pack = isConfigPack( staged.manifest.json );
+    const auto& context = jobIt->second.context;
+    if ( !pack && ( context.contains( "resolutions" ) || context.contains( "revision" ) ) ) {
+        QDir( staged.directory ).removeRecursively();
+        finishJob( jobId, QStringLiteral( "Resolutions and a merge revision apply only to "
+                                          "configuration packs." ) );
+        return;
+    }
     const auto existing = entries_.find( staged.manifest.id );
     if ( existing != entries_.end() && existing->second->process
          && existing->second->process->isRunning() ) {
@@ -1587,19 +1660,92 @@ void PluginManager::commitWhenStopped( const StagedPlugin& staged, const QString
         } );
         return;
     }
-    // A new version of an enabled pack must still fit with the user's items and the other
-    // enabled packs; otherwise the installed version stays (design 4.2).
-    auto error = QString{};
-    if ( isConfigPack( staged.manifest.json ) && packCheck_
-         && settings_.value( configurationKey( staged.manifest.id ) + "enabled", false ).toBool() ) {
-        error = packCheck_( staged.manifest.id, staged.manifest.directory, staged.manifest.json );
-    }
-    if ( error.isEmpty() ) {
-        error = PluginRepository::commit( staged, QDir( dataRoot_ ).filePath( "plugins" ) );
-    }
     QVariantMap result{ { "pluginId", staged.manifest.id },
                         { "version", staged.manifest.version },
                         { "repository", source.repository } };
+    // A pack's local edits merge with the new version first (design 4.6): conflicts the job's
+    // strategy leaves open keep the installed version and are listed in the result.
+    PackFiles packShipped;
+    std::optional<PackFiles> packMerged;
+    auto error = pack ? preparePackInstall( staged, context, &packShipped, &packMerged, &result )
+                      : QString{};
+    if ( result.value( "needsMerge" ).toBool() ) {
+        // Shown as "Update to X needs a merge" until an install or update of the pack succeeds.
+        settings_.setValue( configurationKey( staged.manifest.id ) + "needsMerge",
+                            staged.manifest.version );
+        if ( !persistSettings().isEmpty() ) {
+            LOG_WARNING << "Pack merge state could not be saved id="
+                        << staged.manifest.id.toStdString();
+        }
+    }
+    // A new version of an enabled pack must still fit with the user's items and the other
+    // enabled packs; otherwise the installed version stays (design 4.2). What loads is checked:
+    // the merge with the user's edits when there is one (design 4.6), which may lack an item the
+    // new version ships and an edit deleted, or else the new version as shipped.
+    if ( error.isEmpty() && pack && packCheck_
+         && settings_.value( configurationKey( staged.manifest.id ) + "enabled", false ).toBool() ) {
+        error = packMerged && *packMerged != packShipped
+                    ? checkPackFiles( staged.manifest.id, *packMerged, staged.manifest.json )
+                    : packCheck_( staged.manifest.id, staged.manifest.directory,
+                                  staged.manifest.json );
+    }
+    // A pack's store moves before the package folder: it can be put back, the folder swap
+    // cannot. A store that fails leaves the installed version as it is, and a package that
+    // fails puts the store back, so the version and the content never disagree. The journal
+    // written first covers CILogg ending in between: the next read of the pack puts it back.
+    PackTips packBefore;
+    bool journal = false; // this install's journal is still needed (the store was not put back)
+    bool began = false;   // this install wrote its journal
+    const auto putBack = [ this, &staged, &packBefore ] {
+        const auto restored = PackStore( packStoreRoot(), staged.manifest.id ).rollback( packBefore );
+        if ( !restored.isEmpty() ) {
+            LOG_WARNING << "Pack store not put back id=" << staged.manifest.id.toStdString();
+        }
+        return restored.isEmpty();
+    };
+    if ( error.isEmpty() && pack ) {
+        PackStore store( packStoreRoot(), staged.manifest.id );
+        packBefore = store.tips();
+        // A new journal is not settled until this install or update is done or put back.
+        settledJournals_.remove( staged.manifest.id );
+        // A store that is there but whose tips cannot be read now could not be put back.
+        error = packBefore.existed && ( packBefore.upstream.isEmpty() || packBefore.local.isEmpty() )
+                    ? QStringLiteral( "The pack's store cannot be opened now (another program may "
+                                      "be using it). Try again." )
+                    : store.beginUpdate( packBefore );
+        journal = error.isEmpty();
+        began = journal;
+        if ( journal ) {
+            error = finishPackInstall( staged, packShipped, packMerged, source );
+        }
+        if ( !error.isEmpty() ) {
+            error = QStringLiteral( "The pack's local store could not be updated, so the "
+                                    "installed version stays: %1" )
+                        .arg( error );
+            // Partly written: put it back (a store that moved nothing is unchanged anyway).
+            journal = journal && !putBack();
+        }
+    }
+    if ( error.isEmpty() ) {
+        error = PluginRepository::commit( staged, QDir( dataRoot_ ).filePath( "plugins" ) );
+        journal = journal && !error.isEmpty() && pack && !putBack();
+    }
+    // Done, or put back: this install's journal goes. One that stays (a store not put back) is
+    // put back by the next read of the pack, and so is an earlier journal this install never
+    // replaced (it failed before writing its own, perhaps recovering that one): never removed here.
+    if ( pack && began && !journal ) {
+        PackStore store( packStoreRoot(), staged.manifest.id );
+        store.endUpdate();
+        // Done or put back, but the journal could not be removed: the content folder is current
+        // all the same, so the pack loads it (the next read of the pack settles it again).
+        if ( store.hasJournal() ) {
+            settledJournals_.insert( staged.manifest.id );
+        }
+    }
+    if ( error.isEmpty() && pack ) {
+        // Installed with its store: no update waits for a merge any more.
+        settings_.remove( configurationKey( staged.manifest.id ) + "needsMerge" );
+    }
     if ( error.isEmpty() ) {
         // The install source lives in the plugin settings, not in the plugin folder. The plugin
         // is installed at this point, so a settings write failure is a warning, not a failure:
@@ -1611,9 +1757,12 @@ void PluginManager::commitWhenStopped( const StagedPlugin& staged, const QString
         if ( !persistSettings().isEmpty() ) {
             LOG_WARNING << "Plugin installed but its source record could not be saved id="
                         << staged.manifest.id.toStdString();
+            // Added to a warning the install may already have (dropped pack edits).
+            const auto earlier = result.value( "warning" ).toString();
             result[ "warning" ]
-                = QStringLiteral( "The plugin was installed, but its source repository could not "
-                                  "be saved in the plugin settings." );
+                = ( earlier.isEmpty() ? QString{} : earlier + QLatin1Char( ' ' ) )
+                  + QStringLiteral( "The plugin was installed, but its source repository could "
+                                    "not be saved in the plugin settings." );
         }
         entries_.erase( staged.manifest.id );
         discover();

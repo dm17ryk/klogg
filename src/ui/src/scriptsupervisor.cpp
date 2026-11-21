@@ -143,7 +143,26 @@ ScriptSupervisor::ScriptSupervisor( QObject* parent )
 {
 }
 
-ScriptSupervisor::~ScriptSupervisor() = default;
+ScriptSupervisor::~ScriptSupervisor()
+{
+    // While the supervisor is still whole: a QProcess destroyed while its script runs kills it,
+    // waits for it and emits finished, and that handler would then look through runs that are
+    // being destroyed (a crash when a script outlives a stop that was just asked for).
+    for ( const auto& run : runs_ ) {
+        if ( !run ) {
+            continue;
+        }
+        run->process.disconnect( this );
+        run->server.disconnect( this );
+        if ( run->socket ) {
+            run->socket->disconnect( this );
+        }
+        if ( run->process.state() != QProcess::NotRunning ) {
+            run->process.kill();
+            run->process.waitForFinished( 2000 );
+        }
+    }
+}
 
 void ScriptSupervisor::setCommanderExecutor(
     std::function<CommanderResult( const CommanderRequest& )> executor )

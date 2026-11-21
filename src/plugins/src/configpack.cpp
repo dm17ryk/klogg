@@ -115,6 +115,47 @@ QString validatePythonDecoders( const QJsonValue& value, PackContent* content )
     return {};
 }
 
+// CILogg writes a pack's plugin.json and previews document itself (the effective content, with
+// the local edits, design 4.6), so no other content file may be either of them: it would replace
+// what CILogg wrote. Paths compare as the file systems of Windows and macOS do, ignoring case.
+QString checkReservedPaths( const PackContent& content )
+{
+    const auto same = []( const QString& a, const QString& b ) {
+        return QDir::cleanPath( a ).compare( QDir::cleanPath( b ), Qt::CaseInsensitive ) == 0;
+    };
+    const auto manifest = QStringLiteral( "plugin.json" );
+    if ( !content.previews.isEmpty() && same( content.previews, manifest ) ) {
+        return QStringLiteral( "content.previews cannot be plugin.json." );
+    }
+    QStringList others{ content.actions, content.highlights, content.filters };
+    for ( const auto& file : content.luaLoad ) {
+        others.append( content.luaFolder + '/' + file );
+    }
+    for ( const auto& decoder : content.pythonDecoders ) {
+        others.append( decoder.module );
+    }
+    for ( const auto& path : others ) {
+        if ( !path.isEmpty()
+             && ( same( path, manifest ) || ( !content.previews.isEmpty() && same( path, content.previews ) ) ) ) {
+            return QStringLiteral( "The content file %1 is the pack's plugin.json or previews file." )
+                .arg( path.left( 128 ) );
+        }
+    }
+    // One file is named one way: spellings that differ only in case are one file on Windows and
+    // macOS but two items in the pack's store, and writing one would overwrite the other.
+    for ( qsizetype first = 0; first < others.size(); ++first ) {
+        for ( qsizetype second = first + 1; second < others.size(); ++second ) {
+            const auto& a = others.at( first );
+            const auto& b = others.at( second );
+            if ( !a.isEmpty() && same( a, b ) && QDir::cleanPath( a ) != QDir::cleanPath( b ) ) {
+                return QStringLiteral( "The content files %1 and %2 differ only in case." )
+                    .arg( a.left( 128 ), b.left( 128 ) );
+            }
+        }
+    }
+    return {};
+}
+
 // Whether `relative` resolves, after every link and junction on the way, to the same place
 // inside the package folder: a link anywhere on the path would lead elsewhere.
 bool resolvesInside( const QString& directory, const QString& relative )
@@ -233,6 +274,9 @@ QString validatePackManifest( const QJsonObject& manifest, PackContent* content 
         if ( !error.isEmpty() ) {
             return error;
         }
+    }
+    if ( const auto error = checkReservedPaths( parsed ); !error.isEmpty() ) {
+        return error;
     }
     if ( content ) {
         *content = parsed;

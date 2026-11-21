@@ -236,6 +236,20 @@ TEST_CASE( "Configuration pack manifests follow the pack rules", "[plugins][E16]
         CHECK( manifestError( packManifest( PackId, 2, encoding ) ).isEmpty() );
         CHECK( !manifestError( withContent( valid, "previews", QJsonValue::Undefined ) ).isEmpty() );
     }
+    SECTION( "no content file is the previews file or plugin.json" )
+    {
+        // CILogg writes those two itself for a pack's effective content (design 4.6).
+        const auto reserved = QStringLiteral( "plugin.json or previews file" );
+        CHECK( manifestError( withContent( valid, "actions", "previews.json" ) ).contains( reserved ) );
+        CHECK( manifestError( withContent( valid, "highlights", "PREVIEWS.json" ) ).contains( reserved ) );
+        CHECK( manifestError( withContent( valid, "filters", "plugin.json" ) ).contains( reserved ) );
+        CHECK( manifestError( withContent( valid, "previews", "Plugin.json" ) ).contains( "plugin.json" ) );
+        CHECK( manifestError( withContent( valid, "actions", "actions.json" ) ).isEmpty() );
+        // Spellings that differ only in case are one file on Windows and macOS.
+        const auto aliased = withContent( withContent( valid, "actions", "defs/Rules.json" ),
+                                          "filters", "defs/rules.json" );
+        CHECK( manifestError( aliased ).contains( "differ only in case" ) );
+    }
     SECTION( "Python decoders need an id and a .py module" )
     {
         const auto decoders = []( const QString& id, const QString& module ) {
@@ -432,6 +446,67 @@ TEST_CASE( "Pack previews are namespaced, preceded by the user's and never saved
         CHECK( manager.replacedByUser( "Pack frame" ) );
         CHECK( !manager.copyPackPreview( "Pack frame" ).isEmpty() );
     }
+    SECTION( "a copy of a preview of a pack that is not enabled keeps that preview's on/off state" )
+    {
+        // Another, enabled pack has a preview of the same name, switched on.
+        const auto other = parsedPack( "b.pack", "Pack B", packPreviews( "Shared" ) );
+        manager.setPackPreviews( { other } );
+        // Switched off by its definition.
+        const auto off = parsedPack( "a.pack", "Pack A",
+                                     QString::fromUtf8( packPreviews( "Shared" ) )
+                                         .replace( "\"name\": \"Shared\"",
+                                                   "\"name\": \"Shared\", \"enabled\": false" )
+                                         .toUtf8() );
+        CHECK( manager.copyPreviewFrom( off, "Shared", "Shared (mine)" ).isEmpty() );
+        REQUIRE( manager.findByName( "Shared (mine)" ) );
+        CHECK_FALSE( manager.findByName( "Shared (mine)" )->enabled );
+        // Switched off by the choice saved for it while its pack was enabled.
+        const auto alone = parsedPack( "c.pack", "Pack C", packPreviews( "Alone" ) );
+        manager.setPackPreviews( { alone } );
+        manager.setEnabled( "Alone", false );
+        manager.setPackPreviews( {} );
+        CHECK( manager.copyPreviewFrom( alone, "Alone", "Alone (mine)" ).isEmpty() );
+        REQUIRE( manager.findByName( "Alone (mine)" ) );
+        CHECK_FALSE( manager.findByName( "Alone (mine)" )->enabled );
+        manager.setPackPreviews( { alone } );
+        manager.setEnabled( "Alone", true );
+    }
+    SECTION( "a copy under another name never replaces an enabled pack's preview" )
+    {
+        const auto a = parsedPack( "a.pack", "Pack A", packPreviews( "A frame" ) );
+        const auto b = parsedPack( "b.pack", "Pack B",
+                                   QString::fromUtf8( packPreviews( "A frame (mine)" ) )
+                                       .replace( "frame_header_block", "b_header_block" )
+                                       .toUtf8() );
+        manager.setPackPreviews( { a, b } );
+        CHECK( manager.copyPackPreview( "A frame", "A frame (mine)" )
+                   .contains( "An enabled pack has a preview named \"A frame (mine)\"" ) );
+        CHECK( !manager.findByName( "A frame (mine)" ) );
+        CHECK( manager.packOrigin( "A frame (mine)" )->packId == "b.pack" );
+        // Under its own name a copy replaces its original, as Copy to My Previews does.
+        CHECK( manager.copyPackPreview( "A frame" ).isEmpty() );
+    }
+    SECTION( "a copied block never takes the name of another enabled pack's block" )
+    {
+        // Pack A has a block literally named "b.pack/frame_header_block", which is also what
+        // pack B's own frame_header_block is called once applied.
+        const auto a = parsedPack( "a.pack", "Pack A",
+                                   QString::fromUtf8( packPreviews( "A frame" ) )
+                                       .replace( "frame_header_block", "b.pack/frame_header_block" )
+                                       .replace( "^(?<kind>", "^A(?<kind>" )
+                                       .toUtf8() );
+        const auto b = parsedPack( "b.pack", "Pack B", packPreviews( "B frame" ) );
+        manager.setPackPreviews( { a, b } );
+        REQUIRE( manager.effectiveBlocks().contains( "b.pack/frame_header_block" ) );
+        CHECK( manager.copyPackPreview( "A frame" ).isEmpty() );
+        const auto* copy = manager.findByName( "A frame" );
+        REQUIRE( copy );
+        const auto header = copy->fields.first().blockTemplate;
+        CHECK( header == "b.pack/frame_header_block (Pack A)" );
+        CHECK( !manager.blocks().contains( "b.pack/frame_header_block" ) );
+        // The copy runs pack A's block, not pack B's.
+        CHECK( manager.effectiveBlocks().value( header ).regex.startsWith( "^A" ) );
+    }
     SECTION( "the on/off choice of a pack preview is user state" )
     {
         manager.setPackPreviews( { pack } );
@@ -473,17 +548,33 @@ TEST_CASE( "The previews dialog lists pack previews after the user's and copies 
     CHECK( table->model()->index( 1, 0 ).data().toString() == "Pack frame" );
     CHECK( table->model()->index( 1, 3 ).data().toString() == "Example pack" );
 
-    // The user's row: Remove, no Copy.
+    // Edit... shows only with an editor to open (the main window gives the plugin controller's).
+    auto* edit = dialog.findChild<QToolButton*>( "editPackPreviewButton" );
+    REQUIRE( edit );
+    CHECK_FALSE( edit->isVisible() );
+    QStringList opened;
+    dialog.setPackItemEditor( [ &opened ]( QWidget*, const QString& packId, const QString& path ) {
+        opened << packId << path;
+    } );
+    CHECK( edit->isVisible() );
+
+    // The user's row: Remove, no Copy or Edit.
     table->selectRow( 0 );
     table->setCurrentIndex( table->model()->index( 0, 0 ) );
     CHECK( remove->isEnabled() );
     CHECK_FALSE( copy->isEnabled() );
-    // The pack's row: Copy, but neither Remove nor Move.
+    CHECK_FALSE( edit->isEnabled() );
+    // The pack's row: Copy and Edit, but neither Remove nor Move.
     table->selectRow( 1 );
     table->setCurrentIndex( table->model()->index( 1, 0 ) );
     CHECK( copy->isEnabled() );
+    CHECK( edit->isEnabled() );
     CHECK_FALSE( remove->isEnabled() );
     CHECK_FALSE( moveUp->isEnabled() );
+
+    // Edit... opens the pack item's store path (design 4.6).
+    QTest::mouseClick( edit, Qt::LeftButton );
+    CHECK( opened == QStringList{ PackId, "previews/%50ack%20frame.json" } );
 
     QTest::mouseClick( copy, Qt::LeftButton );
     REQUIRE( manager.findByName( "Pack frame" ) );
@@ -729,6 +820,127 @@ TEST_CASE( "The pack check refuses shared names and merged limits", "[previewdec
                .toMap()
                .value( "dissector" )
            == "packproto" );
+    REQUIRE( settings.setConfiguration( original ) );
+    REQUIRE( PreviewManager::instance().clearAll() );
+
+    // A copy that would take your previews and the enabled packs past the preview limits is
+    // refused (the service would drop the packs' previews): 127 of yours and the pack's one.
+    {
+        QJsonArray mine;
+        for ( int index = 0; index < 127; ++index ) {
+            mine.append( QJsonObject{
+                { "name", QStringLiteral( "Mine %1" ).arg( index ) },
+                { "regex", "^MINE (?<payload>.*)$" },
+                { "type", "string" },
+                { "format", "fields" },
+                { "bufferCapture", "payload" },
+                { "fields", QJsonArray{ QJsonObject{ { "name", "raw" },
+                                                     { "source", "capture" },
+                                                     { "capture", "payload" },
+                                                     { "format", "string" } } } } } );
+        }
+        importUserPreviews( QJsonDocument( QJsonObject{ { "version", 1 }, { "previews", mine } } ).toJson() );
+        REQUIRE( PreviewManager::instance().all().size() == 127 );
+        const auto refused = registry.copyPreview( "Pack frame", "Pack frame (mine)" );
+        CHECK( refused.contains( "preview limits" ) );
+        CHECK_FALSE( PreviewManager::instance().findByName( "Pack frame (mine)" ) );
+        CHECK( PreviewManager::instance().all().size() == 127 );
+        // Its route, saved before the copy, is taken back.
+        CHECK( settings.configuration() == original );
+        REQUIRE( settings.setConfiguration( original ) );
+        REQUIRE( PreviewManager::instance().clearAll() );
+    }
+
+    // A copy whose decoder route cannot be added (the user's preview routes at their limit) is
+    // not made at all, so it never lacks its route and its name stays free; Keep Both checks
+    // the routes at Apply.
+    {
+        auto full = original;
+        QVariantMap userRoutes;
+        for ( int index = 0; index < PreviewDecoderSettings::PreviewRouteLimit; ++index ) {
+            userRoutes.insert( QStringLiteral( "Route %1" ).arg( index ),
+                               QVariantMap{ { "dissector", "data" } } );
+        }
+        full[ "previewRoutes" ] = userRoutes;
+        REQUIRE( settings.setConfiguration( full ) );
+        const auto saved = settings.configuration();
+        const auto refused = registry.copyPreview( "Pack frame", "Pack frame (mine)" );
+        CHECK( refused.contains( "was not copied" ) );
+        CHECK( refused.contains( "128" ) );
+        CHECK_FALSE( PreviewManager::instance().findByName( "Pack frame (mine)" ) );
+        CHECK( settings.configuration() == saved );
+
+        QString error;
+        const auto snapshot = registry.snapshotOfPack( "a.pack", &error );
+        REQUIRE( snapshot );
+        CHECK( registry.copyPreviewOfSnapshot( *snapshot, "Pack frame", "Pack frame (mine)" )
+                   .contains( "was not copied" ) );
+        CHECK_FALSE( PreviewManager::instance().findByName( "Pack frame (mine)" ) );
+        CHECK( registry.checkCopyRoutes( *snapshot, { { "Pack frame", "Pack frame (mine)" } } )
+                   .contains( "128" ) );
+        // Another route of the user's under the copy's name (left from a deleted preview): the
+        // copy would decode with it, not as the preview does, so it is not made either.
+        const auto routeOf = [ &settings ]( const QString& name ) {
+            return settings.configuration()
+                .value( "previewRoutes" )
+                .toMap()
+                .value( name )
+                .toMap()
+                .value( "dissector" )
+                .toString();
+        };
+        full[ "previewRoutes" ]
+            = QVariantMap{ { "Pack frame (mine)", QVariantMap{ { "dissector", "stale" } } } };
+        REQUIRE( settings.setConfiguration( full ) );
+        CHECK( registry.checkCopyRoutes( *snapshot, { { "Pack frame", "Pack frame (mine)" } } )
+                   .contains( "another decoder route named \"Pack frame (mine)\"" ) );
+        CHECK( registry.copyPreviewOfSnapshot( *snapshot, "Pack frame", "Pack frame (mine)" )
+                   .contains( "was not copied" ) );
+        CHECK_FALSE( PreviewManager::instance().findByName( "Pack frame (mine)" ) );
+        CHECK( routeOf( "Pack frame (mine)" ) == "stale" );
+        // The same route as the preview's under that name: nothing to add, the copy is made.
+        full[ "previewRoutes" ]
+            = QVariantMap{ { "Pack frame (mine)", QVariantMap{ { "dissector", "packproto" } } } };
+        REQUIRE( settings.setConfiguration( full ) );
+        CHECK( registry.checkCopyRoutes( *snapshot, { { "Pack frame", "Pack frame (mine)" } } )
+                   .isEmpty() );
+        CHECK( registry.copyPreviewOfSnapshot( *snapshot, "Pack frame", "Pack frame (mine)" )
+                   .isEmpty() );
+        CHECK( PreviewManager::instance().findByName( "Pack frame (mine)" ) );
+        REQUIRE( PreviewManager::instance().clearAll() );
+        // The preview decodes with the user's own route for it (it wins over the pack's): the copy
+        // takes that one.
+        full[ "previewRoutes" ]
+            = QVariantMap{ { "Pack frame", QVariantMap{ { "dissector", "users" } } } };
+        REQUIRE( settings.setConfiguration( full ) );
+        CHECK( registry.copyPreviewOfSnapshot( *snapshot, "Pack frame", "Pack frame (mine)" )
+                   .isEmpty() );
+        CHECK( routeOf( "Pack frame (mine)" ) == "users" );
+        REQUIRE( settings.setConfiguration( original ) );
+        REQUIRE( PreviewManager::instance().clearAll() );
+    }
+
+    // A copy under another name never takes the name of a preview of a pack that is installed
+    // but not enabled: enabled later, that pack would lose it to the copy.
+    // (No decoder routes: the default ones name "Pack frame", which this pack does not have.)
+    writePack( root.path(), withContent( packManifest( "z.pack", 0 ), "decoder_routes", QJsonObject{} ),
+               "Pack frame (mine)" );
+    manager.discover();
+    REQUIRE( registry.installedPackPreviewNames().contains( "Pack frame (mine)" ) );
+    CHECK( registry.copyPreview( "Pack frame", "Pack frame (mine)" )
+               .contains( "A pack has a preview named \"Pack frame (mine)\"" ) );
+    CHECK_FALSE( PreviewManager::instance().findByName( "Pack frame (mine)" ) );
+    // Also while that pack's previews do not load (a regex that is not valid): its names still
+    // count, as it can be fixed or reset later.
+    {
+        const auto previewsFile = root.filePath( "plugins/z.pack/previews.json" );
+        auto text = QString::fromUtf8( packPreviews( "Pack frame (mine)" ) );
+        writeFile( previewsFile, text.replace( "\"^PACK (?<payload>.*)$\"", "\"(\"" ).toUtf8() );
+        REQUIRE( !PreviewPackRegistry::read( "z.pack", root.filePath( "plugins/z.pack" ),
+                                             manager.manifest( "z.pack" ) )
+                      .error.isEmpty() );
+        CHECK( registry.installedPackPreviewNames().contains( "Pack frame (mine)" ) );
+    }
     REQUIRE( settings.setConfiguration( original ) );
     REQUIRE( PreviewManager::instance().clearAll() );
 
