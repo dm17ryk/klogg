@@ -1602,6 +1602,20 @@ TEST_CASE( "E17e file trees keep links inside their roots, count selections, che
     }
     REQUIRE( swapped.events.size() == heardBefore );
 
+    // A local root that does not exist yet shows its contents by itself once it appears.
+    const auto late = base + "/late";
+    View later( QJsonObject{ { "type", "file_tree" }, { "id", "files" }, { "roots", QJsonArray{ late } } } );
+    auto* laterTree = later.tree( "files" );
+    auto* laterModel = laterTree->findChild<PluginFileTreeBehaviour*>()->model();
+    REQUIRE_FALSE( laterModel->isAttached( 0 ) );
+    REQUIRE_FALSE( laterModel->hasChildren( laterModel->index( 0, 0 ) ) );
+    REQUIRE( QDir().mkpath( late ) );
+    REQUIRE( touch( late + "/new.bin" ) );
+    REQUIRE( waitFor( [ & ] { return laterModel->isAttached( 0 ); }, FileSystemWait ) );
+    laterTree->expand( laterModel->index( 0, 0 ) );
+    REQUIRE( waitFor( [ & ] { return laterModel->rowCount( laterModel->index( 0, 0 ) ) == 1; },
+                      FileSystemWait ) );
+
     // A network root that cannot be reached closes again and keeps its expander for the next try.
     View network( QJsonObject{ { "type", "file_tree" },
                                { "id", "files" },

@@ -1675,7 +1675,9 @@ reordering inside a tree. Where the design left a choice open, E17e decided as f
   `toggle_selection`, `select` (`files`, `dirs` or `both`, the default: what can be selected),
   `checkboxes` (a pick list), `value`, `context_menu` and `copy` (default true).
 - **Roots.** Each root is a top-level item that shows the root's path. A root that does not exist
-  shows greyed, without children. A network root (`//server/share`) is not touched until the user
+  shows greyed, without children; a local one shows its contents by itself once it appears (also
+  when it comes back after it was deleted): the nearest existing folder above it is watched, never
+  polled. A network root (`//server/share`) is not touched until the user
   expands it or a patch expands or reveals a path in it, so an unreachable server never stalls the
   window on its own. Once it could not be reached, it closes again and keeps its expander: only the
   user's expansion tries again. A symbolic link or junction below a root that leads out of the root

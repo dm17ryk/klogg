@@ -13,6 +13,7 @@
 #include <QFileIconProvider>
 #include <QFileInfo>
 #include <QFileSystemModel>
+#include <QFileSystemWatcher>
 #include <QHeaderView>
 #include <QItemSelectionModel>
 #include <QJsonArray>
@@ -293,6 +294,7 @@ void PluginFileRootsModel::connectSource()
             }
             rebuildRootPointers();
             endResetModel();
+            watchMissingRoots(); // a root that went is attached again once it comes back
         }
     } );
     connect( files_, &QAbstractItemModel::layoutAboutToBeChanged, this, [ this ] {
@@ -327,6 +329,7 @@ void PluginFileRootsModel::connectSource()
         }
         rebuildRootPointers();
         endResetModel();
+        watchMissingRoots();
     } );
 }
 
@@ -382,6 +385,7 @@ void PluginFileRootsModel::setRoots( const QStringList& paths, QStringList* skip
     checked_ = kept;
     checkedKeys_ = keys;
     endResetModel();
+    watchMissingRoots(); // a local root that does not exist yet is attached once it appears
 }
 
 QStringList PluginFileRootsModel::roots() const
@@ -830,6 +834,64 @@ void PluginFileRootsModel::setCheckboxes( bool checkboxes )
 bool PluginFileRootsModel::isChecked( const QString& path ) const
 {
     return checkedKeys_.contains( key( path ) );
+}
+
+void PluginFileRootsModel::watchMissingRoots()
+{
+    // The nearest existing folder above each local root that is not attached: the root appears
+    // in it. A network root is only tried again when the user expands it.
+    QStringList wanted;
+    for ( const auto& root : std::as_const( roots_ ) ) {
+        if ( root.network || root.source.isValid() ) {
+            continue;
+        }
+        QString at = root.path;
+        for ( int depth = 0; depth < 64; ++depth ) {
+            const auto above = normalize( QFileInfo( at ).absolutePath() );
+            if ( above.isEmpty() || above.compare( at, PathCase ) == 0 ) {
+                break;
+            }
+            at = above;
+            if ( QFileInfo( at ).isDir() ) {
+                wanted.append( at );
+                break;
+            }
+        }
+    }
+    wanted.removeDuplicates();
+    if ( !missingWatcher_ ) {
+        if ( wanted.isEmpty() ) {
+            return;
+        }
+        missingWatcher_ = new QFileSystemWatcher( this );
+        connect( missingWatcher_, &QFileSystemWatcher::directoryChanged, this,
+                 [ this ] { retryMissingRoots(); } );
+    }
+    auto watched = missingWatcher_->directories();
+    for ( auto& path : watched ) {
+        path = normalize( path );
+    }
+    if ( QSet<QString>( watched.cbegin(), watched.cend() )
+         == QSet<QString>( wanted.cbegin(), wanted.cend() ) ) {
+        return;
+    }
+    if ( !missingWatcher_->directories().isEmpty() ) {
+        missingWatcher_->removePaths( missingWatcher_->directories() );
+    }
+    if ( !wanted.isEmpty() ) {
+        missingWatcher_->addPaths( wanted );
+    }
+}
+
+void PluginFileRootsModel::retryMissingRoots()
+{
+    for ( int row = 0; row < roots_.size(); ++row ) {
+        const auto& root = roots_.at( row );
+        if ( !root.network && !root.source.isValid() && QFileInfo::exists( root.path ) ) {
+            attach( row );
+        }
+    }
+    watchMissingRoots();
 }
 
 void PluginFileRootsModel::scheduleRootCheck()

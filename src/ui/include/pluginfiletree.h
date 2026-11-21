@@ -19,6 +19,7 @@
 
 class QFileIconProvider;
 class QFileSystemModel;
+class QFileSystemWatcher;
 class QMenu;
 class QTreeView;
 
@@ -123,6 +124,10 @@ private:
     // its resolved path is looked at again and, when it moved, the view starts over with links
     // judged against it and the checked paths looked at again.
     void scheduleRootCheck();
+    // Local roots that do not exist (yet, or any more) are attached once they appear: the
+    // nearest existing folder above each is watched, so nothing is polled.
+    void watchMissingRoots();
+    void retryMissingRoots();
     int rootOfPath( const QString& path ) const;
     bool attachLocal( Root& root );
     void rebuildRootPointers();
@@ -153,6 +158,7 @@ private:
     bool checkboxes_ = false;
     bool revalidating_ = false; // a revalidation of the checked paths waits for the event loop
     bool checkingRoots_ = false; // scheduleRootCheck() waits for the event loop
+    QFileSystemWatcher* missingWatcher_ = nullptr; // watchMissingRoots()
 };
 } // namespace pluginview
 
