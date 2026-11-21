@@ -1068,6 +1068,23 @@
         "P2 checked file tree paths deleted or renamed on disk, or made ineligible, stayed: dropped"
       ],
       "allFixedWithTests": true
+    },
+    "localCodexReview137Round4": {
+      "date": "2026-11-21",
+      "pullRequest": "https://github.com/dm17ryk/klogg/pull/137",
+      "reason": "the Codex review bot is over its usage limit; Dmitry: run a local Codex review",
+      "reviewer": "codex exec -m gpt-5.6-sol, high reasoning, read-only",
+      "commit": "f9119dd843ceac23bf0497c451b29d9c1d6523ab",
+      "reviewedHead": "8db0c3159380088d955e3a8a147246841f47264d",
+      "findings": [
+        "P2 a node's checkable worked without checkboxes: applies only with checkboxes",
+        "P2 collapsing a loading node kept its query and slot: cancelled, late answer dropped",
+        "P2 columns cut cells and unchanged nodes were not parsed again: parsed after a change",
+        "P2 checked paths through a link retargeted out of the root stayed: looked at again",
+        "P2 a Shift+click range stopped at 50,000 items: no limit, ranges of siblings",
+        "P2 tooltips and menus resolved network paths on the GUI thread: loaded items only"
+      ],
+      "allFixedWithTests": true
     }
   }
 }
