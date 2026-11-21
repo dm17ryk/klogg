@@ -798,8 +798,8 @@ file or the preview order, and the merge window offers no removal for them. For 
 the pack check runs on what would load: the merge result, written to the store's check folder,
 when there are edits (an item an edit deleted stays deleted, so another pack may use its name),
 otherwise the new version as shipped. The previews settings (`previews/meta.json`) are listed in
-Pack Files but not edited; an update takes the new version's, so they never conflict and no
-resolution names them. A job keeps at most 4 MiB of conflict texts (jobs are kept, up to
+Pack Files but not edited or reverted on their own; an update takes the new version's, so they
+never conflict and no resolution names them. A job keeps at most 4 MiB of conflict texts (jobs are kept, up to
 256): previews and blocks first, each file's sides once; a file past that is listed with
 `omitted` and merged as a whole side, the merge window records the whole side chosen (a file
 that is not UTF-8 may read the same for different bytes), and an automatic update keeps no
@@ -815,7 +815,9 @@ removes it once the package folder is replaced or the store put back; a journal 
 when the pack is next read (at startup too) is finished: if the package folder already holds
 what the store's `upstream` holds and `upstream` moved on from the journal's tip, the update had
 completed and only the journal goes (an update moves `upstream` first and an undo puts it back
-last, `local` first, so an undo that stopped part-way is done again);
+last, `local` first, so an undo that stopped part-way is done again; while a journal that
+could not be acted on is there and the content folder no longer holds the `local` commit it
+recorded, the pack loads its installed folder, never content of a version that was not installed);
 otherwise CILogg ended part-way (between the branch moves or before the package swap, whatever
 the versions) and the store is put back to those tips, so a later update merges anew. A journal
 is read strictly (a missing or malformed field, the tips included, is never taken as "there was
@@ -837,7 +839,10 @@ nothing) and taken back if the copy fails, so a copy whose route cannot be added
 preview routes at their limit of 128, or another route of the user's already under the copy's
 name, which it would decode with) is not made, never left with a wrong route, and Keep Both
 checks the routes of all its copies at Apply. A copy under another name (Keep Both's
-"<name> (mine)") never takes the name of a pack's preview, which it would replace. A copied block is renamed also when an enabled
+"<name> (mine)") never takes the name of a preview of any installed pack, enabled or not, which
+it would replace. Arrays of named elements (preview fields) merge their order too: a side that
+keeps the installed order leaves the order to the other, an element one side added keeps its
+place, and two different reorderings are one conflict of the list. A copied block is renamed also when an enabled
 pack's block has its name (a pack block literally named `<other-pack-id>/<name>`), which would
 replace it. A field resolution's path stays within 4,096 characters and 128 segments; a conflict
 on a deeper field is listed as a whole-item conflict. A merge result must also stay within the

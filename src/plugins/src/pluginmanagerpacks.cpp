@@ -358,9 +358,12 @@ QString PluginManager::packStoreRoot() const
 QString PluginManager::packContentDirectory( const QString& pluginId ) const
 {
     // The effective content wherever its folder is, also while the repository does not open
-    // (another program holds a file of it): the installed folder only when there is none.
-    const auto content = PackStore( packStoreRoot(), pluginId ).contentDirectory();
-    return content.isEmpty() ? pluginDirectory( pluginId ) : content;
+    // (another program holds a file of it): the installed folder only when there is none, or
+    // while it may hold what an unfinished update wrote (its journal not acted on yet).
+    const PackStore store( packStoreRoot(), pluginId );
+    const auto content = store.contentDirectory();
+    return content.isEmpty() || store.contentFromUnfinishedUpdate() ? pluginDirectory( pluginId )
+                                                                    : content;
 }
 
 QString PluginManager::packRevision( const QString& pluginId ) const
@@ -881,7 +884,7 @@ Result PluginManager::managePack( const QString& operation, const QString& id,
     }
     // The store can have changed even when its files could not be written afterwards, so the
     // summary and listeners follow it in both cases.
-    const auto content = store.contentDirectory();
+    const auto content = store.contentFromUnfinishedUpdate() ? QString{} : store.contentDirectory();
     it->second->pack = packSummary( manifest.json, content.isEmpty() ? manifest.directory : content );
     it->second->pack[ "localEdits" ] = static_cast<int>( store.localEdits().size() );
     LOG_INFO << "Pack " << operation.toStdString() << " id=" << id.toStdString()

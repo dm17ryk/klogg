@@ -111,6 +111,10 @@ public:
     QString beginUpdate( const PackTips& before );
     void endUpdate();
     bool hasJournal() const;
+    // A journal is there and the content folder does not hold the `local` commit it recorded
+    // from before: the folder may hold what an unfinished install or update wrote, a version that
+    // was never installed, so it is not loaded until the journal is acted on.
+    bool contentFromUnfinishedUpdate() const;
     // Finishes an install or update whose journal is still there. When `installed` (the
     // installed package folder's files, with `installedManifest`) is what the store's `upstream`
     // holds, the package was replaced and only the journal was left: it goes. Otherwise (CILogg

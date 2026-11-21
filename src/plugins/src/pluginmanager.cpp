@@ -218,9 +218,11 @@ void PluginManager::discover()
                 }
             }
             // The effective content folder whenever there is one, also while its repository
-            // does not open: the installed folder would lose the edits for this session.
+            // does not open: the installed folder would lose the edits for this session. Not
+            // while it may hold what an unfinished update wrote, a version never installed.
             const PackStore store( packStoreRoot(), id );
-            const auto content = store.contentDirectory();
+            const auto content
+                = store.contentFromUnfinishedUpdate() ? QString{} : store.contentDirectory();
             entry->pack = packSummary( entry->manifest.json,
                                        content.isEmpty() ? entry->manifest.directory : content );
             entry->pack[ "localEdits" ]

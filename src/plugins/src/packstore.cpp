@@ -774,6 +774,12 @@ QString PackStore::planRestore( const QString& storePath, const QString& commitI
     }
     *stored = current;
     const auto kind = packcanonical::kindOf( storePath );
+    // The previews settings (version, $schema, ...) follow the installed version: an update takes
+    // the new version's, and they are not reverted on their own.
+    if ( kind == QLatin1String( "meta" ) ) {
+        return QStringLiteral( "The previews settings follow the installed version of the pack and "
+                               "are not reverted on their own." );
+    }
     if ( storePath.isEmpty() ) {
         // A whole earlier state only within the installed version: another version's items need
         // not match this version's manifest (a Lua file it lists, for example).
@@ -886,6 +892,24 @@ void PackStore::endUpdate()
 bool PackStore::hasJournal() const
 {
     return safePackId( packId_ ) && QFileInfo::exists( journalPath() );
+}
+
+bool PackStore::contentFromUnfinishedUpdate() const
+{
+    if ( !hasJournal() ) {
+        return false;
+    }
+    QFile journal( journalPath() );
+    const auto before = journal.open( QIODevice::ReadOnly )
+                            ? QJsonDocument::fromJson( journal.read( 64 * 1024 ) )
+                                  .object()
+                                  .value( "local" )
+                                  .toString()
+                            : QString{};
+    QFile marker( QDir( root_ ).filePath( packId_ + QStringLiteral( "/current.revision" ) ) );
+    const auto recorded
+        = marker.open( QIODevice::ReadOnly ) ? QString::fromLatin1( marker.read( 64 ) ).trimmed() : QString{};
+    return before.isEmpty() || recorded != before;
 }
 
 QString PackStore::recoverInterruptedUpdate( const PackFiles* installed,

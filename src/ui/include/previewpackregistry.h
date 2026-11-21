@@ -64,6 +64,9 @@ public:
     // Whether the routes of copies of `pack`'s previews (preview name -> the copy's name) can all
     // be added to the user's routes: the refusal, or an empty string. Keep Both checks it at Apply.
     QString checkCopyRoutes( const Contribution& pack, const QMap<QString, QString>& copies ) const;
+    // The preview names of every installed pack, enabled or not: a copy under another name never
+    // takes one, which it would replace (yours win) once that pack is enabled.
+    QStringList installedPackPreviewNames() const;
     // The applied contributions, in pack ID order.
     const QVector<Contribution>& contributions() const
     {

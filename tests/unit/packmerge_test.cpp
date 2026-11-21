@@ -1352,6 +1352,90 @@ TEST_CASE( "A version without a previews document takes the previews with it", "
     CHECK( reverted.error.contains( "no previews document" ) );
 }
 
+TEST_CASE( "Named elements keep the order changes of either side", "[packmerge][E16]" )
+{
+    const auto item = []( std::initializer_list<std::pair<const char*, int>> fields ) {
+        QJsonArray array;
+        for ( const auto& [ name, value ] : fields ) {
+            array.append( QJsonObject{ { "name", name }, { "v", value } } );
+        }
+        return QJsonValue( QJsonObject{ { "name", "P" }, { "fields", array } } );
+    };
+    const auto names = []( const packmerge::JsonMerge& merged ) {
+        QStringList result;
+        for ( const auto& field : merged.value->toObject().value( "fields" ).toArray() ) {
+            result.append( field.toObject().value( "name" ).toString() );
+        }
+        return result;
+    };
+    const auto base = item( { { "A", 0 }, { "B", 0 } } );
+    // Yours edits A, the new version reorders: both are kept.
+    auto merged = packmerge::mergeJson( base, item( { { "A", 1 }, { "B", 0 } } ),
+                                        item( { { "B", 0 }, { "A", 0 } } ), MergeStrategy::Fail );
+    CHECK( merged.conflicts.isEmpty() );
+    CHECK( names( merged ) == QStringList{ "B", "A" } );
+    CHECK( merged.value->toObject().value( "fields" ).toArray().last().toObject().value( "v" ).toInt() == 1 );
+    // The new version inserts C between them: it stays there.
+    merged = packmerge::mergeJson( base, item( { { "A", 1 }, { "B", 0 } } ),
+                                   item( { { "A", 0 }, { "C", 0 }, { "B", 0 } } ), MergeStrategy::Fail );
+    CHECK( merged.conflicts.isEmpty() );
+    CHECK( names( merged ) == QStringList{ "A", "C", "B" } );
+    // Yours inserts D first and the new version C between: both where they were put.
+    merged = packmerge::mergeJson( base, item( { { "D", 0 }, { "A", 0 }, { "B", 0 } } ),
+                                   item( { { "A", 0 }, { "C", 0 }, { "B", 0 } } ), MergeStrategy::Fail );
+    CHECK( merged.conflicts.isEmpty() );
+    CHECK( names( merged ) == QStringList{ "D", "A", "C", "B" } );
+    // Two different reorderings are one conflict of the list.
+    const auto three = item( { { "A", 0 }, { "B", 0 }, { "C", 0 } } );
+    merged = packmerge::mergeJson( three, item( { { "C", 0 }, { "A", 0 }, { "B", 0 } } ),
+                                   item( { { "B", 0 }, { "A", 0 }, { "C", 0 } } ), MergeStrategy::Fail );
+    CHECK( merged.conflicts == QStringList{ "fields" } );
+}
+
+TEST_CASE( "The previews settings follow the installed version", "[packmerge][E16]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    PackStore store( root.path(), "org.example.pack" );
+    REQUIRE( store.install( packFiles(), packManifest(), "1.0.0", "Team packs" ).isEmpty() );
+    const auto meta = QStringLiteral( "previews/meta.json" );
+    REQUIRE( store.files().contains( meta ) );
+    PackFiles stored;
+    bool changes = false;
+    CHECK( store.planRestore( meta, {}, &stored, &changes ).contains( "previews settings" ) );
+    CHECK( store.restore( meta, {}, "Revert" ).contains( "previews settings" ) );
+}
+
+TEST_CASE( "A content folder an unfinished update wrote is not loaded", "[packmerge][E16]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    const auto second = QStringLiteral( "previews/%53econd.json" );
+    PackStore store( root.path(), "org.example.pack" );
+    REQUIRE( store.install( packFiles(), packManifest(), "1.0.0", "Team packs" ).isEmpty() );
+    auto edited = QJsonDocument::fromJson( store.files().value( second ) ).object();
+    edited[ "regex" ] = "^EDITED$";
+    REQUIRE( store.commitEdit( second, packcanonical::itemBytes( edited ), "Edit" ).isEmpty() );
+    CHECK_FALSE( store.contentFromUnfinishedUpdate() );
+    REQUIRE( store.beginUpdate( store.tips() ).isEmpty() );
+    // The folder still holds the content from before the update.
+    CHECK_FALSE( store.contentFromUnfinishedUpdate() );
+    auto v2Previews = QJsonDocument::fromJson( Previews ).object();
+    auto previews = v2Previews[ "previews" ].toArray();
+    auto frame = previews[ 1 ].toObject();
+    frame[ "regex" ] = "^A2$";
+    previews[ 1 ] = frame;
+    v2Previews[ "previews" ] = previews;
+    const auto v2 = packFiles( QJsonDocument( v2Previews ).toJson() );
+    REQUIRE( store.applyUpdate( v2, store.planUpdate( v2, MergeStrategy::Fail ).merged,
+                                packManifest( "1.1.0" ), "1.1.0", "Team packs" )
+                 .isEmpty() );
+    // Now it holds the update's content, while the package folder is still the old version.
+    CHECK( store.contentFromUnfinishedUpdate() );
+    store.endUpdate();
+    CHECK_FALSE( store.contentFromUnfinishedUpdate() );
+}
+
 TEST_CASE( "A conflict on a field with an empty name is settled as a whole item", "[packmerge][E16]" )
 {
     QTemporaryDir root;

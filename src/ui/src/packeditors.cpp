@@ -87,6 +87,8 @@ QString checkKeepBoth( const PreviewPackRegistry::Contribution& pack, const QStr
                        const QStringList& incoming )
 {
     QMap<QString, QString> copies;
+    // Every installed pack's previews, enabled or not (one enabled later would lose its preview).
+    const auto packPreviews = PreviewPackRegistry::instance().installedPackPreviewNames();
     for ( const auto& name : names ) {
         copies.insert( name, keepBothName( name ) );
         const auto& previews = pack.previews.previews;
@@ -105,7 +107,7 @@ QString checkKeepBoth( const PreviewPackRegistry::Contribution& pack, const QStr
                           [ &name ]( const auto& preview ) {
                               return preview.name == keepBothName( name );
                           } )
-             || incoming.contains( keepBothName( name ) )
+             || incoming.contains( keepBothName( name ) ) || packPreviews.contains( keepBothName( name ) )
              || PreviewManager::instance().packOrigin( keepBothName( name ) ) ) {
             return tr( "A pack has a preview named \"%1\", which the copy would replace. Choose "
                        "Keep Mine or Take Theirs." )
@@ -580,6 +582,13 @@ void openPackFiles( QWidget* parent, Executor executor, const QString& packId,
         return !selected( Qt::UserRole ).isEmpty() && selected( Qt::UserRole + 1 ) != "deleted"
                && selected( Qt::UserRole + 2 ) != "meta";
     };
+    // The previews settings follow the installed version: neither reverted nor reset alone.
+    const auto revertible = [ &selected ] { return selected( Qt::UserRole + 2 ) != "meta"; };
+    const auto enableButtons = [ & ] {
+        edit->setEnabled( editable() );
+        history->setEnabled( revertible() );
+        reset->setEnabled( revertible() );
+    };
     const auto refresh = [ & ] {
         const auto files = executor( packRequest( "pack_files", packId ) );
         if ( !files.ok() ) {
@@ -603,10 +612,9 @@ void openPackFiles( QWidget* parent, Executor executor, const QString& packId,
             }
             ++index;
         }
-        edit->setEnabled( editable() );
+        enableButtons();
     };
-    QObject::connect( table, &QTableWidget::currentCellChanged, &dialog,
-                      [ & ] { edit->setEnabled( editable() ); } );
+    QObject::connect( table, &QTableWidget::currentCellChanged, &dialog, [ & ] { enableButtons(); } );
     QObject::connect( edit, &QPushButton::clicked, &dialog, [ & ] {
         if ( !editable() ) {
             return;

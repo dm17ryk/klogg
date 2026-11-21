@@ -299,10 +299,35 @@ QString PreviewPackRegistry::checkCopyRoutes( const Contribution& pack,
     return {};
 }
 
+QStringList PreviewPackRegistry::installedPackPreviewNames() const
+{
+    QStringList names;
+    if ( !manager_ ) {
+        return names;
+    }
+    for ( const auto& plugin : manager_->plugins() ) {
+        const auto id = plugin.toMap().value( "id" ).toString();
+        const auto manifest = manager_->manifest( id );
+        if ( !cilogg::plugins::isConfigPack( manifest ) ) {
+            continue;
+        }
+        const auto pack = read( id, manager_->packContentDirectory( id ), manifest );
+        for ( const auto& preview : pack.previews.previews ) {
+            names.append( preview.name );
+        }
+    }
+    return names;
+}
+
 QString PreviewPackRegistry::copyWithRoute( const Contribution& pack, const QString& name,
                                             const QString& target,
                                             const std::function<QString()>& copy )
 {
+    // A copy under another name never takes a pack preview's name, also of a pack not enabled
+    // now: it would replace that preview once the pack is enabled.
+    if ( target != name && instance().installedPackPreviewNames().contains( target ) ) {
+        return tr( "A pack has a preview named \"%1\", which the copy would replace." ).arg( target );
+    }
     // The copy has no link to the pack, so it keeps decoding without it: the route the preview
     // decodes with becomes the user's route for the copy. The route is saved first: a route under
     // a name no preview has decodes nothing, while a copy without its route would decode wrongly.

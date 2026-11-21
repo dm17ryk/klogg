@@ -895,6 +895,19 @@ TEST_CASE( "The pack check refuses shared names and merged limits", "[previewdec
         REQUIRE( PreviewManager::instance().clearAll() );
     }
 
+    // A copy under another name never takes the name of a preview of a pack that is installed
+    // but not enabled: enabled later, that pack would lose it to the copy.
+    // (No decoder routes: the default ones name "Pack frame", which this pack does not have.)
+    writePack( root.path(), withContent( packManifest( "z.pack", 0 ), "decoder_routes", QJsonObject{} ),
+               "Pack frame (mine)" );
+    manager.discover();
+    REQUIRE( registry.installedPackPreviewNames().contains( "Pack frame (mine)" ) );
+    CHECK( registry.copyPreview( "Pack frame", "Pack frame (mine)" )
+               .contains( "A pack has a preview named \"Pack frame (mine)\"" ) );
+    CHECK_FALSE( PreviewManager::instance().findByName( "Pack frame (mine)" ) );
+    REQUIRE( settings.setConfiguration( original ) );
+    REQUIRE( PreviewManager::instance().clearAll() );
+
     REQUIRE( manager.manage( "disable", "a.pack", {} ).ok() );
     CHECK( registry.contributions().isEmpty() );
     CHECK( !findIn( PreviewManager::instance().effective(), "Pack frame" ) );

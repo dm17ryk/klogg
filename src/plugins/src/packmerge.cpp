@@ -214,6 +214,74 @@ QString materialize( const QString& root, const PathLink* link )
     return parts.join( '/' );
 }
 
+// A conflict at `at`: recorded (up to MaxFieldConflicts), and the side the strategy takes.
+std::optional<QJsonValue> conflict( const std::optional<QJsonValue>& mine,
+                                    const std::optional<QJsonValue>& theirs, const PathLink* at,
+                                    MergeState& state )
+{
+    if ( state.conflicts.size() < MaxFieldConflicts ) {
+        state.conflicts.append( materialize( state.root, at ) );
+    }
+    else {
+        state.overflow = true;
+    }
+    return state.strategy == MergeStrategy::TakeTheirs ? theirs : mine;
+}
+
+// The names of an array of named elements, in its order.
+QStringList namesOf( const QJsonArray& array )
+{
+    QStringList names;
+    names.reserve( array.size() );
+    for ( const auto& item : array ) {
+        names.append( item.toObject().value( "name" ).toString() );
+    }
+    return names;
+}
+
+// Whether `a` and `b` order the names they share the same way (`inA`, `inB`: their names).
+template <typename Index>
+bool sameOrder( const QStringList& a, const Index& inA, const QStringList& b, const Index& inB )
+{
+    QStringList left;
+    QStringList right;
+    for ( const auto& name : a ) {
+        if ( inB.contains( name ) ) {
+            left.append( name );
+        }
+    }
+    for ( const auto& name : b ) {
+        if ( inA.contains( name ) ) {
+            right.append( name );
+        }
+    }
+    return left == right;
+}
+
+// `skeleton`'s order, with each name only `other` has placed after the nearest name before it in
+// `other` that `skeleton` has (first when there is none): an insertion keeps its position.
+QStringList interleave( const QStringList& skeleton, const QStringList& other )
+{
+    const QSet<QString> inSkeleton( skeleton.cbegin(), skeleton.cend() );
+    QHash<QString, QStringList> after;
+    QStringList first;
+    const QString* anchor = nullptr;
+    for ( const auto& name : other ) {
+        if ( inSkeleton.contains( name ) ) {
+            anchor = &name;
+        }
+        else {
+            ( anchor ? after[ *anchor ] : first ).append( name );
+        }
+    }
+    QStringList names = first;
+    for ( const auto& name : skeleton ) {
+        names.append( name );
+        names += after.value( name );
+    }
+    return names;
+}
+
 // Each element of an array of named elements by its name.
 QHash<QString, qsizetype> byName( const QJsonArray& array )
 {
@@ -273,17 +341,19 @@ std::optional<QJsonValue> mergeValue( const std::optional<QJsonValue>& base,
         const auto baseIndex = byName( baseItems );
         const auto mineIndex = byName( mineItems );
         const auto theirIndex = byName( theirItems );
-        // The local order, then elements new in the new version in its order.
-        QStringList names;
-        for ( const auto& item : mineItems ) {
-            names.append( item.toObject().value( "name" ).toString() );
+        const auto baseNames = namesOf( baseItems );
+        const auto mineNames = namesOf( mineItems );
+        const auto theirNames = namesOf( theirItems );
+        // The order merges like the elements: a side that keeps the installed version's order of
+        // the elements it has leaves the order to the other; two different reorderings conflict.
+        const bool mineReordered = base && !sameOrder( mineNames, mineIndex, baseNames, baseIndex );
+        const bool theirReordered = base && !sameOrder( theirNames, theirIndex, baseNames, baseIndex );
+        if ( mineReordered && theirReordered && !sameOrder( mineNames, mineIndex, theirNames, theirIndex ) ) {
+            return conflict( mine, theirs, at, state );
         }
-        for ( const auto& item : theirItems ) {
-            const auto name = item.toObject().value( "name" ).toString();
-            if ( !mineIndex.contains( name ) ) {
-                names.append( name );
-            }
-        }
+        // One side's order, with the elements only the other has where the other put them.
+        const auto names = theirReordered && !mineReordered ? interleave( theirNames, mineNames )
+                                                           : interleave( mineNames, theirNames );
         QJsonArray array;
         for ( const auto& name : names ) {
             const PathLink link{ at, &name, true };
@@ -297,13 +367,7 @@ std::optional<QJsonValue> mergeValue( const std::optional<QJsonValue>& base,
         return array;
     }
     // The same value changed differently, or deleted on one side and changed on the other.
-    if ( state.conflicts.size() < MaxFieldConflicts ) {
-        state.conflicts.append( materialize( state.root, at ) );
-    }
-    else {
-        state.overflow = true;
-    }
-    return state.strategy == MergeStrategy::TakeTheirs ? theirs : mine;
+    return conflict( mine, theirs, at, state );
 }
 } // namespace
 
