@@ -1694,7 +1694,8 @@ void PluginManager::commitWhenStopped( const StagedPlugin& staged, const QString
     // fails puts the store back, so the version and the content never disagree. The journal
     // written first covers CILogg ending in between: the next read of the pack puts it back.
     PackTips packBefore;
-    bool journal = false;
+    bool journal = false; // this install's journal is still needed (the store was not put back)
+    bool began = false;   // this install wrote its journal
     const auto putBack = [ this, &staged, &packBefore ] {
         const auto restored = PackStore( packStoreRoot(), staged.manifest.id ).rollback( packBefore );
         if ( !restored.isEmpty() ) {
@@ -1713,6 +1714,7 @@ void PluginManager::commitWhenStopped( const StagedPlugin& staged, const QString
                                       "be using it). Try again." )
                     : store.beginUpdate( packBefore );
         journal = error.isEmpty();
+        began = journal;
         if ( journal ) {
             error = finishPackInstall( staged, packShipped, packMerged, source );
         }
@@ -1728,9 +1730,10 @@ void PluginManager::commitWhenStopped( const StagedPlugin& staged, const QString
         error = PluginRepository::commit( staged, QDir( dataRoot_ ).filePath( "plugins" ) );
         journal = journal && !error.isEmpty() && pack && !putBack();
     }
-    // Done, or put back: the journal goes. One that stays (a store not put back) is put back
-    // by the next read of the pack.
-    if ( pack && !journal ) {
+    // Done, or put back: this install's journal goes. One that stays (a store not put back) is
+    // put back by the next read of the pack, and so is an earlier journal this install never
+    // replaced (it failed before writing its own, perhaps recovering that one): never removed here.
+    if ( pack && began && !journal ) {
         PackStore store( packStoreRoot(), staged.manifest.id );
         store.endUpdate();
         // Done or put back, but the journal could not be removed: the content folder is current

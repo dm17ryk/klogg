@@ -1413,6 +1413,44 @@ TEST_CASE( "Named elements keep the order changes of either side", "[packmerge][
                                    item( { { "A", 0 }, { "X", 0 }, { "B", 0 } } ), MergeStrategy::Fail );
     CHECK( merged.conflicts.isEmpty() );
     CHECK( names( merged ) == QStringList{ "A", "X", "B" } );
+    // Also while yours moves another element: placing X is not moving C.
+    merged = packmerge::mergeJson( three, item( { { "C", 0 }, { "A", 0 }, { "X", 0 }, { "B", 0 } } ),
+                                   item( { { "A", 0 }, { "X", 0 }, { "B", 0 }, { "C", 0 } } ),
+                                   MergeStrategy::Fail );
+    CHECK( merged.conflicts.isEmpty() );
+    CHECK( names( merged ) == QStringList{ "C", "A", "X", "B" } );
+}
+
+TEST_CASE( "An install that fails before its journal keeps an earlier one", "[packmerge][E16]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    PluginManager manager( root.filePath( "data" ), root.filePath( "none" ) );
+    const auto id = QStringLiteral( "org.example.pack" );
+    const auto storeRoot = root.filePath( "data/pack-store" );
+    const auto v1 = writePackage( root.filePath( "v1" ), "1.0.0", Previews, "-- a\n" );
+    REQUIRE( finished( manager, manager.manage( "install", {}, { { "path", v1 } } ) )[ "state" ]
+             == "completed" );
+    // An earlier update stopped part-way (its journal is there), and its repository is gone, so
+    // it cannot be put back.
+    const auto tips = PackStore( storeRoot, id ).tips();
+    const auto journal = QDir( storeRoot ).filePath( id + ".update.json" );
+    {
+        QFile file( journal );
+        REQUIRE( file.open( QIODevice::WriteOnly ) );
+        file.write( QJsonDocument( QJsonObject{ { "existed", true },
+                                                { "upstream", tips.upstream },
+                                                { "local", tips.local } } )
+                        .toJson() );
+    }
+    REQUIRE( QDir( QDir( storeRoot ).filePath( id + ".git" ) ).removeRecursively() );
+    // The next update fails on that journal, before it writes its own: the journal stays, so
+    // the pack keeps loading its installed version.
+    const auto v2 = writePackage( root.filePath( "v2" ), "1.1.0", Previews, "-- b\n" );
+    const auto failed = finished( manager, manager.manage( "install", {}, { { "path", v2 } } ) );
+    CHECK( failed[ "state" ] == "failed" );
+    CHECK( QFileInfo::exists( journal ) );
+    CHECK( manager.packContentDirectory( id ) == manager.plugins().first().toMap()[ "directory" ].toString() );
 }
 
 TEST_CASE( "A store that is gone is never taken as put back", "[packmerge][E16]" )

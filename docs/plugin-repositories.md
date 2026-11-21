@@ -819,7 +819,8 @@ last, `local` first, so an undo that stopped part-way is done again; while a jou
 not be acted on is there, the pack loads its installed folder, never content of a version that
 was not installed, as the content folder is replaced before its revision is recorded; a journal
 that was settled, the update finished or put back, but could not be removed keeps the content
-folder loading; a store that is gone is never taken as put back);
+folder loading; a store that is gone is never taken as put back, and an install that fails
+before it writes its own journal leaves an earlier one in place);
 otherwise CILogg ended part-way (between the branch moves or before the package swap, whatever
 the versions) and the store is put back to those tips, so a later update merges anew. A journal
 is read strictly (a missing or malformed field, the tips included, is never taken as "there was
@@ -846,8 +847,9 @@ content and its installed version, read even when they do not load now), which i
 enabled, otherwise its definition and the choice saved for it). Arrays of named elements
 (preview fields) merge their order too: a side that
 keeps the installed order leaves the order to the other, an element one side added keeps its
-place, and two different reorderings, or an element both sides added in different places, are
-one conflict of the list. A copied block is renamed also when an enabled
+place, and two different reorderings, or an element both sides added in different places (after
+another element of the installed version, or in another order among such elements), are one
+conflict of the list. A copied block is renamed also when an enabled
 pack's block has its name (a pack block literally named `<other-pack-id>/<name>`), which would
 replace it. A field resolution's path stays within 4,096 characters and 128 segments; a conflict
 on a deeper field is listed as a whole-item conflict. A merge result must also stay within the
