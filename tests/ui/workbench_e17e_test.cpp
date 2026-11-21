@@ -1585,18 +1585,42 @@ TEST_CASE( "E17e file trees keep links inside their roots, count selections, che
     const QPersistentModelIndex listed( toggleModel->index( 0, 0 ) );
     toggleTree->expand( listed );
     REQUIRE( waitFor( [ & ] { return toggleModel->rowCount( listed ) == 30; }, FileSystemWait ) );
+    // A folder need not list its files in name order (APFS does not), and the native model sorts
+    // its rows later on: the ends are taken once the rows show in name order.
+    const auto fileName = []( int at ) { return QString( "f%1.bin" ).arg( at, 2, 10, QChar( '0' ) ); };
+    REQUIRE( waitFor(
+        [ & ] {
+            for ( int row = 0; row < 30; ++row ) {
+                if ( toggleModel->index( row, 0, listed ).data().toString() != fileName( row ) ) {
+                    return false;
+                }
+            }
+            return true;
+        },
+        FileSystemWait ) );
     const QPersistentModelIndex firstFile( toggleModel->index( 0, 0, listed ) );
     const QPersistentModelIndex lastFile( toggleModel->index( 29, 0, listed ) );
-    toggleTree->scrollTo( firstFile );
-    QCoreApplication::processEvents();
-    QTest::mouseClick( toggleTree->viewport(), Qt::LeftButton, {},
-                       toggleTree->visualRect( firstFile ).center() );
-    toggleTree->scrollTo( lastFile );
-    QCoreApplication::processEvents();
-    QTest::mouseClick( toggleTree->viewport(), Qt::LeftButton, Qt::ShiftModifier,
-                       toggleTree->visualRect( lastFile ).center() );
+    // Each click once the item shows in the viewport and is the item under the point: the view
+    // may scroll and lay out a little later on some platforms.
+    const auto clickOn = [ & ]( const QPersistentModelIndex& item, Qt::KeyboardModifiers modifiers ) {
+        toggleTree->scrollTo( item );
+        const auto shown = [ & ] {
+            const auto at = toggleTree->visualRect( item ).center();
+            const auto hit = toggleTree->indexAt( at );
+            return toggleTree->viewport()->rect().contains( at )
+                   && hit.sibling( hit.row(), 0 ) == QModelIndex( item );
+        };
+        INFO( "item " << item.data().toString().toStdString() << " at row " << item.row() );
+        REQUIRE( waitFor( shown ) );
+        QTest::mouseClick( toggleTree->viewport(), Qt::LeftButton, modifiers,
+                           toggleTree->visualRect( item ).center() );
+    };
+    clickOn( firstFile, {} );
+    clickOn( lastFile, Qt::ShiftModifier );
     int toggled = 0;
-    toggleBehaviour->value( 1, &toggled );
+    const auto toggledPaths = toggleBehaviour->value( 2, &toggled );
+    INFO( "toggled " << toggled << ", first " << toggledPaths.value( 0 ).toStdString() << ", current "
+                     << toggleTree->currentIndex().data().toString().toStdString() );
     REQUIRE( toggled == 30 );
 
     // A pick list checks only what shows a check box: not a folder with select "files", a greyed
