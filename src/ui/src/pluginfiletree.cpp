@@ -319,6 +319,20 @@ void PluginFileRootsModel::setRoots( const QStringList& paths, QStringList* skip
         roots_.append( root );
     }
     rebuildRootPointers();
+    // Checked paths that are no longer in a root go: the plugin changed the roots, so nothing is
+    // sent. Those of a network root not reached yet are kept as long as they lie in it.
+    QStringList kept;
+    QSet<QString> keys;
+    for ( const auto& path : std::as_const( checked_ ) ) {
+        const auto row = rootOfPath( path );
+        const bool unreached = row >= 0 && roots_.at( row ).network && !roots_.at( row ).source.isValid();
+        if ( row >= 0 && ( unreached || reaches( path ) ) ) {
+            kept.append( path );
+            keys.insert( key( path ) );
+        }
+    }
+    checked_ = kept;
+    checkedKeys_ = keys;
     endResetModel();
 }
 
@@ -456,6 +470,25 @@ int PluginFileRootsModel::rootOfPath( const QString& path ) const
 bool PluginFileRootsModel::withinRoots( const QString& path ) const
 {
     return rootOfPath( normalize( path ) ) >= 0;
+}
+
+bool PluginFileRootsModel::reaches( const QString& path ) const
+{
+    const auto normalized = normalize( path );
+    const auto row = rootOfPath( normalized );
+    if ( row < 0 ) {
+        return false;
+    }
+    const auto& root = roots_.at( row );
+    if ( normalized.compare( root.path, PathCase ) == 0 ) {
+        return true; // the root's own item
+    }
+    // A network root that was not reached is not touched for a tooltip or a menu.
+    if ( !root.source.isValid() || root.canonical.isEmpty() ) {
+        return false;
+    }
+    const auto target = resolvedPath( normalized );
+    return !target.isEmpty() && inside( root.canonical, target );
 }
 
 QModelIndex PluginFileRootsModel::sourceParentMapped( const QModelIndex& sourceParent,
@@ -974,15 +1007,28 @@ QStringList PluginFileTreeBehaviour::value( int maximum, int* count ) const
         }
         return paths.mid( 0, maximum );
     }
+    QStringList paths;
+    const auto total = visitSelected( [ & ]( const QString& path ) {
+        if ( paths.size() >= maximum ) {
+            return false;
+        }
+        paths.append( path );
+        return paths.size() < maximum;
+    } );
     if ( count != nullptr ) {
-        *count = 0;
+        *count = total;
     }
+    return paths;
+}
+
+int PluginFileTreeBehaviour::visitSelected( const std::function<bool( const QString& )>& visit ) const
+{
     if ( !tree_ ) {
-        return {};
+        return 0;
     }
-    // The selected rows of each folder as merged intervals: all of them are counted, and only the
-    // first `maximum` in shown order get a path (a selection of a whole huge folder is never
-    // walked row by row).
+    // The selected rows of each folder as merged intervals: all of them are counted, and paths
+    // are built only for the rows visited, in shown order (a selection of a whole huge folder is
+    // never walked row by row).
     std::map<QVector<int>, std::pair<QPersistentModelIndex, std::vector<std::pair<int, int>>>>
         folders;
     const auto selection = tree_->selectionModel()->selection();
@@ -1025,14 +1071,13 @@ QStringList PluginFileTreeBehaviour::value( int maximum, int* count ) const
         }
     }
     std::make_heap( heap.begin(), heap.end(), later );
-    QStringList paths;
-    while ( !heap.empty() && paths.size() < maximum ) {
+    while ( !heap.empty() ) {
         std::pop_heap( heap.begin(), heap.end(), later );
         auto cursor = std::move( heap.back() );
         heap.pop_back();
         const auto path = pathAt( roots_->index( cursor.row, 0, cursor.parent ) );
-        if ( !path.isEmpty() ) {
-            paths.append( path );
+        if ( !path.isEmpty() && !visit( path ) ) {
+            break;
         }
         if ( cursor.row < cursor.last ) {
             ++cursor.row;
@@ -1041,10 +1086,7 @@ QStringList PluginFileTreeBehaviour::value( int maximum, int* count ) const
             std::push_heap( heap.begin(), heap.end(), later );
         }
     }
-    if ( count != nullptr ) {
-        *count = total;
-    }
-    return paths;
+    return total;
 }
 
 void PluginFileTreeBehaviour::reveal( const QModelIndex& index )
@@ -1198,25 +1240,53 @@ QJsonObject PluginFileTreeBehaviour::menuTarget( const QString& path ) const
 
 QString PluginFileTreeBehaviour::copyText() const
 {
-    auto paths = value( std::numeric_limits<int>::max() );
-    if ( paths.isEmpty() && tree_ && tree_->currentIndex().isValid() ) {
-        paths.append( pathAt( tree_->currentIndex() ) );
-    }
-    // Whole paths only, at most MaxCopyChars (as tables and trees).
+    // Whole paths only, at most MaxCopyChars (as tables and trees), in shown order: no path is
+    // built past the budget, however many rows are selected.
     QString text;
-    for ( const auto& path : std::as_const( paths ) ) {
+    bool cut = false;
+    const auto add = [ & ]( const QString& path ) {
         const auto shown = QDir::toNativeSeparators( path );
         if ( text.size() + shown.size() + ( text.isEmpty() ? 0 : 1 ) > pluginview::MaxCopyChars ) {
-            LOG_WARNING << "Plugin file tree copy cut at " << pluginview::MaxCopyChars
-                        << " characters (whole paths)";
-            break;
+            cut = true;
+            return false;
         }
         if ( !text.isEmpty() ) {
             text += QLatin1Char( '\n' );
         }
         text += shown;
+        return true;
+    };
+    bool any = false;
+    if ( options_.checkboxes ) {
+        const auto checked = roots_->checkedPaths();
+        any = !checked.isEmpty();
+        for ( const auto& path : checked ) {
+            if ( !add( path ) ) {
+                break;
+            }
+        }
+    }
+    else if ( tree_ ) {
+        any = visitSelected( add ) > 0;
+    }
+    if ( !any && tree_ && tree_->currentIndex().isValid() ) {
+        add( pathAt( tree_->currentIndex() ) );
+    }
+    if ( cut ) {
+        LOG_WARNING << "Plugin file tree copy cut at " << pluginview::MaxCopyChars
+                    << " characters (whole paths)";
     }
     return text;
+}
+
+bool PluginFileTreeBehaviour::canCopy() const
+{
+    if ( !tree_ ) {
+        return false;
+    }
+    const bool any = options_.checkboxes ? !roots_->checkedPaths().isEmpty()
+                                         : tree_->selectionModel()->hasSelection();
+    return any || tree_->currentIndex().isValid();
 }
 
 QMenu* PluginFileTreeBehaviour::buildMenu( const QPoint& position )
@@ -1225,7 +1295,10 @@ QMenu* PluginFileTreeBehaviour::buildMenu( const QPoint& position )
         return nullptr;
     }
     const auto index = tree_->indexAt( position );
-    const auto path = index.isValid() ? pathAt( index ) : QString{};
+    auto path = index.isValid() ? pathAt( index ) : QString{};
+    if ( !path.isEmpty() && !roots_->reaches( path ) ) {
+        path.clear(); // a link that leads out of its root names no item, as for tooltips
+    }
     if ( index.isValid() && !options_.checkboxes
          && tree_->selectionMode() != QAbstractItemView::NoSelection
          && roots_->flags( index ).testFlag( Qt::ItemIsSelectable ) ) {
@@ -1245,7 +1318,7 @@ QMenu* PluginFileTreeBehaviour::buildMenu( const QPoint& position )
         auto* copy = menu->addAction( tr( "Copy Path" ) );
         copy->setObjectName( tree_->objectName() + QStringLiteral( "_copy" ) );
         copy->setShortcut( QKeySequence::Copy );
-        copy->setEnabled( !copyText().isEmpty() );
+        copy->setEnabled( canCopy() ); // the text is built only when Copy is picked
         connect( copy, &QAction::triggered, this,
                  [ this ] { QApplication::clipboard()->setText( copyText() ); } );
     }

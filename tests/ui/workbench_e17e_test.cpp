@@ -1115,6 +1115,41 @@ TEST_CASE( "E17e a double-click on a check box does not activate; update_nodes o
     REQUIRE( large.index( "n0" ).data().toString() == "Changed" );
     REQUIRE( large.index( "c1" ).isValid() );
     REQUIRE( large.model()->nodeCount() == cilogg::plugins::MaxTreeNodes );
+
+    // Entries count in order: a node emptied first and its ancestor replaced next count the
+    // ancestor's nodes as they are by then (1,000 outside, A with D with 1,000 children).
+    QJsonArray outside;
+    QJsonArray leaves;
+    for ( int at = 0; at < 1000; ++at ) {
+        outside.append( QJsonObject{ { "id", QString( "o%1" ).arg( at ) } } );
+        leaves.append( QJsonObject{ { "id", QString( "g%1" ).arg( at ) } } );
+    }
+    outside.append( QJsonObject{
+        { "id", "A" },
+        { "text", "A" },
+        { "children", QJsonArray{ QJsonObject{ { "id", "D" }, { "children", leaves } } } } } );
+    View nested( QJsonObject{ { "type", "tree" }, { "id", "tr" }, { "nodes", outside } } );
+    REQUIRE( nested.model()->nodeCount() == 2002 );
+    const auto emptyThenReplace = [ & ]( int count ) {
+        QJsonArray fresh;
+        for ( int at = 0; at < count; ++at ) {
+            fresh.append( QJsonObject{ { "id", QString( "f%1" ).arg( at ) } } );
+        }
+        nested.patch( QJsonObject{
+            { "id", "tr" },
+            { "update_nodes",
+              QJsonArray{ QJsonObject{ { "id", "D" }, { "children", QJsonArray{} } },
+                          QJsonObject{ { "id", "A" }, { "text", "Changed" }, { "children", fresh } } } } } );
+    };
+    // 1,002 nodes once D is empty, then A's one child (D) gives way to 49,000: 50,001.
+    emptyThenReplace( cilogg::plugins::MaxTreeNodes - 1000 );
+    REQUIRE( nested.model()->nodeCount() == 2002 );
+    REQUIRE( nested.model()->rowCount( nested.index( "D" ) ) == 1000 );
+    REQUIRE( nested.index( "A" ).data().toString() == "A" );
+    emptyThenReplace( cilogg::plugins::MaxTreeNodes - 1001 ); // 50,000
+    REQUIRE( nested.model()->nodeCount() == cilogg::plugins::MaxTreeNodes );
+    REQUIRE_FALSE( nested.index( "D" ).isValid() );
+    REQUIRE( nested.index( "A" ).data().toString() == "Changed" );
 }
 
 namespace {
@@ -1160,7 +1195,8 @@ TEST_CASE( "E17e file trees keep links inside their roots, count selections, che
     View fixture( QJsonObject{ { "type", "file_tree" },
                                { "id", "files" },
                                { "roots", QJsonArray{ root } },
-                               { "selection", "multi" } } );
+                               { "selection", "multi" },
+                               { "context_menu", "files_menu" } } );
     auto* tree = fixture.tree( "files" );
     auto* behaviour = tree->findChild<PluginFileTreeBehaviour*>();
     auto* model = behaviour->model();
@@ -1193,12 +1229,36 @@ TEST_CASE( "E17e file trees keep links inside their roots, count selections, che
             { "id", "files" },
             { "set", QJsonObject{ { "value", QJsonArray{ root + "/out/secret.bin" } } } } } );
         REQUIRE( behaviour->value( 10 ).isEmpty() );
+        // Tooltips and menus never name it or what lies through it; a right-click on it names
+        // no item.
+        QString error;
+        QString menuId;
+        QJsonObject target;
+        for ( const auto& path : { root + "/out", root + "/out/secret.bin" } ) {
+            REQUIRE_FALSE( fixture.view.resolveTooltip( "files", {}, {}, path, false, {}, &error ) );
+            REQUIRE_FALSE( fixture.view.elementMenu( "files", {}, path, &menuId, &target, &error ) );
+        }
+        std::unique_ptr<QMenu> menu(
+            fixture.view.buildElementMenu( "files", tree->visualRect( out ).center() ) );
+        REQUIRE( menu );
+        REQUIRE( fixture.menuTarget.value( "node_id" ).isNull() );
         // One that stays inside the root opens like its target.
         REQUIRE( model->hasChildren( child( top, "in" ) ) );
         REQUIRE( model->indexOfPath( root + "/in/x.bin" ).isValid() );
+        REQUIRE( fixture.view.elementMenu( "files", {}, root + "/in/x.bin", &menuId, &target, &error ) );
+        REQUIRE( target.value( "node_id" ) == root + "/in/x.bin" );
     }
     else {
         WARN( "No directory links can be made here: the link checks are skipped." );
+    }
+    // A missing path has no tooltip and no menu either.
+    {
+        QString error;
+        QString menuId;
+        QJsonObject target;
+        REQUIRE_FALSE( fixture.view.resolveTooltip( "files", {}, {}, root + "/nope.bin", false, {}, &error ) );
+        REQUIRE_FALSE( fixture.view.elementMenu( "files", {}, root + "/nope.bin", &menuId, &target, &error ) );
+        REQUIRE( fixture.view.elementMenu( "files", {}, root + "/b.txt", &menuId, &target, &error ) );
     }
 
     // A selection is counted without a path for every row; only the first ones, in shown order,
@@ -1218,6 +1278,12 @@ TEST_CASE( "E17e file trees keep links inside their roots, count selections, che
                              model->pathOf( model->index( 1, 0, folder ) ) } );
     REQUIRE( count == 31 );
     REQUIRE( fixture.lastOf( "selected" ).value( "selected_count" ) == 31 );
+    // Copy Path takes the same paths in the same order.
+    const auto copied = behaviour->copyText().split( QLatin1Char( '\n' ) );
+    REQUIRE( copied.size() == 31 );
+    REQUIRE( copied.front() == QDir::toNativeSeparators( root ) );
+    REQUIRE( copied.at( 1 ) == QDir::toNativeSeparators( model->pathOf( model->index( 0, 0, folder ) ) ) );
+    REQUIRE( behaviour->canCopy() );
 
     // A pick list checks only what shows a check box: not a folder with select "files", a greyed
     // file or a missing path.
@@ -1235,6 +1301,15 @@ TEST_CASE( "E17e file trees keep links inside their roots, count selections, che
                                                      root + "/nope.bin",
                                                      root + "/many/f00.bin" } } } } } );
     REQUIRE( picked->value( 10 ) == QStringList{ root + "/many/f00.bin" } );
+    // New roots drop the checked paths that are no longer in a root.
+    picks.patch( QJsonObject{
+        { "id", "files" },
+        { "set", QJsonObject{ { "value", QJsonArray{ root + "/many/f00.bin",
+                                                     root + "/inside/x.bin" } } } } } );
+    REQUIRE( picked->value( 10 ) == QStringList{ root + "/many/f00.bin", root + "/inside/x.bin" } );
+    picks.patch( QJsonObject{ { "id", "files" },
+                              { "set", QJsonObject{ { "roots", QJsonArray{ root + "/inside" } } } } } );
+    REQUIRE( picked->value( 10 ) == QStringList{ root + "/inside/x.bin" } );
 
     // A network root that cannot be reached closes again and keeps its expander for the next try.
     View network( QJsonObject{ { "type", "file_tree" },

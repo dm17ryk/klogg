@@ -449,9 +449,10 @@ PluginTooltips::Target PluginView::treeTooltipTarget( const Node& node,
                                                       const QString& columnId ) const
 {
     if ( node.fileTree ) {
-        // A path in the roots: its static tooltip is the path (section 28.2).
+        // A path in the roots, its links resolved: its static tooltip is the path (section 28.2).
+        // A missing path, or one through a link that leads out of its root, has none.
         const auto path = PluginFileRootsModel::normalize( nodeId );
-        if ( path.isEmpty() || !node.fileTree->model()->withinRoots( path ) ) {
+        if ( path.isEmpty() || !node.fileTree->model()->reaches( path ) ) {
             target.provider = false;
             return target;
         }

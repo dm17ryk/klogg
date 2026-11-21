@@ -1985,9 +1985,10 @@ bool PluginView::elementMenu( const QString& elementId, const QString& rowId,
             *target = node->tree->menuTarget( nodeId );
             return true;
         }
+        // As tooltips: an existing item of the roots, its links resolved.
         const auto path = PluginFileRootsModel::normalize( nodeId );
-        if ( !nodeId.isEmpty() && !node->fileTree->model()->withinRoots( path ) ) {
-            *error = tr( "The path is not in the file tree's roots." );
+        if ( !nodeId.isEmpty() && !node->fileTree->model()->reaches( path ) ) {
+            *error = tr( "The path is not an item in the file tree's roots." );
             return false;
         }
         *target = node->fileTree->menuTarget( nodeId.isEmpty() ? QString{} : path );

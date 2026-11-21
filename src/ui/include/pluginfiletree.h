@@ -49,6 +49,10 @@ public:
     QModelIndex indexOfPath( const QString& path );
     // Whether a path lies in one of the roots (no file system access).
     bool withinRoots( const QString& path ) const;
+    // Whether a path is a root, or an existing item of an attached root once its links are
+    // resolved (as indexOfPath(), without attaching a network root or loading anything): what
+    // tooltips and element menus may name.
+    bool reaches( const QString& path ) const;
 
     // What can be selected (and checked): files, folders or both.
     void setSelectable( bool files, bool dirs );
@@ -170,12 +174,18 @@ public:
     QString pathAt( const QModelIndex& index ) const;
     QJsonObject menuTarget( const QString& path ) const;
     QMenu* buildMenu( const QPoint& position );
+    // Copy Path: the selected (or checked, else the current) paths, whole, at most MaxCopyChars.
     QString copyText() const;
+    // Whether Copy Path has something to copy (without building the text).
+    bool canCopy() const;
 
 protected:
     bool eventFilter( QObject* watched, QEvent* event ) override;
 
 private:
+    // Calls `visit` with the selected paths in shown order until it returns false; returns how
+    // many rows are selected (all of them, without building their paths).
+    int visitSelected( const std::function<bool( const QString& path )>& visit ) const;
     void applyColumns();
     void applySelectionMode();
     void emitSelected();

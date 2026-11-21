@@ -766,15 +766,32 @@ bool PluginTreeModel::replace( const QJsonArray& nodes, const QString& parentId,
 
 bool PluginTreeModel::update( const QJsonArray& nodes, QString* error, QStringList* changed )
 {
-    // An operation that would pass MaxNodes changes nothing: the children it sets are counted
-    // before any node changes. A node below one whose children an earlier entry replaces is gone
-    // by then; a node given twice replaces the children it got the first time.
+    // An operation that would pass MaxNodes changes nothing: the entries' children are applied to
+    // projected subtree sizes, in order, before any node changes. A replaced subtree counts as the
+    // children it got, whichever entry came first; a node below a replaced one is gone by then. An
+    // id the tree does not hold yet (a node an earlier entry adds) counts as adding its children
+    // and removing nothing, which can only refuse more.
     std::unordered_map<const Node*, int> loadedAfter;
-    int projected = nodeCount_;
+    const std::function<int( const Node& )> loadedNow = [ & ]( const Node& node ) {
+        if ( const auto found = loadedAfter.find( &node ); found != loadedAfter.end() ) {
+            return found->second;
+        }
+        int count = 0;
+        for ( const auto& child : node.children ) {
+            count += 1 + loadedNow( *child );
+        }
+        return count;
+    };
+    qint64 projected = nodeCount_;
     for ( const auto& value : nodes ) {
         const auto object = value.toObject();
+        if ( !object.value( "children" ).isArray() ) {
+            continue;
+        }
+        const auto children = object.value( "children" ).toArray();
         const auto* node = find( object.value( "id" ).toString().left( PluginView::MaxTextChars ) );
-        if ( node == nullptr || !object.value( "children" ).isArray() ) {
+        if ( node == nullptr ) {
+            projected += countNodes( children, 1 );
             continue;
         }
         bool gone = false;
@@ -784,11 +801,8 @@ bool PluginTreeModel::update( const QJsonArray& nodes, QString* error, QStringLi
         if ( gone ) {
             continue;
         }
-        const auto found = loadedAfter.find( node );
-        const auto removing = found != loadedAfter.end() ? found->second : countLoaded( *node );
-        const auto adding = countNodes( object.value( "children" ).toArray(),
-                                        depthOf( node->id ) + 1 );
-        projected += adding - removing;
+        const auto adding = countNodes( children, depthOf( node->id ) + 1 );
+        projected += adding - loadedNow( *node );
         loadedAfter[ node ] = adding;
     }
     if ( projected > MaxNodes ) {

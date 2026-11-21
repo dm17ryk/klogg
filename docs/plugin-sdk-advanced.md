@@ -1685,14 +1685,17 @@ reordering inside a tree. Where the design left a choice open, E17e decided as f
   `set: {value: [...]}` selects (or checks) those paths and reveals the first; paths outside the
   roots, missing ones and those that cannot be selected (or checked) there, such as a folder with
   `select: "files"` or a greyed file, are ignored. A patch entry `expand: [paths]` opens folders.
+  New `roots` drop the checked paths that are no longer in a root, without an event.
 - **Events.** `selected` (value: the paths) and `activated` (`{path}`: a double-click or Enter on
   a file; on a folder it expands). With `checkboxes`, checking sends `selected` with the checked
   paths and the row highlight only marks the current item.
 - **Context menus and tooltips.** Copy Path (the selected paths, one per line, whole paths up to
-  1 MiB of text) then the plugin's
-  `element` entries, whose context has `node_id` (the clicked path) and `selected_ids` (the selected
-  paths). An item's static tooltip is its path; with `tooltip_provider`, `tooltip/resolve`
-  carries the path as `node_id`.
+  1 MiB of text; no path is built past that) then the plugin's `element` entries, whose context
+  has `node_id` (the clicked path) and `selected_ids` (the selected paths). An item's static
+  tooltip is its path; with `tooltip_provider`, `tooltip/resolve` carries the path as `node_id`.
+  Tooltips and menus, also by `--node-id`, name only a root or an existing item of a root that
+  was reached, its links resolved: never a missing path or one through a link that leads out of
+  its root (a right-click on such a link gives a null `node_id`).
 
 ### 28.3 Automation and SDKs
 
