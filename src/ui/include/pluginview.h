@@ -6,6 +6,7 @@
 #include <QHash>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QModelIndex>
 #include <QPointer>
 #include <QSet>
 #include <QVariantMap>
@@ -198,9 +199,11 @@ private:
     void focusFirstInvalid();
     void updateAccessibility( Node& node );
     void watchTooltips( Node& node );
+    // `pointed`: the file tree item under the pointer, when the request comes from it (then the path
+    // is not looked up again).
     PluginTooltips::Target tooltipTarget( const QString& elementId, const QString& rowId,
-                                          const QString& columnId,
-                                          const QString& nodeId = {} ) const;
+                                          const QString& columnId, const QString& nodeId = {},
+                                          const QModelIndex& pointed = {} ) const;
     // E17e (docs/plugin-sdk-advanced.md section 28): trees and file trees, in
     // pluginviewtrees.cpp.
     QWidget* buildTree( Node& node, QWidget* parent );
@@ -213,8 +216,8 @@ private:
     void emitTreeSelection( const QString& id );
     // The element's target (`target`) narrowed to a node and column, or a file tree path.
     PluginTooltips::Target treeTooltipTarget( const Node& node, PluginTooltips::Target target,
-                                              const QString& nodeId,
-                                              const QString& columnId ) const;
+                                              const QString& nodeId, const QString& columnId,
+                                              const QModelIndex& pointed = {} ) const;
     void watchTreeTooltips( Node& node );
     bool requestChildren( const QString& elementId, const QString& nodeId );
     void cancelChildren( const QString& elementId, const QString& nodeId );

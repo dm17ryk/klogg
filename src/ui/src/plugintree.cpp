@@ -2021,18 +2021,38 @@ bool PluginTreeBehaviour::eventFilter( QObject* watched, QEvent* event )
         if ( tree_->selectionMode() == QAbstractItemView::MultiSelection && !nodeId.isEmpty()
              && ( mouse->modifiers() & Qt::ShiftModifier ) && anchor.isValid() ) {
             const bool down = tree_->visualRect( anchor ).top() <= tree_->visualRect( index ).top();
-            auto from = down ? anchor : index.sibling( index.row(), 0 );
+            const auto from = down ? anchor : index.sibling( index.row(), 0 );
             const auto to = down ? index.sibling( index.row(), 0 ) : anchor;
+            // Every shown node in between (no limit of its own: the tree holds at most 50,000
+            // nodes, and "Loading…" lines are skipped); consecutive siblings make one range.
             QItemSelection range;
-            for ( int guard = 0; from.isValid() && guard <= pluginview::MaxTableIds * 50; ++guard ) {
-                if ( !model_->idOf( from ).isEmpty() ) {
-                    range.select( from, from );
+            QModelIndex first;
+            QModelIndex last;
+            const auto flush = [ & ] {
+                if ( first.isValid() ) {
+                    range.select( first, last );
                 }
-                if ( from == to ) {
+                first = QModelIndex();
+                last = QModelIndex();
+            };
+            for ( auto at = from; at.isValid(); at = tree_->indexBelow( at ) ) {
+                if ( model_->idOf( at ).isEmpty() ) {
+                    flush();
+                }
+                else if ( first.isValid() && at.parent() == last.parent()
+                          && at.row() == last.row() + 1 ) {
+                    last = at;
+                }
+                else {
+                    flush();
+                    first = at;
+                    last = at;
+                }
+                if ( at == to ) {
                     break;
                 }
-                from = tree_->indexBelow( from );
             }
+            flush();
             tree_->selectionModel()->setCurrentIndex( index, QItemSelectionModel::NoUpdate );
             tree_->selectionModel()->select( range, QItemSelectionModel::Select
                                                         | QItemSelectionModel::Rows );

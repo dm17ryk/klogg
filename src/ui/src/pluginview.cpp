@@ -394,8 +394,8 @@ void PluginView::resetTooltips()
 }
 
 PluginTooltips::Target PluginView::tooltipTarget( const QString& elementId, const QString& rowId,
-                                                  const QString& columnId,
-                                                  const QString& nodeId ) const
+                                                  const QString& columnId, const QString& nodeId,
+                                                  const QModelIndex& pointed ) const
 {
     PluginTooltips::Target target;
     const auto node = nodes_.value( elementId );
@@ -411,7 +411,7 @@ PluginTooltips::Target PluginView::tooltipTarget( const QString& elementId, cons
     target.timeoutMs = props.value( "tooltip_timeout_ms" ).toInt();
     target.rect = node->widget->rect();
     if ( node->treeModel || node->fileTree ) {
-        return treeTooltipTarget( *node, target, nodeId, columnId ); // E17e
+        return treeTooltipTarget( *node, target, nodeId, columnId, pointed ); // E17e
     }
     if ( node->type != "table" || !node->model ) {
         return target;

@@ -36,6 +36,8 @@
 namespace pluginview {
 namespace {
 constexpr int NameColumn = 0;
+// loadedItem()'s name tables keep at most this many names in all (a few MiB).
+constexpr int MaxNameEntries = 200000;
 const QStringList FileColumns{ QStringLiteral( "name" ), QStringLiteral( "size" ),
                                QStringLiteral( "type" ), QStringLiteral( "modified" ) };
 
@@ -248,7 +250,7 @@ void PluginFileRootsModel::connectSource()
                  pending_.append( mapped ? 1 : 0 );
              } );
     connect( files_, &QAbstractItemModel::rowsInserted, this, [ this ] {
-        names_.clear();
+        clearNames();
         if ( !pending_.isEmpty() && pending_.takeLast() == 1 ) {
             endInsertRows();
         }
@@ -278,7 +280,7 @@ void PluginFileRootsModel::connectSource()
              } );
     connect( files_, &QAbstractItemModel::rowsRemoved, this, [ this ] {
         escapes_.clear(); // removed items free their pointers
-        names_.clear();
+        clearNames();
         // A checked item deleted or renamed on disk: the checked paths are looked at again.
         scheduleRevalidation();
         const auto state = pending_.isEmpty() ? 0 : pending_.takeLast();
@@ -305,7 +307,7 @@ void PluginFileRootsModel::connectSource()
     connect( files_, &QAbstractItemModel::layoutChanged, this, [ this ] {
         // The roots' source indexes may have moved: their pointers are looked up again.
         rebuildRootPointers();
-        names_.clear(); // rows moved
+        clearNames(); // rows moved
         for ( qsizetype at = 0; at < layoutProxy_.size(); ++at ) {
             changePersistentIndex( layoutProxy_.at( at ), mapFromSource( layoutSource_.at( at ) ) );
         }
@@ -317,7 +319,7 @@ void PluginFileRootsModel::connectSource()
              [ this ] { beginResetModel(); } );
     connect( files_, &QAbstractItemModel::modelReset, this, [ this ] {
         escapes_.clear();
-        names_.clear();
+        clearNames();
         for ( auto& root : roots_ ) {
             if ( !root.network || root.source.isValid() ) {
                 attachLocal( root );
@@ -333,7 +335,7 @@ void PluginFileRootsModel::setRoots( const QStringList& paths, QStringList* skip
     beginResetModel();
     roots_.clear();
     escapes_.clear();
-    names_.clear();
+    clearNames();
     for ( const auto& raw : paths ) {
         const auto network = isNetworkPath( raw );
         const auto path = normalize( raw );
@@ -558,25 +560,65 @@ QModelIndex PluginFileRootsModel::loadedItem( const Root& root, const QString& p
         if ( escapes( at ) ) {
             return {};
         }
-        // The folder's children by name, built once until its rows change: a pointer moving
-        // over a large loaded folder looks each item up at once.
-        auto& rowsByName = names_[ at.internalPointer() ];
-        if ( rowsByName.isEmpty() ) {
-            const auto rows = files_->rowCount( at );
-            for ( int row = 0; row < rows; ++row ) {
-                rowsByName.insert( key( files_->fileName( files_->index( row, 0, at ) ) ), row );
+        const auto rows = files_->rowCount( at );
+        const auto wanted = key( name );
+        QModelIndex next;
+        if ( rows > MaxNameEntries ) {
+            // Too many names to keep: looked through once, nothing kept.
+            for ( int row = 0; row < rows && !next.isValid(); ++row ) {
+                const auto child = files_->index( row, 0, at );
+                if ( key( files_->fileName( child ) ) == wanted ) {
+                    next = child;
+                }
             }
         }
-        const auto row = rowsByName.constFind( key( name ) );
-        if ( row == rowsByName.cend() ) {
+        else {
+            // The folder's children by name, built once until rows change, so many paths of one
+            // folder (checked paths, automation) are one lookup each. The tables keep at most
+            // MaxNameEntries names in all: a new one that would pass that starts them over.
+            auto found = names_.find( at.internalPointer() );
+            if ( found == names_.end() ) {
+                if ( nameEntries_ + rows > MaxNameEntries ) {
+                    clearNames();
+                }
+                QHash<QString, int> table;
+                table.reserve( rows );
+                for ( int row = 0; row < rows; ++row ) {
+                    table.insert( key( files_->fileName( files_->index( row, 0, at ) ) ), row );
+                }
+                nameEntries_ += rows;
+                found = names_.insert( at.internalPointer(), table );
+            }
+            const auto row = found->constFind( wanted );
+            if ( row != found->cend() ) {
+                next = files_->index( row.value(), 0, at );
+            }
+        }
+        if ( !next.isValid() ) {
             return {};
         }
-        at = files_->index( row.value(), 0, at );
-        if ( !at.isValid() ) {
-            return {};
-        }
+        at = next;
     }
     return escapes( at ) ? QModelIndex{} : at;
+}
+
+bool PluginFileRootsModel::reachesItem( const QModelIndex& index ) const
+{
+    if ( !index.isValid() || index.model() != this || !files_ ) {
+        return false;
+    }
+    if ( isRoot( index ) ) {
+        return true;
+    }
+    // The item and every folder above it, up to its root: none a link that leads out of it.
+    for ( auto source = mapToSource( index.sibling( index.row(), 0 ) );
+          source.isValid() && !rootPointers_.contains( source.internalPointer() );
+          source = source.parent() ) {
+        if ( escapes( source ) ) {
+            return false;
+        }
+    }
+    return true;
 }
 
 QModelIndex PluginFileRootsModel::sourceParentMapped( const QModelIndex& sourceParent,
@@ -813,7 +855,7 @@ void PluginFileRootsModel::scheduleRootCheck()
         if ( moved ) {
             beginResetModel();
             escapes_.clear();
-            names_.clear();
+            clearNames();
             endResetModel();
             scheduleRevalidation();
         }
@@ -1477,7 +1519,7 @@ QMenu* PluginFileTreeBehaviour::buildMenu( const QPoint& position )
     }
     const auto index = tree_->indexAt( position );
     auto path = index.isValid() ? pathAt( index ) : QString{};
-    if ( !path.isEmpty() && !roots_->reaches( path ) ) {
+    if ( !path.isEmpty() && !roots_->reachesItem( index ) ) {
         path.clear(); // a link that leads out of its root names no item, as for tooltips
     }
     if ( index.isValid() && !options_.checkboxes

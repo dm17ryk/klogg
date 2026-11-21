@@ -54,6 +54,9 @@ public:
     // tooltips and element menus may name. In a network root only an item already loaded
     // counts, found without touching the network.
     bool reaches( const QString& path ) const;
+    // The same for an item of this model (the one under the pointer): neither it nor a folder
+    // above it is a link that leads out of its root. Its path is not looked up.
+    bool reachesItem( const QModelIndex& index ) const;
 
     // What can be selected (and checked): files, folders or both.
     void setSelectable( bool files, bool dirs );
@@ -131,8 +134,15 @@ private:
     QVector<Root> roots_;
     QHash<void*, int> rootPointers_; // source internal pointer of an attached root -> its row
     mutable QHash<const void*, bool> escapes_; // escapes() per source item, until it changes
-    // loadedItem(): a loaded folder's children by name (key()) -> row, until its rows change.
+    // loadedItem(): a loaded folder's children by name (key()) -> row, until rows change; at most
+    // MaxNameEntries names in all (a larger folder is looked through without keeping it).
     mutable QHash<const void*, QHash<QString, int>> names_;
+    mutable qsizetype nameEntries_ = 0;
+    void clearNames() const
+    {
+        names_.clear();
+        nameEntries_ = 0;
+    }
     QVector<int> pending_; // begin/end pairs: 0 ignored, 1 forwarded, 2 reset
     QList<QPersistentModelIndex> layoutProxy_;
     QList<QPersistentModelIndex> layoutSource_;

@@ -1057,6 +1057,40 @@ TEST_CASE( "E17e a plugin answers tree/children; element menus and automation ta
     } ) );
 }
 
+TEST_CASE( "E17e a Shift+click range reaches past Loading lines at 50,000 nodes",
+           "[ui][workbench][E17]" )
+{
+    // 50,000 nodes; two lazy nodes between the anchor and the target show "Loading…" lines,
+    // which are no nodes: the range still reaches the target and selects every node.
+    QJsonArray nodes{ QJsonObject{ { "id", "L1" }, { "text", "L1" }, { "has_children", true } } };
+    for ( int at = 0; at < cilogg::plugins::MaxTreeNodes - 3; ++at ) {
+        nodes.append( QJsonObject{ { "id", QString( "n%1" ).arg( at ) }, { "text", "Node" } } );
+    }
+    nodes.append( QJsonObject{ { "id", "L2" }, { "text", "L2" }, { "has_children", true } } );
+    nodes.append( QJsonObject{ { "id", "T" }, { "text", "T" } } );
+    View fixture( QJsonObject{ { "type", "tree" },
+                               { "id", "tr" },
+                               { "lazy", true },
+                               { "selection", "multi" },
+                               { "toggle_selection", true },
+                               { "nodes", nodes } } );
+    REQUIRE( fixture.model()->nodeCount() == cilogg::plugins::MaxTreeNodes );
+    auto* tree = fixture.tree();
+    tree->expand( fixture.index( "L1" ) );
+    tree->expand( fixture.index( "L2" ) );
+    REQUIRE( fixture.model()->isLoading( "L1" ) );
+    REQUIRE( fixture.model()->isLoading( "L2" ) );
+    tree->scrollTo( fixture.index( "L1" ) );
+    QCoreApplication::processEvents();
+    QTest::mouseClick( tree->viewport(), Qt::LeftButton, {}, fixture.center( "L1" ) );
+    tree->scrollTo( fixture.index( "T" ) );
+    QCoreApplication::processEvents();
+    QTest::mouseClick( tree->viewport(), Qt::LeftButton, Qt::ShiftModifier, fixture.center( "T" ) );
+    int count = 0;
+    fixture.behaviour()->selectedNodeIds( 1, &count );
+    REQUIRE( count == cilogg::plugins::MaxTreeNodes );
+}
+
 TEST_CASE( "E17e boxes need checkboxes, collapsing cancels a load, new columns parse nodes again",
            "[ui][workbench][E17]" )
 {

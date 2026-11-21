@@ -458,13 +458,18 @@ void PluginView::emitTreeSelection( const QString& id )
 PluginTooltips::Target PluginView::treeTooltipTarget( const Node& node,
                                                       PluginTooltips::Target target,
                                                       const QString& nodeId,
-                                                      const QString& columnId ) const
+                                                      const QString& columnId,
+                                                      const QModelIndex& pointed ) const
 {
     if ( node.fileTree ) {
         // A path in the roots, its links resolved: its static tooltip is the path (section 28.2).
-        // A missing path, or one through a link that leads out of its root, has none.
+        // A missing path, or one through a link that leads out of its root, has none. The item
+        // under the pointer is checked as it is, without looking its path up again.
         const auto path = PluginFileRootsModel::normalize( nodeId );
-        if ( path.isEmpty() || !node.fileTree->model()->reaches( path ) ) {
+        const auto* files = node.fileTree->model();
+        const bool reached
+            = pointed.isValid() ? files->reachesItem( pointed ) : files->reaches( path );
+        if ( path.isEmpty() || !reached ) {
             target.provider = false;
             return target;
         }
@@ -517,7 +522,8 @@ void PluginView::watchTreeTooltips( Node& node )
             return PluginTooltips::Target{};
         }
         if ( found->fileTree ) {
-            auto target = tooltipTarget( id, {}, {}, found->fileTree->pathAt( index ) );
+            auto target = tooltipTarget( id, {}, {}, found->fileTree->pathAt( index ),
+                                         index.sibling( index.row(), 0 ) );
             target.rect = tree->visualRect( index );
             return target;
         }
