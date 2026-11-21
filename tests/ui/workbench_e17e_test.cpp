@@ -16,6 +16,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QFileSystemModel>
 #include <QHeaderView>
 #include <QJsonDocument>
 #include <QMenu>
@@ -1056,6 +1057,69 @@ TEST_CASE( "E17e a plugin answers tree/children; element menus and automation ta
     } ) );
 }
 
+TEST_CASE( "E17e boxes need checkboxes, collapsing cancels a load, new columns parse nodes again",
+           "[ui][workbench][E17]" )
+{
+    // A node's `checkable` applies only in a tree with `checkboxes`.
+    View plain( QJsonObject{
+        { "type", "tree" },
+        { "id", "tr" },
+        { "nodes", QJsonArray{ QJsonObject{
+                       { "id", "x" }, { "text", "X" }, { "checkable", true }, { "checked", true } } } } } );
+    REQUIRE_FALSE( plain.model()->flags( plain.index( "x" ) ).testFlag( Qt::ItemIsUserCheckable ) );
+    REQUIRE_FALSE( plain.index( "x" ).data( Qt::CheckStateRole ).isValid() );
+
+    // Collapsing a node that is still loading cancels its query: its slot goes to a waiting
+    // one, a late answer is dropped and the next expand asks again.
+    QJsonArray lazyNodes;
+    for ( int at = 0; at < 5; ++at ) {
+        lazyNodes.append( QJsonObject{
+            { "id", QString( "n%1" ).arg( at ) }, { "text", "Node" }, { "has_children", true } } );
+    }
+    View lazy( QJsonObject{ { "type", "tree" }, { "id", "tr" }, { "lazy", true }, { "nodes", lazyNodes } } );
+    for ( int at = 0; at < 5; ++at ) {
+        lazy.tree()->expand( lazy.index( QString( "n%1" ).arg( at ) ) );
+    }
+    REQUIRE( lazy.children.size() == 4 );
+    REQUIRE( lazy.queryOf( "n4" ).isEmpty() ); // waits
+    const auto first = lazy.queryOf( "n0" );
+    REQUIRE_FALSE( first.isEmpty() );
+    const auto late = lazy.children.at( first ).done;
+    lazy.tree()->collapse( lazy.index( "n0" ) );
+    REQUIRE( lazy.cancelled == QStringList{ first } );
+    REQUIRE_FALSE( lazy.queryOf( "n4" ).isEmpty() ); // the freed slot went to the waiting one
+    REQUIRE( lazy.model()->rowCount( lazy.index( "n0" ) ) == 0 );
+    REQUIRE_FALSE( lazy.model()->isLoading( "n0" ) );
+    REQUIRE( lazy.model()->hasChildren( lazy.index( "n0" ) ) );
+    late( true, QJsonArray{ QJsonObject{ { "id", "late" } } } );
+    REQUIRE_FALSE( lazy.index( "late" ).isValid() );
+    lazy.tree()->expand( lazy.index( "n0" ) );
+    REQUIRE( lazy.model()->isLoading( "n0" ) ); // asks again (it waits for a slot)
+
+    // A root whose columns change with the same nodes parses them again: a column that comes
+    // back shows its cells.
+    const QJsonArray twoCells{ treeNode( "r", { "left", "right" } ) };
+    const auto rootWith = [ & ]( int columnCount ) {
+        QJsonArray columns{ QJsonObject{ { "id", "a" } } };
+        if ( columnCount > 1 ) {
+            columns.append( QJsonObject{ { "id", "b" } } );
+        }
+        return QJsonObject{ { "type", "column" },
+                            { "id", "body" },
+                            { "children", QJsonArray{ QJsonObject{ { "type", "tree" },
+                                                                   { "id", "tr" },
+                                                                   { "columns", columns },
+                                                                   { "nodes", twoCells } } } } };
+    };
+    View cells( rootWith( 2 ).value( "children" ).toArray().first().toObject() );
+    REQUIRE( cells.index( "r", 1 ).data().toString() == "right" );
+    cells.view.setRoot( rootWith( 1 ) );
+    REQUIRE( cells.model()->columnCount() == 1 );
+    cells.view.setRoot( rootWith( 2 ) );
+    REQUIRE( cells.model()->columnCount() == 2 );
+    REQUIRE( cells.index( "r", 1 ).data().toString() == "right" );
+}
+
 TEST_CASE( "E17e a double-click on a check box does not activate; update_nodes over the limit "
            "changes nothing",
            "[ui][workbench][E17]" )
@@ -1195,6 +1259,16 @@ bool linkDirectory( const QString& target, const QString& link )
     return QFile::link( target, link );
 #endif
 }
+
+// Removes a directory link made by linkDirectory(), never what it points to.
+bool unlinkDirectory( const QString& link )
+{
+#ifdef Q_OS_WIN
+    return QDir().rmdir( link );
+#else
+    return QFile::remove( link );
+#endif
+}
 } // namespace
 
 TEST_CASE( "E17e file trees keep links inside their roots, count selections, check what can be "
@@ -1281,6 +1355,32 @@ TEST_CASE( "E17e file trees keep links inside their roots, count selections, che
         REQUIRE( model->indexOfPath( root + "/in/x.bin" ).isValid() );
         REQUIRE( fixture.view.elementMenu( "files", {}, root + "/in/x.bin", &menuId, &target, &error ) );
         REQUIRE( target.value( "node_id" ) == root + "/in/x.bin" );
+
+        // A path checked through a link that stays inside the root is dropped (and the plugin
+        // hears it) once the link leads out of the root.
+        REQUIRE( linkDirectory( root + "/inside", root + "/hop" ) );
+        View hop( QJsonObject{ { "type", "file_tree" },
+                               { "id", "files" },
+                               { "roots", QJsonArray{ root } },
+                               { "checkboxes", true },
+                               { "select", "files" } } );
+        auto* hopBehaviour = hop.tree( "files" )->findChild<PluginFileTreeBehaviour*>();
+        hop.patch( QJsonObject{ { "id", "files" },
+                                { "set", QJsonObject{ { "value", QJsonArray{ root + "/hop/x.bin" } } } } } );
+        REQUIRE( hopBehaviour->value( 10 ) == QStringList{ root + "/hop/x.bin" } );
+        const auto heard = hop.countOf( "selected" );
+        REQUIRE( unlinkDirectory( root + "/hop" ) );
+        REQUIRE( linkDirectory( outside, root + "/hop" ) );
+        // The native model may see it as the item changing: tell it so at once, as it would.
+        auto* files = hopBehaviour->findChild<QFileSystemModel*>();
+        REQUIRE( files );
+        const auto item = files->index( root + "/hop" );
+        if ( item.isValid() ) {
+            Q_EMIT files->dataChanged( item, item );
+        }
+        REQUIRE( waitFor( [ & ] { return hopBehaviour->value( 10 ).isEmpty(); }, FileSystemWait ) );
+        REQUIRE( waitFor( [ & ] { return hop.countOf( "selected" ) > heard; } ) );
+        REQUIRE( hop.lastOf( "selected" ).value( "value" ).toArray().isEmpty() );
     }
     else {
         WARN( "No directory links can be made here: the link checks are skipped." );
@@ -1318,6 +1418,34 @@ TEST_CASE( "E17e file trees keep links inside their roots, count selections, che
     REQUIRE( copied.front() == QDir::toNativeSeparators( root ) );
     REQUIRE( copied.at( 1 ) == QDir::toNativeSeparators( model->pathOf( model->index( 0, 0, folder ) ) ) );
     REQUIRE( behaviour->canCopy() );
+
+    // Toggle selection: a Shift+click selects every shown item from the last click (as ranges,
+    // with no limit of its own).
+    View toggle( QJsonObject{ { "type", "file_tree" },
+                              { "id", "files" },
+                              { "roots", QJsonArray{ root + "/many" } },
+                              { "selection", "multi" },
+                              { "toggle_selection", true },
+                              { "select", "files" } } );
+    auto* toggleTree = toggle.tree( "files" );
+    auto* toggleBehaviour = toggleTree->findChild<PluginFileTreeBehaviour*>();
+    auto* toggleModel = toggleBehaviour->model();
+    const QPersistentModelIndex listed( toggleModel->index( 0, 0 ) );
+    toggleTree->expand( listed );
+    REQUIRE( waitFor( [ & ] { return toggleModel->rowCount( listed ) == 30; }, FileSystemWait ) );
+    const QPersistentModelIndex firstFile( toggleModel->index( 0, 0, listed ) );
+    const QPersistentModelIndex lastFile( toggleModel->index( 29, 0, listed ) );
+    toggleTree->scrollTo( firstFile );
+    QCoreApplication::processEvents();
+    QTest::mouseClick( toggleTree->viewport(), Qt::LeftButton, {},
+                       toggleTree->visualRect( firstFile ).center() );
+    toggleTree->scrollTo( lastFile );
+    QCoreApplication::processEvents();
+    QTest::mouseClick( toggleTree->viewport(), Qt::LeftButton, Qt::ShiftModifier,
+                       toggleTree->visualRect( lastFile ).center() );
+    int toggled = 0;
+    toggleBehaviour->value( 1, &toggled );
+    REQUIRE( toggled == 30 );
 
     // A pick list checks only what shows a check box: not a folder with select "files", a greyed
     // file or a missing path.

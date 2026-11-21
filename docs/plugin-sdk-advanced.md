@@ -1601,14 +1601,17 @@ reordering inside a tree. Where the design left a choice open, E17e decided as f
 - **Node keys.** `id` (unique in the tree), `text` (the first column; ignored when `cells` is
   given), `cells` (strings or cell objects `{text, icon, tooltip, tooltip_key, tone, bold}`),
   `icon` (in the first column), `tooltip`, `tooltip_key`, `tone`, `children`, `has_children`
-  (with `lazy`), `expanded`, `checkable` (default true in a tree with `checkboxes`), `checked`
-  (`true`, `false` or `null` for partly), `editors` (`{column_id: editor}`, as table rows; the
-  column must be `editable`) and `drag` (accepted and ignored until E17g). A node without an id,
-  or with the id of an earlier node, is skipped with a warning.
+  (with `lazy`), `expanded`, `checkable` (default true in a tree with `checkboxes`; without
+  `checkboxes` no node has a box), `checked` (`true`, `false` or `null` for partly), `editors`
+  (`{column_id: editor}`, as table rows; the column must be `editable`) and `drag` (accepted and
+  ignored until E17g). A node without an id, or with the id of an earlier node, is skipped with a
+  warning. Nodes keep the cells of the columns there are: after the columns change, nodes sent
+  again are parsed again, also when they are the same as before.
 - **Limits.** 50,000 nodes per tree and depth 64: an operation that would pass 50,000 nodes changes
   nothing and logs a warning (it is counted before anything changes; in `update_nodes`, children
-  given to a node that an earlier entry of the same operation sets or removes count in full); nodes below depth 64 are dropped with a warning. Ids and texts are at
-  most 4,096 characters, as in tables.
+  given to a node that an earlier entry of the same operation sets or removes count in full);
+  nodes below depth 64 are dropped with a warning. Ids and texts are at most 4,096 characters, as
+  in tables.
 - **Lazy children.** In a tree with `lazy`, expanding a node with `has_children` and no children
   shows a "Loading…" child and sends `tree/children` `{view_id, window_id, element_id, node_id,
   context, timeout_ms}` (default 10 seconds, at most 30). The answer `{"nodes": [...]}` (a list
@@ -1616,7 +1619,8 @@ reordering inside a tree. Where the design left a choice open, E17e decided as f
   `children`, 1,000 nodes in all, else it is invalid. A failed, invalid or timed-out query shows
   "Could not load" and the next expand asks again. At most 4 `tree/children` queries per view are
   outstanding and 16 wait; a node beyond that shows "Could not load" at once. Collapsing keeps the
-  loaded children; a patch that sets the node's children (`replace_nodes` with that `parent`, or
+  loaded children; collapsing a node that is still loading cancels its query (`query/cancel`; a
+  late answer is dropped) and the next expand asks again. A patch that sets the node's children (`replace_nodes` with that `parent`, or
   `update_nodes` with `children`) ends its query. A stopped plugin never answers: its view is
   disabled and its loading nodes show "Could not load".
 - **Patches.** One entry may hold, applied in this order: `replace_nodes` (the top-level nodes, or
@@ -1676,7 +1680,8 @@ reordering inside a tree. Where the design left a choice open, E17e decided as f
   window on its own. Once it could not be reached, it closes again and keeps its expander: only the
   user's expansion tries again. A symbolic link or junction below a root that leads out of the root
   (or nowhere) shows disabled: it is never opened, selected or checked, and paths through it are
-  outside the roots. A link that stays inside its root behaves as its target.
+  outside the roots. A link that stays inside its root behaves as its target. A link in a network
+  root is never resolved (a share that went away could stall the window): it shows disabled.
 - **The native model.** Folders load lazily in the background and changes on disk appear by
   themselves. Icons are the style's folder and file icons and the type column is "Folder" or the
   file's suffix: the host never reads file contents, not even to find an icon, and never resolves
@@ -1687,8 +1692,9 @@ reordering inside a tree. Where the design left a choice open, E17e decided as f
   roots, missing ones and those that cannot be selected (or checked) there, such as a folder with
   `select: "files"` or a greyed file, are ignored. A patch entry `expand: [paths]` opens folders.
   New `roots` and options that make a checked path ineligible (`select`, `filters`, hidden files)
-  drop it without an event. A checked file deleted or renamed on disk is dropped too, and the
-  plugin gets `selected` with the paths still checked.
+  drop it without an event. A checked file deleted or renamed on disk, or reached through a link
+  that now leads out of its root, is dropped too, and the plugin gets `selected` with the paths
+  still checked.
 - **Events.** `selected` (value: the paths) and `activated` (`{path}`: a double-click or Enter on
   a file; on a folder it expands). With `checkboxes`, checking sends `selected` with the checked
   paths and the row highlight only marks the current item.
@@ -1698,7 +1704,8 @@ reordering inside a tree. Where the design left a choice open, E17e decided as f
   tooltip is its path; with `tooltip_provider`, `tooltip/resolve` carries the path as `node_id`.
   Tooltips and menus, also by `--node-id`, name only a root or an existing item of a root that
   was reached, its links resolved: never a missing path or one through a link that leads out of
-  its root (a right-click on such a link gives a null `node_id`).
+  its root (a right-click on such a link gives a null `node_id`). In a network root they name only
+  items already loaded, found without touching the network.
 
 ### 28.3 Automation and SDKs
 

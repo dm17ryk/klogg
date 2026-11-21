@@ -51,7 +51,8 @@ public:
     bool withinRoots( const QString& path ) const;
     // Whether a path is a root, or an existing item of an attached root once its links are
     // resolved (as indexOfPath(), without attaching a network root or loading anything): what
-    // tooltips and element menus may name.
+    // tooltips and element menus may name. In a network root only an item already loaded
+    // counts, found without touching the network.
     bool reaches( const QString& path ) const;
 
     // What can be selected (and checked): files, folders or both.
@@ -106,8 +107,15 @@ private:
     // The root a source index belongs to (its own row or an ancestor's); -1 when outside.
     int rootOf( const QModelIndex& source ) const;
     // Whether a source item below a root is a symbolic link or junction that leads out of its
-    // root (or nowhere): it shows disabled and is never opened, selected or checked.
+    // root (or nowhere): it shows disabled and is never opened, selected or checked. A link in a
+    // network root is never resolved (that could stall the window): it counts as leading out.
     bool escapes( const QModelIndex& source ) const;
+    // The loaded source item of a path in an attached root, found by name without touching the
+    // file system, through no link that leads out of the root; invalid when there is none.
+    QModelIndex loadedItem( const Root& root, const QString& path ) const;
+    // Looks at the checked paths again once the native model is done (rows removed, links
+    // changed); the plugin hears when some went.
+    void scheduleRevalidation();
     int rootOfPath( const QString& path ) const;
     bool attachLocal( Root& root );
     void rebuildRootPointers();
@@ -206,6 +214,6 @@ private:
     QFileSystemModel* files_ = nullptr;
     pluginview::PluginFileRootsModel* roots_ = nullptr;
     std::unique_ptr<QFileIconProvider> icons_;
-    QString selectionAnchor_;
+    QPersistentModelIndex selectionAnchor_; // the last clicked item (toggle selection ranges)
     bool configured_ = false;
 };

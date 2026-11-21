@@ -123,6 +123,8 @@ public:
     bool wantsChildren( const QModelIndex& index ) const;
     void setLoading( const QString& id );
     void setLoadFailed( const QString& id );
+    // The node is collapsed while it loads: back to not loaded (the next expand asks again).
+    void cancelLoading( const QString& id );
     bool isLoading( const QString& id ) const;
     bool fillChildren( const QString& id, const QJsonArray& nodes, QString* error );
     // `expanded` keys of nodes added or updated since the last call, by id.

@@ -180,9 +180,40 @@ void PluginFileRootsModel::connectSource()
                  if ( !topLeft.isValid() ) {
                      return;
                  }
-                 // A changed item (a link given another target) is looked at again.
+                 // A changed item (a link given another target) is looked at again. A link that
+                 // opened and leads out of its root now shows nothing below it any more: the view
+                 // starts over. Checked paths at or below a changed link are looked at again.
+                 bool closed = false;
+                 bool checkedBelow = false;
                  for ( int row = topLeft.row(); row <= bottomRight.row(); ++row ) {
-                     escapes_.remove( topLeft.sibling( row, 0 ).internalPointer() );
+                     const auto item = topLeft.sibling( row, 0 );
+                     const auto found = escapes_.find( item.internalPointer() );
+                     const bool wasOpen = found != escapes_.end() && !found.value();
+                     if ( found != escapes_.end() ) {
+                         escapes_.erase( found );
+                     }
+                     if ( !wasOpen && checked_.isEmpty() ) {
+                         continue; // nothing opened through it and nothing checked to look at
+                     }
+                     const auto info = files_->fileInfo( item );
+                     if ( !info.isSymbolicLink() && !info.isJunction() ) {
+                         continue;
+                     }
+                     closed = closed || ( wasOpen && files_->rowCount( item ) > 0 && escapes( item ) );
+                     const auto path = files_->filePath( item );
+                     checkedBelow = checkedBelow
+                                    || std::any_of( checked_.cbegin(), checked_.cend(),
+                                                    [ &path ]( const QString& checked ) {
+                                                        return inside( path, checked );
+                                                    } );
+                 }
+                 if ( checkedBelow ) {
+                     scheduleRevalidation();
+                 }
+                 if ( closed ) {
+                     beginResetModel();
+                     endResetModel();
+                     return;
                  }
                  // Roots whose own rows changed in their parent folder.
                  for ( int row = 0; row < roots_.size(); ++row ) {
@@ -238,16 +269,8 @@ void PluginFileRootsModel::connectSource()
              } );
     connect( files_, &QAbstractItemModel::rowsRemoved, this, [ this ] {
         escapes_.clear(); // removed items free their pointers
-        // A checked item deleted or renamed on disk: the checked paths are looked at again once
-        // the model is done (looking them up may add items).
-        if ( !checked_.isEmpty() && !std::exchange( revalidating_, true ) ) {
-            QTimer::singleShot( 0, this, [ this ] {
-                revalidating_ = false;
-                if ( revalidateChecked() && onCheckedDropped ) {
-                    onCheckedDropped();
-                }
-            } );
-        }
+        // A checked item deleted or renamed on disk: the checked paths are looked at again.
+        scheduleRevalidation();
         const auto state = pending_.isEmpty() ? 0 : pending_.takeLast();
         if ( state == 1 ) {
             endRemoveRows();
@@ -395,9 +418,14 @@ bool PluginFileRootsModel::escapes( const QModelIndex& source ) const
     bool leaves = false;
     if ( info.isSymbolicLink() || info.isJunction() ) {
         const auto row = rootOf( first );
-        const auto target = resolvedPath( path );
-        leaves = row < 0 || target.isEmpty() || roots_.at( row ).canonical.isEmpty()
-                 || !inside( roots_.at( row ).canonical, target );
+        if ( row < 0 || roots_.at( row ).network ) {
+            leaves = true; // never resolved over the network: that could stall the window
+        }
+        else {
+            const auto target = resolvedPath( path );
+            leaves = target.isEmpty() || roots_.at( row ).canonical.isEmpty()
+                     || !inside( roots_.at( row ).canonical, target );
+        }
     }
     escapes_.insert( pointer, leaves );
     return leaves;
@@ -497,8 +525,40 @@ bool PluginFileRootsModel::reaches( const QString& path ) const
     if ( !root.source.isValid() || root.canonical.isEmpty() ) {
         return false;
     }
+    // Nor is one that was: a share that went away could stall the window. Only an item already
+    // loaded counts there, found by name.
+    if ( root.network ) {
+        return loadedItem( root, normalized ).isValid();
+    }
     const auto target = resolvedPath( normalized );
     return !target.isEmpty() && inside( root.canonical, target );
+}
+
+QModelIndex PluginFileRootsModel::loadedItem( const Root& root, const QString& path ) const
+{
+    if ( !files_ || !root.source.isValid() ) {
+        return {};
+    }
+    QModelIndex at = root.source;
+    const auto names = path.mid( root.path.size() ).split( QLatin1Char( '/' ), Qt::SkipEmptyParts );
+    for ( const auto& name : names ) {
+        if ( escapes( at ) ) {
+            return {};
+        }
+        QModelIndex found;
+        const auto rows = files_->rowCount( at );
+        for ( int row = 0; row < rows && !found.isValid(); ++row ) {
+            const auto child = files_->index( row, 0, at );
+            if ( files_->fileName( child ).compare( name, PathCase ) == 0 ) {
+                found = child;
+            }
+        }
+        if ( !found.isValid() ) {
+            return {};
+        }
+        at = found;
+    }
+    return escapes( at ) ? QModelIndex{} : at;
 }
 
 QModelIndex PluginFileRootsModel::sourceParentMapped( const QModelIndex& sourceParent,
@@ -709,6 +769,20 @@ bool PluginFileRootsModel::isChecked( const QString& path ) const
     return checkedKeys_.contains( key( path ) );
 }
 
+void PluginFileRootsModel::scheduleRevalidation()
+{
+    // Once the native model is done: looking the paths up may add items.
+    if ( checked_.isEmpty() || std::exchange( revalidating_, true ) ) {
+        return;
+    }
+    QTimer::singleShot( 0, this, [ this ] {
+        revalidating_ = false;
+        if ( revalidateChecked() && onCheckedDropped ) {
+            onCheckedDropped();
+        }
+    } );
+}
+
 bool PluginFileRootsModel::revalidateChecked()
 {
     QStringList kept;
@@ -717,10 +791,14 @@ bool PluginFileRootsModel::revalidateChecked()
         if ( row < 0 ) {
             continue;
         }
-        // A network root not reached yet is not touched: its paths stay.
-        bool checkable = roots_.at( row ).network && !roots_.at( row ).source.isValid();
+        // A network root not reached yet is not touched: its paths stay. In one that was, only
+        // loaded items are looked at (the share may have gone away); elsewhere the path is
+        // looked up and resolved.
+        const auto& root = roots_.at( row );
+        bool checkable = root.network && !root.source.isValid();
         if ( !checkable ) {
-            const auto index = indexOfPath( path );
+            const auto index = root.network ? mapFromSource( loadedItem( root, path ) )
+                                            : indexOfPath( path );
             checkable = index.isValid() && flags( index ).testFlag( Qt::ItemIsUserCheckable );
         }
         if ( checkable ) {
@@ -1417,31 +1495,48 @@ bool PluginFileTreeBehaviour::eventFilter( QObject* watched, QEvent* event )
     if ( mouse->button() != Qt::LeftButton || !index.isValid() ) {
         return false;
     }
-    const auto path = pathAt( index );
-    // Toggle selection: a Shift+click adds the shown items from the last clicked one.
+    const auto clicked = index.sibling( index.row(), 0 );
+    // Toggle selection: a Shift+click adds the shown items from the last clicked one, however
+    // many there are. The anchor is the item itself, so nothing is looked up on disk.
     if ( tree_->selectionMode() == QAbstractItemView::MultiSelection
-         && ( mouse->modifiers() & Qt::ShiftModifier ) && !selectionAnchor_.isEmpty() ) {
-        const auto anchor = roots_->indexOfPath( selectionAnchor_ );
-        if ( anchor.isValid() ) {
-            const bool down = tree_->visualRect( anchor ).top() <= tree_->visualRect( index ).top();
-            auto from = down ? anchor : index.sibling( index.row(), 0 );
-            const auto to = down ? index.sibling( index.row(), 0 ) : anchor;
-            QItemSelection range;
-            for ( int guard = 0; from.isValid() && guard <= pluginview::MaxTableIds * 50; ++guard ) {
-                if ( roots_->flags( from ).testFlag( Qt::ItemIsSelectable ) ) {
-                    range.select( from, from );
-                }
-                if ( from == to ) {
-                    break;
-                }
-                from = tree_->indexBelow( from );
+         && ( mouse->modifiers() & Qt::ShiftModifier ) && selectionAnchor_.isValid() ) {
+        const QModelIndex anchor = selectionAnchor_;
+        const bool down = tree_->visualRect( anchor ).top() <= tree_->visualRect( clicked ).top();
+        const auto from = down ? anchor : clicked;
+        const auto to = down ? clicked : anchor;
+        // Consecutive selectable siblings make one range, so a long run is a few ranges.
+        QItemSelection range;
+        QModelIndex first;
+        QModelIndex last;
+        const auto flush = [ & ] {
+            if ( first.isValid() ) {
+                range.select( first, last );
             }
-            tree_->selectionModel()->setCurrentIndex( index, QItemSelectionModel::NoUpdate );
-            tree_->selectionModel()->select( range, QItemSelectionModel::Select
-                                                        | QItemSelectionModel::Rows );
-            return true;
+            first = QModelIndex();
+            last = QModelIndex();
+        };
+        for ( auto at = from; at.isValid(); at = tree_->indexBelow( at ) ) {
+            if ( !roots_->flags( at ).testFlag( Qt::ItemIsSelectable ) ) {
+                flush();
+            }
+            else if ( first.isValid() && at.parent() == last.parent() && at.row() == last.row() + 1 ) {
+                last = at;
+            }
+            else {
+                flush();
+                first = at;
+                last = at;
+            }
+            if ( at == to ) {
+                break;
+            }
         }
+        flush();
+        tree_->selectionModel()->setCurrentIndex( index, QItemSelectionModel::NoUpdate );
+        tree_->selectionModel()->select( range,
+                                         QItemSelectionModel::Select | QItemSelectionModel::Rows );
+        return true;
     }
-    selectionAnchor_ = path;
+    selectionAnchor_ = clicked;
     return false;
 }

@@ -493,10 +493,11 @@ bool PluginTreeModel::setColumns( const QJsonArray& columns )
 
 bool PluginTreeModel::isCheckable( const Node& node ) const
 {
-    if ( node.placeholder ) {
+    // A node's `checkable` applies only in a tree with `checkboxes` (section 28.1).
+    if ( node.placeholder || !checkboxes_ ) {
         return false;
     }
-    return node.checkable >= 0 ? node.checkable == 1 : checkboxes_;
+    return node.checkable != 0;
 }
 
 void PluginTreeModel::noteExpand( const QJsonObject& object )
@@ -1012,6 +1013,21 @@ void PluginTreeModel::setLoadFailed( const QString& id )
         node->children.front()->load = Load::Failed;
         const auto changed = indexOfNode( node->children.front().get() );
         Q_EMIT dataChanged( changed, changed );
+    }
+}
+
+void PluginTreeModel::cancelLoading( const QString& id )
+{
+    auto* node = find( id );
+    if ( node == nullptr || node->load != Load::Loading ) {
+        return;
+    }
+    // Not loaded: the "Loading…" line goes and the next expand asks again.
+    node->load = Load::None;
+    if ( hasPlaceholder( *node ) ) {
+        beginRemoveRows( indexOfNode( node ), 0, 0 );
+        node->children.clear();
+        endRemoveRows();
     }
 }
 
@@ -1730,6 +1746,14 @@ void PluginTreeBehaviour::expandedChanged( const QModelIndex& index, bool expand
     }
     if ( expanded && model_->wantsChildren( index ) ) {
         startLoad( nodeId );
+    }
+    // Collapsed while it loads: the query is cancelled (query/cancel, its slot goes to the next
+    // one), a late answer is dropped, and the next expand asks again.
+    if ( !expanded && loading_.remove( nodeId ) ) {
+        model_->cancelLoading( nodeId );
+        if ( hooks_.cancelChildren ) {
+            hooks_.cancelChildren( nodeId );
+        }
     }
     // Only the user's expansions: patches and restoring the view run while the user cannot act,
     // and the nodes a tree/children answer expands are expanded by the plugin too.

@@ -227,6 +227,9 @@ void PluginView::applyTree( Node& node, const QJsonObject& props, const QJsonObj
             warnOnce( "columns:" + node.id, "tree columns rejected for " + node.id );
         }
         else {
+            // Nodes keep only the cells of the columns there are: nodes sent again after the
+            // columns changed are parsed again, even when they are the same as last time.
+            node.rowsDirty = true;
             for ( int column = 0; column < columns.size(); ++column ) {
                 const auto info = model->column( column );
                 const auto width = columns.at( column ).toObject().value( "width" ).toInt();
