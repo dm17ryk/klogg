@@ -188,6 +188,19 @@ TEST_CASE( "Pack items have a canonical one-item-per-file form", "[packmerge][E1
     CHECK( back.value( "blocks" ) == original.value( "blocks" ) );
     CHECK( back.value( "version" ) == 1 );
     CHECK( packcanonical::fromPreviews( packcanonical::toPreviews( files ) ) == files );
+
+    // A preview named "meta" never takes the previews settings' file (previews/meta.json).
+    CHECK( packcanonical::encodeName( "meta" ) == "%6Deta" );
+    const auto withMeta = packcanonical::fromPreviews(
+        R"({ "version": 1, "previews": [ { "name": "meta", "regex": "^M$", "format": "fields", "fields": [] } ] })" );
+    CHECK( withMeta.contains( "previews/%6Deta.json" ) );
+    CHECK( packcanonical::kindOf( "previews/%6Deta.json" ) == "preview" );
+    CHECK( packcanonical::itemOf( "previews/%6Deta.json" ) == "meta" );
+    CHECK( packcanonical::isCanonical( "previews/%6Deta.json" ) );
+    CHECK( QJsonDocument::fromJson( withMeta.value( "previews/meta.json" ) ).object().value( "version" ).toInt() == 1 );
+    const auto metaBack = QJsonDocument::fromJson( packcanonical::toPreviews( withMeta ) ).object();
+    REQUIRE( metaBack.value( "previews" ).toArray().size() == 1 );
+    CHECK( metaBack.value( "previews" ).toArray().first().toObject().value( "name" ).toString() == "meta" );
 }
 
 TEST_CASE( "Pack items merge item by item and field by field", "[packmerge][E16]" )
@@ -1436,6 +1449,54 @@ TEST_CASE( "A content folder an unfinished update wrote is not loaded", "[packme
     CHECK( store.contentFromUnfinishedUpdate() );
     store.endUpdate();
     CHECK_FALSE( store.contentFromUnfinishedUpdate() );
+}
+
+TEST_CASE( "A settled journal that cannot be removed keeps the edits loading", "[packmerge][E16]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    PluginManager manager( root.filePath( "data" ), root.filePath( "none" ) );
+    const auto id = QStringLiteral( "org.example.pack" );
+    const auto storeRoot = root.filePath( "data/pack-store" );
+    const auto v1 = writePackage( root.filePath( "v1" ), "1.0.0", Previews, "-- a\n" );
+    REQUIRE( finished( manager, manager.manage( "install", {}, { { "path", v1 } } ) )[ "state" ]
+             == "completed" );
+    auto item = QJsonDocument::fromJson( Previews ).object()[ "previews" ].toArray()[ 0 ].toObject();
+    item[ "regex" ] = "^EDITED$";
+    REQUIRE( manager.manage( "pack_edit", id,
+                             { { "path", "previews/%53econd.json" },
+                               { "content", QString::fromUtf8( QJsonDocument( item ).toJson() ) } } )
+                 .ok() );
+    const auto before = PackStore( storeRoot, id ).tips();
+    // Version 2 changes another preview: it merges with the edit and is installed.
+    auto document = QJsonDocument::fromJson( Previews ).object();
+    auto previews = document[ "previews" ].toArray();
+    auto frame = previews[ 1 ].toObject();
+    frame[ "regex" ] = "^A2$";
+    previews[ 1 ] = frame;
+    document[ "previews" ] = previews;
+    const auto v2 = writePackage( root.filePath( "v2" ), "1.1.0", QJsonDocument( document ).toJson(), "-- a\n" );
+    REQUIRE( finished( manager, manager.manage( "install", {}, { { "path", v2 } } ) )[ "state" ]
+             == "completed" );
+    // Its journal is still there and cannot be removed (read-only on Windows).
+    const auto journal = QDir( storeRoot ).filePath( id + ".update.json" );
+    {
+        QFile file( journal );
+        REQUIRE( file.open( QIODevice::WriteOnly ) );
+        file.write( QJsonDocument( QJsonObject{ { "existed", true },
+                                                { "upstream", before.upstream },
+                                                { "local", before.local } } )
+                        .toJson() );
+    }
+    REQUIRE( QFile::setPermissions( journal, QFileDevice::ReadOwner | QFileDevice::ReadUser ) );
+    manager.discover();
+    // The update had finished: settled, so the content folder with the edit loads.
+    const auto content = manager.packContentDirectory( id );
+    CHECK( content == PackStore( storeRoot, id ).contentDirectory() );
+    CHECK( readFile( content + "/previews.json" ).contains( "^EDITED$" ) );
+    CHECK( readFile( content + "/previews.json" ).contains( "^A2$" ) );
+    QFile::setPermissions( journal, QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                                        | QFileDevice::ReadUser | QFileDevice::WriteUser );
 }
 
 TEST_CASE( "A content folder written again by a reading operation is announced", "[packmerge][E16]" )

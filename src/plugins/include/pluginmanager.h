@@ -128,7 +128,8 @@ public:
     // folder (the installed version with the user's edits, design 4.6), or the installed folder
     // while the pack has no store.
     QString packContentDirectory( const QString& pluginId ) const;
-    // The store commit that content comes from ("" without a store): a revision for caches.
+    // The store commit the content folder was last written for ("" without one): a revision for
+    // caches, which changes whenever that folder is written.
     QString packRevision( const QString& pluginId ) const;
     // The valid configuration packs the user enabled, in ID order. Cheaper than plugins().
     QStringList enabledPacks() const;
@@ -412,6 +413,12 @@ private:
     // Rebuilds a damaged store from the installed pack, keeping the local edits; with `create`,
     // also gives a pack installed before its store existed one. Empty when the store is usable.
     QString ensurePackStore( const QString& id, const Manifest& installed, bool create ) const;
+    // Whether the pack's content folder may hold what an unfinished install or update wrote: its
+    // journal is there and was not settled (finished or put back) in this session.
+    bool packContentPending( const QString& id ) const;
+    // Packs whose update journal was settled (the update finished or was put back) but could not
+    // be removed: their content folder is current, so the pack still loads it.
+    mutable QSet<QString> settledJournals_;
     // Before a pack is installed over an installed one: the merge with the local edits. Fails,
     // with the conflicts in `result`, when the strategy leaves conflicts unresolved.
     QString preparePackInstall( const StagedPlugin& staged, const QVariantMap& context,

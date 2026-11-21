@@ -817,7 +817,9 @@ what the store's `upstream` holds and `upstream` moved on from the journal's tip
 completed and only the journal goes (an update moves `upstream` first and an undo puts it back
 last, `local` first, so an undo that stopped part-way is done again; while a journal that could
 not be acted on is there, the pack loads its installed folder, never content of a version that
-was not installed, as the content folder is replaced before its revision is recorded);
+was not installed, as the content folder is replaced before its revision is recorded; a journal
+that was settled, the update finished or put back, but could not be removed keeps the content
+folder loading);
 otherwise CILogg ended part-way (between the branch moves or before the package swap, whatever
 the versions) and the store is put back to those tips, so a later update merges anew. A journal
 is read strictly (a missing or malformed field, the tips included, is never taken as "there was
@@ -867,7 +869,8 @@ so a stale file is never published. A folder left behind by a replace
 that failed (a rename refused while a file is held; it is retried for about 1.5 s) is written
 again by the next pack operation, enable or update.
 Edits change or delete the pack's own previews and blocks and change its listed files and
-preview order; they add no items. A revert never brings back a file the installed version's
+preview order; they add no items. An item named `meta` is stored as `%6Deta.json`, so it never
+takes the previews settings' file. A revert never brings back a file the installed version's
 manifest no longer lists (the content folder would not have it), and its result stays within the
 preview limits like an edit's. libgit2 is always CILogg's own build (static, local only), also
 when packaging asks CPM for the system's packages. Resolutions name only the pack's items in their canonical

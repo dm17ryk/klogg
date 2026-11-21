@@ -360,10 +360,14 @@ QString PluginManager::packContentDirectory( const QString& pluginId ) const
     // The effective content wherever its folder is, also while the repository does not open
     // (another program holds a file of it): the installed folder only when there is none, or
     // while it may hold what an unfinished update wrote (its journal not acted on yet).
-    const PackStore store( packStoreRoot(), pluginId );
-    const auto content = store.contentDirectory();
-    return content.isEmpty() || store.contentFromUnfinishedUpdate() ? pluginDirectory( pluginId )
-                                                                    : content;
+    const auto content = PackStore( packStoreRoot(), pluginId ).contentDirectory();
+    return content.isEmpty() || packContentPending( pluginId ) ? pluginDirectory( pluginId ) : content;
+}
+
+bool PluginManager::packContentPending( const QString& id ) const
+{
+    return PackStore( packStoreRoot(), id ).contentFromUnfinishedUpdate()
+           && !settledJournals_.contains( id );
 }
 
 QString PluginManager::packRevision( const QString& pluginId ) const
@@ -392,6 +396,14 @@ QString PluginManager::ensurePackStore( const QString& id, const Manifest& insta
         if ( const auto error = store.recoverInterruptedUpdate( &installedFiles, installed.json );
              !error.isEmpty() ) {
             return error;
+        }
+        // Settled, but a journal that could not be removed stays: the content folder is current
+        // all the same, so the pack loads it.
+        if ( store.hasJournal() ) {
+            settledJournals_.insert( id );
+        }
+        else {
+            settledJournals_.remove( id );
         }
     }
     // A store that is there but does not open now (another program holds a file of it) is not a
@@ -723,7 +735,7 @@ Result PluginManager::managePack( const QString& operation, const QString& id,
     // be written, a recovered update) changes what loads: the summary and listeners follow it,
     // also for an operation that only reads.
     if ( packRevision( id ) != contentBefore ) {
-        const auto content = store.contentFromUnfinishedUpdate() ? QString{} : store.contentDirectory();
+        const auto content = packContentPending( id ) ? QString{} : store.contentDirectory();
         it->second->pack = packSummary( manifest.json, content.isEmpty() ? manifest.directory : content );
         it->second->pack[ "localEdits" ] = static_cast<int>( store.localEdits().size() );
         Q_EMIT changed();
@@ -896,7 +908,7 @@ Result PluginManager::managePack( const QString& operation, const QString& id,
     }
     // The store can have changed even when its files could not be written afterwards, so the
     // summary and listeners follow it in both cases.
-    const auto content = store.contentFromUnfinishedUpdate() ? QString{} : store.contentDirectory();
+    const auto content = packContentPending( id ) ? QString{} : store.contentDirectory();
     it->second->pack = packSummary( manifest.json, content.isEmpty() ? manifest.directory : content );
     it->second->pack[ "localEdits" ] = static_cast<int>( store.localEdits().size() );
     LOG_INFO << "Pack " << operation.toStdString() << " id=" << id.toStdString()

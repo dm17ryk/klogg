@@ -55,6 +55,11 @@ QString encodeName( const QString& name )
     if ( encoded == "." || encoded == ".." || encoded.isEmpty() ) {
         encoded.replace( '.', QStringLiteral( "%2E" ) );
     }
+    // "meta" is the previews settings' file (previews/meta.json): an item of that name is spelled
+    // with its first letter escaped, so it never takes that file's place.
+    if ( encoded == QLatin1String( "meta" ) ) {
+        encoded = QStringLiteral( "%6Deta" );
+    }
     return encoded;
 }
 

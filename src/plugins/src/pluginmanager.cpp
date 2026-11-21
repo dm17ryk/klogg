@@ -221,8 +221,7 @@ void PluginManager::discover()
             // does not open: the installed folder would lose the edits for this session. Not
             // while it may hold what an unfinished update wrote, a version never installed.
             const PackStore store( packStoreRoot(), id );
-            const auto content
-                = store.contentFromUnfinishedUpdate() ? QString{} : store.contentDirectory();
+            const auto content = packContentPending( id ) ? QString{} : store.contentDirectory();
             entry->pack = packSummary( entry->manifest.json,
                                        content.isEmpty() ? entry->manifest.directory : content );
             entry->pack[ "localEdits" ]
@@ -1706,6 +1705,8 @@ void PluginManager::commitWhenStopped( const StagedPlugin& staged, const QString
     if ( error.isEmpty() && pack ) {
         PackStore store( packStoreRoot(), staged.manifest.id );
         packBefore = store.tips();
+        // A new journal is not settled until this install or update is done or put back.
+        settledJournals_.remove( staged.manifest.id );
         // A store that is there but whose tips cannot be read now could not be put back.
         error = packBefore.existed && ( packBefore.upstream.isEmpty() || packBefore.local.isEmpty() )
                     ? QStringLiteral( "The pack's store cannot be opened now (another program may "
@@ -1730,7 +1731,13 @@ void PluginManager::commitWhenStopped( const StagedPlugin& staged, const QString
     // Done, or put back: the journal goes. One that stays (a store not put back) is put back
     // by the next read of the pack.
     if ( pack && !journal ) {
-        PackStore( packStoreRoot(), staged.manifest.id ).endUpdate();
+        PackStore store( packStoreRoot(), staged.manifest.id );
+        store.endUpdate();
+        // Done or put back, but the journal could not be removed: the content folder is current
+        // all the same, so the pack loads it (the next read of the pack settles it again).
+        if ( store.hasJournal() ) {
+            settledJournals_.insert( staged.manifest.id );
+        }
     }
     if ( error.isEmpty() && pack ) {
         // Installed with its store: no update waits for a merge any more.
