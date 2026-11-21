@@ -1,4 +1,5 @@
 #pragma once
+#include "packcanonical.h"
 #include "plugincatalog.h"
 #include "pluginprocess.h"
 #include "pluginqueries.h"
@@ -123,6 +124,13 @@ public:
     QJsonObject manifest( const QString& pluginId ) const;
     // The folder of an installed plugin; empty when unknown.
     QString pluginDirectory( const QString& pluginId ) const;
+    // Where CILogg reads a configuration pack's effective content: its local store's content
+    // folder (the installed version with the user's edits, design 4.6), or the installed folder
+    // while the pack has no store.
+    QString packContentDirectory( const QString& pluginId ) const;
+    // The store commit the content folder was last written for ("" without one): a revision for
+    // caches, which changes whenever that folder is written.
+    QString packRevision( const QString& pluginId ) const;
     // The valid configuration packs the user enabled, in ID order. Cheaper than plugins().
     QStringList enabledPacks() const;
 
@@ -400,6 +408,34 @@ private:
     // A removed plugin keeps no skipped, announced or failed version; an install or update the
     // user made clears a reported automatic-update failure.
     void forgetUpdates( const QString& id );
+    // Configuration pack stores (pluginmanagerpacks.cpp, design 4.6).
+    QString packStoreRoot() const;
+    // Rebuilds a damaged store from the installed pack, keeping the local edits; with `create`,
+    // also gives a pack installed before its store existed one. Empty when the store is usable.
+    QString ensurePackStore( const QString& id, const Manifest& installed, bool create ) const;
+    // Whether the pack's content folder may hold what an unfinished install or update wrote: its
+    // journal is there and was not settled (finished or put back) in this session.
+    bool packContentPending( const QString& id ) const;
+    // Packs whose update journal was settled (the update finished or was put back) but could not
+    // be removed: their content folder is current, so the pack still loads it.
+    mutable QSet<QString> settledJournals_;
+    // Before a pack is installed over an installed one: the merge with the local edits. Fails,
+    // with the conflicts in `result`, when the strategy leaves conflicts unresolved.
+    QString preparePackInstall( const StagedPlugin& staged, const QVariantMap& context,
+                                PackFiles* shipped, std::optional<PackFiles>* merged,
+                                QVariantMap* result ) const;
+    // The store's part of an install or update, made before the package folder is replaced
+    // (and put back with PackStore::rollback when that fails).
+    QString finishPackInstall( const StagedPlugin& staged, const PackFiles& shipped,
+                               const std::optional<PackFiles>& merged, const InstallSource& source );
+    // The pack check on content an enabled pack would load (an update's merge, an edit, a
+    // reset), written in the pack's layout into its store's check folder: the refusal, or "".
+    QString checkPackFiles( const QString& id, const PackFiles& files,
+                            const QJsonObject& manifest ) const;
+    void removePackStore( const QString& pluginId );
+    int packLocalEdits( const QString& pluginId ) const;
+    static bool packOperation( const QString& operation );
+    Result managePack( const QString& operation, const QString& id, const QVariantMap& options );
     void clearAutoUpdateFailure( const QString& id );
     // The last catalog of each repository is kept in the plugin data folder, so an update check
     // after a restart still knows the versions of a repository it skips (checked < 24 h ago).

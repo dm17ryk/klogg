@@ -855,7 +855,8 @@ packs](plugin-repositories.md) section 4). The example is
   blocks are renamed `<pack-id>/<block>` so they never meet the user's or another pack's; a user
   preview with the same name replaces the pack's; two enabled packs never share a preview name;
   and the user's previews and all enabled packs together stay within the preview limits
-  (128 previews, 4,096 blocks, 1 MiB). **Copy to My Previews** in the previews dialog copies a pack
+  (128 previews, 4,096 blocks, 1 MiB); a pack whose own previews document is over the counts is
+  refused at install. **Copy to My Previews** in the previews dialog copies a pack
   preview, with the blocks it needs and its route, into the user's own previews and routes.
   Exports and project snapshots contain the user's previews only.
 - `lua.load` lists every file of `lua.folder` in loading order (1 to 8 files, 1 MiB each). While
@@ -868,5 +869,71 @@ packs](plugin-repositories.md) section 4). The example is
 - `python_decoders` are installed and updated with the pack and shown as needing a newer CILogg
   until the decoder contract of task MD03 runs them. `actions`, `highlights` and `filters` are
   validated as files and loaded by a later slice (E16c).
+- No content file may be `plugin.json` or the previews file (compared ignoring case): CILogg
+  writes both itself for the pack's content with your edits. Two content files may not differ
+  only in case either (one file on Windows and macOS).
 - `get_plugins` adds `contents` and the counts `previews`, `luaFiles` and `pythonDecoders` for a
-  pack. Catalog entries of packs use `os: any` and `arch: any`.
+  pack, `localEdits` (the edited items) and `needsMerge` (the version an update could not merge).
+  Catalog entries of packs use `os: any` and `arch: any`.
+
+### Local edits and updates
+
+Users edit pack items in place; each pack has a local store (a Git repository kept by the bundled
+libgit2, never shown to users) whose `upstream` branch holds the versions as shipped and whose
+`local` branch holds the edits. Items are stored one per file: `previews/<name>.json`,
+`blocks/<name>.json`, `previews/order.txt` (evaluation order), `previews/meta.json` and
+`files/<path>` for Lua and Python, names percent-encoded outside `[a-z0-9._-]`. An install or
+update merges the new version with the edits: an item not edited takes the new version, fields
+changed on one side merge, the same new value on both sides is no conflict, and the same field
+changed differently, or deleted on one side and changed on the other, is a conflict. Preview
+`fields` merge by `name`. Lua and Python files merge as text, like `git merge-file`.
+
+`plugin_manage` operations for packs (GUI, CLI, native MCP and Python alike):
+
+| Operation | Options | Result |
+|---|---|---|
+| `pack_files` / `pack_edits` | none | `files`: `path`, `kind`, `item`, `state` (`pack`, `edited`, `added`, `deleted`); `pack_edits` lists the changed ones |
+| `pack_read` | `path` | `content`, `edited` |
+| `pack_edit` | `path`, exactly one of `content` or `remove: true` (previews and blocks only), optional `message` | a commit on `local`; only the pack's own items, and preview and block JSON keeps its `name` |
+| `pack_history` | optional `path` | `commits`: `commit`, `message`, `time`, `packVersion` |
+| `pack_reset` | optional `path`, optional `commit` (from `pack_history`) | restores the item (or, within the installed version, the whole pack) as in `commit`, or as shipped, as a new commit; never a file the installed version's manifest does not list, nor a preview or block when it has no previews document; previews within their limits, and for an enabled pack only content that passes the pack check (like `pack_edit`) |
+
+`install` and `update` of a pack (and no other operation, which refuses them) take `strategy` (`fail`, the default; `keep_mine`;
+`take_theirs`) and `resolutions`: `{path, take: "mine"|"theirs"}` (a whole side, byte for
+byte) for any item, `{path, field, value}` or `{path, field, remove: true}` for a preview or
+block field (an empty `field` replaces the whole item), and `{path, text}` for a file or the
+preview order, which are never removed (the new manifest lists the files). A file that is not UTF-8 text on
+any side (the installed version's too) is resolved with `take` only, and `pack_read` refuses it
+(editing it as text would change its bytes). A field resolution needs its item in the merge
+result (an item both sides deleted comes back only by a whole-item resolution), never names
+`name` or a field under it, and must fit the item's structure: its parent is in the item (an
+object for a member, an array for an `@element`) and the field reads back as its value
+afterwards (`@x` on the item itself, a path through a text field, or one with an empty segment
+such as `/x`, is refused). `resolutions` and `revision` belong to a merge: a first install
+of a pack, or an install or update of a plugin that is not a pack, refuses them (given at all,
+an empty list too), and a plugin that is running is not stopped for that. The previews settings
+(`previews/meta.json`) are the pack's: an update takes the new version's, so they never conflict
+and no resolution names them, and `pack_reset` does not revert them on their own. Arrays of
+named elements merge their order too; two different reorderings are one conflict of the list. A failed merge's result also lists the new version's preview names
+(`incomingPreviews`); the merge window's Keep Both never names its copy after one. With conflicts left open the job fails with `needsMerge: true`,
+`conflicts` (`path`, `kind`, `item`, `field`, `base`, `mine`, `theirs`; field values as JSON
+text; a file's conflict has only `base`, its sides are in `items`) and `items` (each conflicting
+item whole: `mine`, `theirs`, `inMine`, `inTheirs`, `utf8`), and the installed version stays.
+The texts stay within 4 MiB per job, previews and blocks first: an item past that has
+`omitted: true` and no texts (resolve it with `take`), and an automatic update's job keeps none.
+An item with more than 32 conflicting fields (or any item once 1,024 conflicts are listed, or a
+conflict on a field path past 4,096 characters or 128 segments, the most a resolution's `field`
+may have, or with an empty segment, a key with an empty name) is listed as one whole-item conflict (`field` ""), settled by a whole-item resolution. The result
+also has `revision` (the pack's edits and the new version the conflicts are for):
+`resolutions` need it back (they are refused without it), and if the pack was edited since, or
+the package is another one (a local folder changed meanwhile), they are not applied and nothing
+is installed (with `needsMerge` again when there are conflicts). The previews document as CILogg
+writes it (one member per line) must stay within 1 MiB, and within 128 previews and 4,096
+blocks: a package, merge result (checked once its conflicts are settled) or edit that would pass
+them is refused. Resolutions
+name only items of the pack in the spelling `pack_files` lists, keep each item's `name`, and stay
+within 1 MiB. The files of a merge result are exactly those the new manifest lists (edited files
+it dropped are named in the job result's `droppedEdits` and `warning`; their edits stay in the
+pack's history); a version without a previews document takes the previews and blocks with it the
+same way. For an enabled pack the pack check runs on what would load: the merge result
+when there are local edits (an item an edit deleted stays deleted), otherwise the new version.

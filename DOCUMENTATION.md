@@ -213,6 +213,25 @@ Previews** makes your own copy. CILogg asks before it enables a pack with Lua, b
 runs on your computer. The [plugin SDK](docs/plugin-sdk.md#configuration-packs) describes the
 format; [plugins/examples/protocol-pack](plugins/examples/protocol-pack) is a complete example.
 
+**Editing a pack in place.** Select a pack preview in the previews dialog and click **Edit…**, or
+select the pack on the Installed tab and click **Pack Files…** to edit any of its previews, blocks
+or Lua and Python files. Items open in a text editor (JSON for previews and blocks) with **Open in
+External Editor**, **History…** (every saved version, with **Revert to This Version**) and **Reset
+to Pack Version**. The Installed tab shows "Edited locally (n)". Your edits survive updates: a
+new version is merged with them, and only when the new version changes the same field you changed
+does CILogg ask. The **merge window** lists each conflicting field with the installed value,
+yours and the new one; choose **Keep Mine**, **Take Theirs**, **Edit…** or, for a preview,
+**Keep Both** (the new version stays the pack's, and once it is installed yours is copied to
+your own previews as "<name> (mine)"), or decide for all rows at once. Lua and Python files get a three-pane merge
+with an editable result, per-conflict buttons and **Open in External Merge Tool…** (Beyond
+Compare, KDiff3, WinMerge, Meld, P4Merge or any command with `$BASE`, `$LOCAL`, `$REMOTE` and
+`$MERGED`). Nothing changes until **Apply**; **Cancel** keeps the installed version and your
+edits. An automatic update that would need a merge is not installed: a notice says so, and the
+pack shows "Update to X needs a merge" until you click **Update**. From the CLI, MCP or Python an
+update with conflicts fails and lists them; run it again with `"strategy": "keep_mine"` or
+`"take_theirs"`, or with `resolutions`. CILogg keeps each pack's history in a small local store;
+you never need Git.
+
 ### 2. Create your own repository
 
 **Public.** Any HTTPS static host serves `plugins.json` and the ZIPs: a GitHub repository

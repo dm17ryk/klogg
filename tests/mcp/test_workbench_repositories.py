@@ -74,6 +74,18 @@ class E15HelperTests(unittest.TestCase):
         self.assertIsNone(workbench_repositories.pack_fields([{"id": "other"}]))
         self.assertTrue((workbench_repositories.PACK_FOLDER / "plugin.json").is_file())
 
+    def test_pack_preview_is_the_canonical_store_path(self):
+        # packcanonical::encodeName: UTF-8 bytes outside [a-z0-9._-] become %XX.
+        plain = set("abcdefghijklmnopqrstuvwxyz0123456789._-")
+        name = "Demo frame"
+        encoded = "".join(chr(byte) if chr(byte) in plain else f"%{byte:02X}"
+                          for byte in name.encode("utf-8"))
+        self.assertEqual(workbench_repositories.PACK_PREVIEW, f"previews/{encoded}.json")
+        self.assertEqual(workbench_repositories.PACK_EDITED[0]["item"], name)
+        fixture = (Path(__file__).resolve().parents[2]
+                   / "test_data/workbench/python/e15a_repositories.py").read_text(encoding="utf-8")
+        self.assertIn('plugin_operation="pack_reset"', fixture)
+
 
 if __name__ == "__main__":
     unittest.main()

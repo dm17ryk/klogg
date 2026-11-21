@@ -292,6 +292,11 @@ bool PreviewDecoderSettings::setConfiguration( const QVariantMap& value, QString
     invalidate();
     return true;
 }
+bool PreviewDecoderSettings::check( const QVariantMap& value, QString* error ) const
+{
+    QVariantMap normalized;
+    return normalize( value, &normalized, error );
+}
 void PreviewDecoderSettings::invalidate()
 {
     revision_ = QUuid::createUuid().toString( QUuid::WithoutBraces );

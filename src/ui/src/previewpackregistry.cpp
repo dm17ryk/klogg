@@ -2,7 +2,10 @@
 #include "previewpackregistry.h"
 
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
 #include <QSet>
 #include <algorithm>
 
@@ -30,6 +33,64 @@ QString contributionKey( const QString& directory, const QJsonObject& manifest )
 QString packLabel( const PreviewPackRegistry::Contribution& pack )
 {
     return pack.name.isEmpty() ? pack.id : pack.name;
+}
+
+// Two preview routes that decode alike (a saved one has `protocol` "" when it had none).
+bool sameRoute( const QVariant& a, const QVariant& b )
+{
+    const auto left = a.toMap();
+    const auto right = b.toMap();
+    return left.value( "dissector" ).toString() == right.value( "dissector" ).toString()
+           && left.value( "protocol" ).toString() == right.value( "protocol" ).toString();
+}
+
+enum class CopyRoute {
+    Added,   // added to the configuration
+    Nothing, // none to add: the copy already decodes as the preview does
+    Taken,   // the user has another route under the copy's name: the copy would decode with it
+};
+
+// The route of the copy `target` of the pack's preview `name`: the route `name` decodes with in
+// `before` (the user's own route for it, which wins, or else the pack's), added to
+// `configuration` (the user's; `before` as it was, ahead of other copies made with this one).
+CopyRoute addCopyRoute( const PreviewPackRegistry::Contribution& pack, const QString& name,
+                        const QString& target, const QVariantMap& before,
+                        QVariantMap* configuration )
+{
+    const auto userRoutes = before.value( "previewRoutes" ).toMap();
+    const auto source = userRoutes.contains( name ) ? userRoutes.value( name )
+                                                    : pack.previewRoutes.value( name );
+    auto routes = configuration->value( "previewRoutes" ).toMap();
+    if ( routes.contains( target ) ) {
+        return source.isValid() && sameRoute( routes.value( target ), source ) ? CopyRoute::Nothing
+                                                                               : CopyRoute::Taken;
+    }
+    if ( !source.isValid() ) {
+        return CopyRoute::Nothing;
+    }
+    routes.insert( target, source );
+    ( *configuration )[ "previewRoutes" ] = routes;
+    return CopyRoute::Added;
+}
+
+QString routeTaken( const QString& target )
+{
+    return PreviewPackRegistry::tr( "you already have another decoder route named \"%1\", which "
+                                    "the copy would decode with" )
+        .arg( target );
+}
+
+// Why the decoder settings refused the user's routes, for a message.
+QString routeRefusal( const QString& reason )
+{
+    if ( reason == QLatin1String( "route_limit" ) ) {
+        return PreviewPackRegistry::tr( "you already have %1 preview routes, the most there can be" )
+            .arg( PreviewDecoderSettings::PreviewRouteLimit );
+    }
+    if ( reason == QLatin1String( "configuration_limit" ) ) {
+        return PreviewPackRegistry::tr( "the decoder settings would pass 64 KiB" );
+    }
+    return reason;
 }
 } // namespace
 
@@ -103,12 +164,18 @@ void PreviewPackRegistry::refresh()
         // A cheap list: the manager signals every job change, so this runs often.
         for ( const auto& id : manager_->enabledPacks() ) {
             const auto manifest = manager_->manifest( id );
-            const auto directory = manager_->pluginDirectory( id );
-            const auto key = contributionKey( directory, manifest );
+            // The effective content: the installed version with the user's edits (design 4.6).
+            const auto directory = manager_->packContentDirectory( id );
+            // The store commit makes every edit and reset a new contribution, also when it
+            // lands within the file system's time resolution.
+            const auto key = contributionKey( directory, manifest ) + QLatin1Char( '|' )
+                             + manager_->packRevision( id );
             const auto cached = cache_.find( id );
-            packs.append( cached != cache_.end() && cached->key == key
-                              ? cached.value()
-                              : read( id, directory, manifest ) );
+            auto contribution = cached != cache_.end() && cached->key == key
+                                    ? cached.value()
+                                    : read( id, directory, manifest );
+            contribution.key = key;
+            packs.append( contribution );
         }
     }
     std::sort( packs.begin(), packs.end(),
@@ -165,37 +232,149 @@ void PreviewPackRegistry::refresh()
     PreviewManager::instance().setPackPreviews( previews );
 }
 
-QString PreviewPackRegistry::copyPreview( const QString& name )
+QString PreviewPackRegistry::copyPreview( const QString& name, const QString& copyName )
 {
-    const auto origin = PreviewManager::instance().packOrigin( name );
-    const auto error = PreviewManager::instance().copyPackPreview( name );
-    if ( !error.isEmpty() || !origin ) {
-        return error;
+    const auto copy = [ &name, &copyName ] {
+        return PreviewManager::instance().copyPackPreview( name, copyName );
+    };
+    if ( const auto origin = PreviewManager::instance().packOrigin( name ) ) {
+        for ( const auto& pack : applied_ ) {
+            if ( pack.id == origin->packId ) {
+                return copyWithRoute( pack, name, copyName.isEmpty() ? name : copyName, copy );
+            }
+        }
     }
-    // The copy has no link to the pack, so it keeps decoding without it: the pack's route
-    // becomes the user's.
+    // Not a preview of an enabled pack: copyPackPreview says so.
+    return copy();
+}
+
+std::optional<PreviewPackRegistry::Contribution>
+PreviewPackRegistry::snapshotOfPack( const QString& packId, QString* error ) const
+{
     for ( const auto& pack : applied_ ) {
-        if ( pack.id != origin->packId || !pack.previewRoutes.contains( name ) ) {
-            continue;
+        if ( pack.id == packId && pack.error.isEmpty() ) {
+            return pack; // enabled: as applied
         }
-        auto& settings = PreviewDecoderSettings::instance();
-        auto configuration = settings.configuration();
-        auto routes = configuration.value( "previewRoutes" ).toMap();
-        if ( routes.contains( name ) ) {
-            return {};
+    }
+    if ( !manager_ ) {
+        *error = tr( "The pack is not available." );
+        return std::nullopt;
+    }
+    // A disabled pack (or one not applied yet): read as it is now, with the local edits.
+    auto pack = read( packId, manager_->packContentDirectory( packId ), manager_->manifest( packId ) );
+    if ( !pack.error.isEmpty() ) {
+        *error = pack.error;
+        return std::nullopt;
+    }
+    return pack;
+}
+
+QString PreviewPackRegistry::copyPreviewOfSnapshot( const Contribution& pack, const QString& name,
+                                                    const QString& copyName )
+{
+    return copyWithRoute( pack, name, copyName.isEmpty() ? name : copyName,
+                          [ &pack, &name, &copyName ] {
+                              return PreviewManager::instance().copyPreviewFrom( pack.previews,
+                                                                                 name, copyName );
+                          } );
+}
+
+QString PreviewPackRegistry::checkCopyRoutes( const Contribution& pack,
+                                              const QMap<QString, QString>& copies ) const
+{
+    auto& settings = PreviewDecoderSettings::instance();
+    const auto before = settings.configuration();
+    auto configuration = before;
+    bool added = false;
+    for ( auto copy = copies.cbegin(); copy != copies.cend(); ++copy ) {
+        const auto route = addCopyRoute( pack, copy.key(), copy.value(), before, &configuration );
+        if ( route == CopyRoute::Taken ) {
+            return tr( "The decoder routes of the copies cannot be added to your routes: %1." )
+                .arg( routeTaken( copy.value() ) );
         }
-        routes.insert( name, pack.previewRoutes.value( name ) );
-        configuration[ "previewRoutes" ] = routes;
-        QString reason;
-        if ( !settings.setConfiguration( configuration, &reason ) ) {
-            LOG_WARNING << "Copied pack preview route not added name=" << name.toStdString()
-                        << " reason=" << reason.toStdString();
-            return tr( "The preview was copied, but its decoder route could not be added to "
-                       "your routes (%1)." )
-                .arg( reason );
-        }
+        added = added || route == CopyRoute::Added;
+    }
+    QString reason;
+    if ( added && !settings.check( configuration, &reason ) ) {
+        return tr( "The decoder routes of the copies cannot be added to your routes: %1." )
+            .arg( routeRefusal( reason ) );
     }
     return {};
+}
+
+QStringList PreviewPackRegistry::installedPackPreviewNames() const
+{
+    QStringList names;
+    if ( !manager_ ) {
+        return names;
+    }
+    // The names only, read even from a previews document that is not valid now (an edit can be
+    // reset later): what loads now and what the installed version ships (a reset brings it back).
+    const auto namesIn = [ &names ]( const QString& path ) {
+        QFile file( path );
+        if ( !file.open( QIODevice::ReadOnly ) || file.size() > cilogg::plugins::MaxPackFileBytes ) {
+            return;
+        }
+        const auto document = QJsonDocument::fromJson( file.readAll() );
+        const auto previews
+            = document.isArray() ? document.array() : document.object().value( "previews" ).toArray();
+        for ( const auto& preview : previews ) {
+            const auto name = preview.toObject().value( "name" ).toString();
+            if ( !name.isEmpty() ) {
+                names.append( name );
+            }
+        }
+    };
+    for ( const auto& plugin : manager_->plugins() ) {
+        const auto info = plugin.toMap();
+        const auto id = info.value( "id" ).toString();
+        const auto manifest = manager_->manifest( id );
+        PackContent content;
+        if ( !cilogg::plugins::isConfigPack( manifest )
+             || !validatePackManifest( manifest, &content ).isEmpty() || content.previews.isEmpty() ) {
+            continue;
+        }
+        namesIn( QDir( manager_->packContentDirectory( id ) ).filePath( content.previews ) );
+        namesIn( QDir( info.value( "directory" ).toString() ).filePath( content.previews ) );
+    }
+    names.removeDuplicates();
+    return names;
+}
+
+QString PreviewPackRegistry::copyWithRoute( const Contribution& pack, const QString& name,
+                                            const QString& target,
+                                            const std::function<QString()>& copy )
+{
+    // A copy under another name never takes a pack preview's name, also of a pack not enabled
+    // now: it would replace that preview once the pack is enabled.
+    if ( target != name && instance().installedPackPreviewNames().contains( target ) ) {
+        return tr( "A pack has a preview named \"%1\", which the copy would replace." ).arg( target );
+    }
+    // The copy has no link to the pack, so it keeps decoding without it: the route the preview
+    // decodes with becomes the user's route for the copy. The route is saved first: a route under
+    // a name no preview has decodes nothing, while a copy without its route would decode wrongly.
+    // A copy that then fails takes its route back.
+    auto& settings = PreviewDecoderSettings::instance();
+    const auto previous = settings.configuration();
+    auto configuration = previous;
+    QString reason;
+    const auto route = addCopyRoute( pack, name, target, previous, &configuration );
+    if ( route == CopyRoute::Taken
+         || ( route == CopyRoute::Added && !settings.setConfiguration( configuration, &reason ) ) ) {
+        LOG_WARNING << "Pack preview not copied, its route cannot be added name="
+                    << name.toStdString() << " reason="
+                    << ( route == CopyRoute::Taken ? std::string( "taken" ) : reason.toStdString() );
+        return tr( "\"%1\" was not copied: its decoder route cannot be added to your routes: %2." )
+            .arg( target, route == CopyRoute::Taken ? routeTaken( target ) : routeRefusal( reason ) );
+    }
+    const auto error = copy();
+    if ( !error.isEmpty() && route == CopyRoute::Added
+         && !settings.setConfiguration( previous, &reason ) ) {
+        // Left in place it decodes nothing, and another try finds the same route there.
+        LOG_WARNING << "Route of a pack preview that was not copied stays name="
+                    << name.toStdString() << " reason=" << reason.toStdString();
+    }
+    return error;
 }
 
 QString PreviewPackRegistry::check( const QString& id, const QString& directory,

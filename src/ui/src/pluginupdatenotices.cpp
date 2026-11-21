@@ -170,11 +170,19 @@ void PluginUpdateNotices::autoUpdateFailed( const QVariantMap& update )
     if ( !interactive_ ) {
         return;
     }
-    auto* box = notice( QMessageBox::Warning, "pluginAutoUpdateFailedNotice",
-                        tr( "The automatic update of %1 to %2 did not work: %3\nCILogg tries again "
-                            "at the next update check." )
-                            .arg( pluginName( update ), update.value( "to" ).toString(),
-                                  update.value( "error" ).toString() ) );
+    // A pack update that changes items the user edited waits for the merge window (design 4.6).
+    const bool needsMerge = update.value( "needsMerge" ).toBool();
+    auto* box = needsMerge
+                    ? notice( QMessageBox::Information, "pluginAutoUpdateMergeNotice",
+                              tr( "%1 %2 changes items you edited, so it was not installed "
+                                  "automatically. Open Plugins and click Update to merge it with "
+                                  "your edits." )
+                                  .arg( pluginName( update ), update.value( "to" ).toString() ) )
+                    : notice( QMessageBox::Warning, "pluginAutoUpdateFailedNotice",
+                              tr( "The automatic update of %1 to %2 did not work: %3\nCILogg tries "
+                                  "again at the next update check." )
+                                  .arg( pluginName( update ), update.value( "to" ).toString(),
+                                        update.value( "error" ).toString() ) );
     auto* open = box->addButton( tr( "Open Plugins" ), QMessageBox::AcceptRole );
     open->setObjectName( "pluginUpdateNoticeOpen" );
     box->addButton( QMessageBox::Close );

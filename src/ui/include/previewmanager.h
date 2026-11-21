@@ -66,7 +66,11 @@ public:
     QMap<QString, PreviewFieldSpec> effectiveBlocks() const;
     // An independent copy of a pack preview in the user's previews.json, with every block it
     // needs; copied blocks whose names the user already uses are renamed. Returns the error.
-    QString copyPackPreview( const QString& name );
+    QString copyPackPreview( const QString& name, const QString& copyName = {} );
+    // The same from a pack source that need not be applied (a disabled pack, read from its
+    // content folder: Keep Both in the merge window).
+    QString copyPreviewFrom( const PreviewPackSource& pack, const QString& name,
+                             const QString& copyName );
     // The blocks a set of fields can reach through block references, among `blocks`.
     static QStringList blockClosure( const QVector<PreviewFieldSpec>& fields,
                                      const QMap<QString, PreviewFieldSpec>& blocks );

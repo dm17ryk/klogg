@@ -1,6 +1,7 @@
 #include "pluginsandpacks.h"
 
 #include "log.h"
+#include "packeditors.h"
 #include <QComboBox>
 #include <algorithm>
 #include <QCoreApplication>
@@ -676,21 +677,17 @@ QWidget* createAvailableTab( QWidget* parent, cilogg::plugins::PluginManager* ma
                                   false ) ) {
                 return;
             }
-            const auto result = executor( manageRequest(
-                installed && installedSource == repository ? "update" : "install", options, id ) );
-            if ( !result.ok() ) {
-                setStatus( result.message );
-                return;
-            }
             setStatus( tr( "Installing %1 %2…" ).arg( name, version ) );
-            followJob( tab, plugins, result.payload.value( "jobId" ).toString(),
-                       [ setStatus, render, name, version ]( const QVariantMap& job ) {
+            // A pack with local edits may need the merge window (design 4.6).
+            runPackAwareInstall(
+                tab, plugins, executor,
+                manageRequest( installed && installedSource == repository ? "update" : "install",
+                               options, id ),
+                name, [ setStatus, render, name, version ]( const QVariantMap& job ) {
                            render( false );
-                           const auto warning
-                               = job.value( "result" ).toMap().value( "warning" ).toString();
                            setStatus( job.value( "state" ) == "completed"
                                           ? tr( "Installed %1 %2." ).arg( name, version )
-                                                + ( warning.isEmpty() ? QString{} : ' ' + warning )
+                                                + jobWarningSuffix( job )
                                           : tr( "Could not install %1: %2" )
                                                 .arg( name, job.value( "error" ).toString() ) );
                        } );

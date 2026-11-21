@@ -28,6 +28,8 @@ public:
     }
     // The source the Plugins menu's actions run on (U15b): focused, all, tab:<id> or file:<path>.
     QString actionSource() const;
+    // The text editor of one item of a configuration pack (design 4.6).
+    void editPackItem( QWidget* parent, const QString& packId, const QString& path );
     // E17b: this window's plugin menus, context menu sections and shortcuts.
     PluginMenus* menus() const
     {

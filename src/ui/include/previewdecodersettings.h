@@ -40,6 +40,8 @@ public:
     // The user's saved configuration, without pack contributions.
     QVariantMap configuration() const;
     bool setConfiguration( const QVariantMap& configuration, QString* error = nullptr );
+    // Whether setConfiguration would take `configuration`, without saving it.
+    bool check( const QVariantMap& configuration, QString* error = nullptr ) const;
     QString revision() const;
     // The configuration a session uses: the user's, with the packs' routes merged below the
     // user's routes and the packs' Lua under `packLua`.

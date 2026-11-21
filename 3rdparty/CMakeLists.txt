@@ -435,6 +435,72 @@ if(qtkeychain_ADDED)
   endif()
 endif()
 
+# libgit2 keeps the local store of each configuration pack (docs/plugin-repositories.md 4.6,
+# decision 9): history, the merge base and three-way merges of pack items. Built static and local
+# only: no HTTPS or SSH transports, no network authentication, bundled zlib and regex; the DLL C
+# runtime of the rest of CILogg. GPLv2 with the linking exception.
+#
+# libgit2 probes struct stat (FindStatNsec) before it adds -D_GNU_SOURCE to its flags. Built on its
+# own the probe ignores its C90 standard (policy CMP0067 is OLD there), but CMake's check functions
+# were already defined by this project with CMP0067 NEW, so here the probe compiles with -std=c90
+# and no feature macros, misses st_mtim on glibc, and filebuf.c then stops at "GIT_USE_NSEC
+# defined but unknown struct stat nanosecond type". The checks get the -D_GNU_SOURCE that every
+# libgit2 source is compiled with (not with MSVC, like libgit2's DefaultCFlags).
+#
+# Always this build, also when packaging asks CPM for the system's packages
+# (CPM_USE_LOCAL_PACKAGES): the store relies on these options (static, local only, deprecated
+# API removed), and a system libgit2 found by CPM would leave klogg_libgit2 undefined.
+set(KLOGG_SAVED_REQUIRED_DEFINITIONS "${CMAKE_REQUIRED_DEFINITIONS}")
+if(NOT MSVC)
+  list(APPEND CMAKE_REQUIRED_DEFINITIONS -D_GNU_SOURCE)
+endif()
+set(KLOGG_SAVED_USE_LOCAL_PACKAGES ${CPM_USE_LOCAL_PACKAGES})
+set(CPM_USE_LOCAL_PACKAGES OFF)
+cpmaddpackage(
+  NAME
+  libgit2
+  GITHUB_REPOSITORY
+  libgit2/libgit2
+  VERSION
+  1.9.1
+  EXCLUDE_FROM_ALL
+  YES
+  OPTIONS
+  "BUILD_SHARED_LIBS OFF"
+  "BUILD_TESTS OFF"
+  "BUILD_CLI OFF"
+  "BUILD_EXAMPLES OFF"
+  "BUILD_FUZZERS OFF"
+  "USE_HTTPS OFF"
+  "USE_SSH OFF"
+  "USE_GSSAPI OFF"
+  "USE_NTLMCLIENT OFF"
+  "USE_AUTH_NTLM OFF"
+  "USE_AUTH_NEGOTIATE OFF"
+  "USE_ICONV OFF"
+  "USE_BUNDLED_ZLIB ON"
+  "REGEX_BACKEND builtin"
+  "USE_HTTP_PARSER builtin"
+  "STATIC_CRT OFF"
+  "DEPRECATE_HARD ON"
+)
+set(CMAKE_REQUIRED_DEFINITIONS "${KLOGG_SAVED_REQUIRED_DEFINITIONS}")
+unset(KLOGG_SAVED_REQUIRED_DEFINITIONS)
+set(CPM_USE_LOCAL_PACKAGES ${KLOGG_SAVED_USE_LOCAL_PACKAGES})
+unset(KLOGG_SAVED_USE_LOCAL_PACKAGES)
+if(NOT libgit2_ADDED)
+  message(FATAL_ERROR "libgit2 was not added: the configuration pack store needs its own build")
+endif()
+add_library(klogg_libgit2 INTERFACE)
+target_link_libraries(klogg_libgit2 INTERFACE libgit2package)
+target_include_directories(klogg_libgit2 SYSTEM INTERFACE ${libgit2_SOURCE_DIR}/include)
+# libgit2's CMakeLists sets CMAKE_C_STANDARD (90) and CMAKE_C_EXTENSIONS (OFF) as cache
+# variables, which would make every later C target of CILogg strict ISO C90 (whereami then fails
+# with GCC and Clang; MSVC has no C90 switch). libgit2's targets keep the standard they were
+# created with; the rest of the build gets the compiler defaults back.
+unset(CMAKE_C_STANDARD CACHE)
+unset(CMAKE_C_EXTENSIONS CACHE)
+
 
 cpmaddpackage(
   NAME
