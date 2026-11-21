@@ -348,7 +348,15 @@ std::optional<QJsonValue> mergeValue( const std::optional<QJsonValue>& base,
         // the elements it has leaves the order to the other; two different reorderings conflict.
         const bool mineReordered = base && !sameOrder( mineNames, mineIndex, baseNames, baseIndex );
         const bool theirReordered = base && !sameOrder( theirNames, theirIndex, baseNames, baseIndex );
-        if ( mineReordered && theirReordered && !sameOrder( mineNames, mineIndex, theirNames, theirIndex ) ) {
+        // An element both sides added (the installed version has none of that name) is placed
+        // by both: where they put it differently, the order conflicts too.
+        const bool bothAdded = std::any_of( mineNames.cbegin(), mineNames.cend(),
+                                            [ &theirIndex, &baseIndex ]( const QString& name ) {
+                                                return theirIndex.contains( name )
+                                                       && !baseIndex.contains( name );
+                                            } );
+        const bool sameShared = sameOrder( mineNames, mineIndex, theirNames, theirIndex );
+        if ( ( mineReordered && theirReordered && !sameShared ) || ( bothAdded && !sameShared ) ) {
             return conflict( mine, theirs, at, state );
         }
         // One side's order, with the elements only the other has where the other put them.

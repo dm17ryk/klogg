@@ -930,6 +930,17 @@ TEST_CASE( "The pack check refuses shared names and merged limits", "[previewdec
     CHECK( registry.copyPreview( "Pack frame", "Pack frame (mine)" )
                .contains( "A pack has a preview named \"Pack frame (mine)\"" ) );
     CHECK_FALSE( PreviewManager::instance().findByName( "Pack frame (mine)" ) );
+    // Also while that pack's previews do not load (a regex that is not valid): its names still
+    // count, as it can be fixed or reset later.
+    {
+        const auto previewsFile = root.filePath( "plugins/z.pack/previews.json" );
+        auto text = QString::fromUtf8( packPreviews( "Pack frame (mine)" ) );
+        writeFile( previewsFile, text.replace( "\"^PACK (?<payload>.*)$\"", "\"(\"" ).toUtf8() );
+        REQUIRE( !PreviewPackRegistry::read( "z.pack", root.filePath( "plugins/z.pack" ),
+                                             manager.manifest( "z.pack" ) )
+                      .error.isEmpty() );
+        CHECK( registry.installedPackPreviewNames().contains( "Pack frame (mine)" ) );
+    }
     REQUIRE( settings.setConfiguration( original ) );
     REQUIRE( PreviewManager::instance().clearAll() );
 

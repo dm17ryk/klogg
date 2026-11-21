@@ -1404,6 +1404,71 @@ TEST_CASE( "Named elements keep the order changes of either side", "[packmerge][
     merged = packmerge::mergeJson( three, item( { { "C", 0 }, { "A", 0 }, { "B", 0 } } ),
                                    item( { { "B", 0 }, { "A", 0 }, { "C", 0 } } ), MergeStrategy::Fail );
     CHECK( merged.conflicts == QStringList{ "fields" } );
+    // An element both sides added, each in another place: the order conflicts too.
+    merged = packmerge::mergeJson( base, item( { { "A", 0 }, { "X", 0 }, { "B", 0 } } ),
+                                   item( { { "X", 0 }, { "A", 0 }, { "B", 0 } } ), MergeStrategy::Fail );
+    CHECK( merged.conflicts == QStringList{ "fields" } );
+    // In the same place it merges.
+    merged = packmerge::mergeJson( base, item( { { "A", 0 }, { "X", 0 }, { "B", 0 } } ),
+                                   item( { { "A", 0 }, { "X", 0 }, { "B", 0 } } ), MergeStrategy::Fail );
+    CHECK( merged.conflicts.isEmpty() );
+    CHECK( names( merged ) == QStringList{ "A", "X", "B" } );
+}
+
+TEST_CASE( "A store that is gone is never taken as put back", "[packmerge][E16]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    const auto journal = root.filePath( "org.example.pack.update.json" );
+    auto v2Previews = QJsonDocument::fromJson( Previews ).object();
+    auto previews = v2Previews[ "previews" ].toArray();
+    auto frame = previews[ 1 ].toObject();
+    frame[ "regex" ] = "^A2$";
+    previews[ 1 ] = frame;
+    v2Previews[ "previews" ] = previews;
+    const auto v2 = packFiles( QJsonDocument( v2Previews ).toJson() );
+    {
+        // An update that wrote its content, then CILogg ended before the package swap.
+        PackStore updating( root.path(), "org.example.pack" );
+        REQUIRE( updating.install( packFiles(), packManifest(), "1.0.0", "Team packs" ).isEmpty() );
+        REQUIRE( updating.beginUpdate( updating.tips() ).isEmpty() );
+        REQUIRE( updating.applyUpdate( v2, updating.planUpdate( v2, MergeStrategy::Fail ).merged,
+                                       packManifest( "1.1.0" ), "1.1.0", "Team packs" )
+                     .isEmpty() );
+    }
+    // Then the repository went away: the update cannot be put back, and its content is not
+    // trusted.
+    REQUIRE( QDir( root.filePath( "org.example.pack.git" ) ).removeRecursively() );
+    PackStore recovered( root.path(), "org.example.pack" );
+    CHECK( recovered.recoverInterruptedUpdate().contains( "not there to be put back" ) );
+    CHECK( QFileInfo::exists( journal ) );
+    CHECK( recovered.contentFromUnfinishedUpdate() );
+}
+
+TEST_CASE( "A content folder lost and written again by a reading operation is announced",
+           "[packmerge][E16]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    PluginManager manager( root.filePath( "data" ), root.filePath( "none" ) );
+    const auto id = QStringLiteral( "org.example.pack" );
+    const auto v1 = writePackage( root.filePath( "v1" ), "1.0.0", Previews, "-- a\n" );
+    REQUIRE( finished( manager, manager.manage( "install", {}, { { "path", v1 } } ) )[ "state" ]
+             == "completed" );
+    auto item = QJsonDocument::fromJson( Previews ).object()[ "previews" ].toArray()[ 0 ].toObject();
+    item[ "regex" ] = "^EDITED$";
+    REQUIRE( manager.manage( "pack_edit", id,
+                             { { "path", "previews/%53econd.json" },
+                               { "content", QString::fromUtf8( QJsonDocument( item ).toJson() ) } } )
+                 .ok() );
+    // The content folder is deleted by hand; its revision record stays.
+    const auto current = root.filePath( "data/pack-store/org.example.pack/current" );
+    REQUIRE( QDir( current ).removeRecursively() );
+    QSignalSpy changed( &manager, &PluginManager::changed );
+    REQUIRE( manager.manage( "pack_files", id, {} ).ok() );
+    CHECK( changed.count() >= 1 );
+    CHECK( manager.packContentDirectory( id ) == current );
+    CHECK( readFile( current + "/previews.json" ).contains( "^EDITED$" ) );
 }
 
 TEST_CASE( "The previews settings follow the installed version", "[packmerge][E16]" )

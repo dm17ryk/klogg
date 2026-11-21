@@ -982,8 +982,11 @@ QString PackStore::rollback( const PackTips& tips )
     if ( !tips.existed ) {
         return remove();
     }
+    // A store that was there and is gone now (or does not open) cannot be put back: never taken
+    // as put back, or its content folder (perhaps written by the update) would be trusted.
     if ( !open( false ) ) {
-        return error_;
+        return error_.isEmpty() ? QStringLiteral( "The pack's store is not there to be put back." )
+                                : error_;
     }
     // `local` first, `upstream` last (an update moves them the other way round): while `upstream`
     // is still on the new version the journal is not taken as a finished update, so an undo that

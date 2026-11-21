@@ -726,15 +726,17 @@ Result PluginManager::managePack( const QString& operation, const QString& id,
     }
     // A pack installed before its store existed gets one now, from its installed folder; a
     // damaged store is rebuilt with the local edits.
-    const auto contentBefore = packRevision( id );
+    // What loads: the folder (content or installed) and the revision it holds.
+    const auto loaded = [ this, &id ] { return packContentDirectory( id ) + '\n' + packRevision( id ); };
+    const auto contentBefore = loaded();
     if ( const auto error = ensurePackStore( id, manifest, true ); !error.isEmpty() ) {
         return { error, {} };
     }
     PackStore store( packStoreRoot(), id );
     // The content folder written again on the way (a repair after an edit whose files could not
-    // be written, a recovered update) changes what loads: the summary and listeners follow it,
-    // also for an operation that only reads.
-    if ( packRevision( id ) != contentBefore ) {
+    // be written, a folder lost and written again, a recovered update) changes what loads: the
+    // summary and listeners follow it, also for an operation that only reads.
+    if ( loaded() != contentBefore ) {
         const auto content = packContentPending( id ) ? QString{} : store.contentDirectory();
         it->second->pack = packSummary( manifest.json, content.isEmpty() ? manifest.directory : content );
         it->second->pack[ "localEdits" ] = static_cast<int>( store.localEdits().size() );

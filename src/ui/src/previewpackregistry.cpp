@@ -2,7 +2,10 @@
 #include "previewpackregistry.h"
 
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
 #include <QSet>
 #include <algorithm>
 
@@ -305,17 +308,36 @@ QStringList PreviewPackRegistry::installedPackPreviewNames() const
     if ( !manager_ ) {
         return names;
     }
+    // The names only, read even from a previews document that is not valid now (an edit can be
+    // reset later): what loads now and what the installed version ships (a reset brings it back).
+    const auto namesIn = [ &names ]( const QString& path ) {
+        QFile file( path );
+        if ( !file.open( QIODevice::ReadOnly ) || file.size() > cilogg::plugins::MaxPackFileBytes ) {
+            return;
+        }
+        const auto document = QJsonDocument::fromJson( file.readAll() );
+        const auto previews
+            = document.isArray() ? document.array() : document.object().value( "previews" ).toArray();
+        for ( const auto& preview : previews ) {
+            const auto name = preview.toObject().value( "name" ).toString();
+            if ( !name.isEmpty() ) {
+                names.append( name );
+            }
+        }
+    };
     for ( const auto& plugin : manager_->plugins() ) {
-        const auto id = plugin.toMap().value( "id" ).toString();
+        const auto info = plugin.toMap();
+        const auto id = info.value( "id" ).toString();
         const auto manifest = manager_->manifest( id );
-        if ( !cilogg::plugins::isConfigPack( manifest ) ) {
+        PackContent content;
+        if ( !cilogg::plugins::isConfigPack( manifest )
+             || !validatePackManifest( manifest, &content ).isEmpty() || content.previews.isEmpty() ) {
             continue;
         }
-        const auto pack = read( id, manager_->packContentDirectory( id ), manifest );
-        for ( const auto& preview : pack.previews.previews ) {
-            names.append( preview.name );
-        }
+        namesIn( QDir( manager_->packContentDirectory( id ) ).filePath( content.previews ) );
+        namesIn( QDir( info.value( "directory" ).toString() ).filePath( content.previews ) );
     }
+    names.removeDuplicates();
     return names;
 }
 
