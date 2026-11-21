@@ -180,8 +180,13 @@ QJsonObject PluginMenuContext::toJson( bool withText ) const
         };
         json.insert( "view_id", viewId );
         json.insert( "element_id", elementId );
-        json.insert( "row_id", orNull( rowId ) );
-        json.insert( "column_id", orNull( columnId ) );
+        if ( tree ) {
+            json.insert( "node_id", orNull( nodeId ) ); // E17e (section 28.3)
+        }
+        else {
+            json.insert( "row_id", orNull( rowId ) );
+            json.insert( "column_id", orNull( columnId ) );
+        }
         json.insert( "selected_ids", QJsonArray::fromStringList( selectedIds ) );
         json.insert( "selected_count", selectedLines );
     }
@@ -451,7 +456,7 @@ QString PluginMenus::populateKey( const QString& pluginId, const QString& menuId
                                   const QString& itemId, const PluginMenuContext& context )
 {
     // Everything menu/populate tells the plugin about where the menu opened (window, tab, pane,
-    // log view, line, selected ranges and their count, element, row, column, selected ids) as
+    // log view, line, selected ranges and their count, element, row, node, column, selected ids) as
     // compact JSON, whose object keys are sorted: equal only for the same request.
     const auto request = QString::fromUtf8(
         QJsonDocument( context.toJson( false ) ).toJson( QJsonDocument::Compact ) );
@@ -1021,10 +1026,14 @@ CommanderResult PluginMenus::dispatch( const Source& plugin, const QJsonObject& 
             menu.insert( "selection", json.value( "selection" ).toVariant() );
         }
         if ( context.location == QLatin1String( "element" ) ) {
-            // E17d: the job's `menu` context names the view element and its rows.
-            for ( const auto* key : { "view_id", "element_id", "row_id", "column_id",
+            // E17d: the job's `menu` context names the view element and its rows; E17e: in a tree
+            // the clicked node, in a file tree the clicked path (`node_id`), as `event` entries get.
+            for ( const auto* key : { "view_id", "element_id", "row_id", "column_id", "node_id",
                                       "selected_ids", "selected_count" } ) {
-                menu.insert( QLatin1String( key ), json.value( QLatin1String( key ) ).toVariant() );
+                if ( json.contains( QLatin1String( key ) ) ) {
+                    menu.insert( QLatin1String( key ),
+                                 json.value( QLatin1String( key ) ).toVariant() );
+                }
             }
         }
         if ( menuId.isEmpty() ) {

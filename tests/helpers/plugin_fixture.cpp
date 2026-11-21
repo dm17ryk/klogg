@@ -159,6 +159,12 @@ int main( int argc, char** argv )
                                                         params.value( "column_id" ).toString(),
                                                         params.value( "tooltip_key" ).toString() ) } };
             }
+            if ( element == "nodes" ) { // E17e: a tree node's cell
+                return QJsonObject{ { "text", QString( "node %1/%2 key %3" )
+                                                  .arg( params.value( "node_id" ).toString(),
+                                                        params.value( "column_id" ).toString(),
+                                                        params.value( "tooltip_key" ).toString() ) } };
+            }
             // QJsonArray{ QJsonArray{ ... } } would copy the inner array instead of nesting it.
             QJsonArray rows;
             rows.append( QJsonArray{ "Firmware", "3.2.1" } );
@@ -209,6 +215,39 @@ int main( int argc, char** argv )
                 }
             }
             return QJsonObject{ { "items", items } };
+        } );
+        // E17e lazy tree children (docs/plugin-sdk-advanced.md 28.1), by node id.
+        plugin.onQuery( "tree/children", []( const cilogg_plugin::Query& query ) -> QJsonValue {
+            const auto node = query.params.value( "node_id" ).toString();
+            if ( node == "slow" ) {
+                while ( !query.expired() ) {
+                    std::this_thread::sleep_for( std::chrono::milliseconds( 2 ) );
+                }
+                return QJsonValue::Null;
+            }
+            if ( node == "bad" ) {
+                return QJsonObject{ { "nodes", 5 } };
+            }
+            if ( node == "empty" ) {
+                return QJsonValue::Null;
+            }
+            if ( node == "b" ) { // a list alone is an answer too
+                return QJsonArray{ QJsonObject{ { "id", "b1" },
+                                                { "cells", QJsonArray{ "Board B1", "off" } } } };
+            }
+            const auto child = []( const QString& id, const QString& name, const QString& state,
+                                   const QJsonArray& children = {} ) {
+                QJsonObject result{ { "id", id }, { "cells", QJsonArray{ name, state } } };
+                if ( !children.isEmpty() ) {
+                    result.insert( "children", children );
+                }
+                return result;
+            };
+            return QJsonObject{
+                { "nodes",
+                  QJsonArray{ child( node + "1", "Board 1", "ok",
+                                     QJsonArray{ child( node + "1m", "Module", "" ) } ),
+                              child( node + "2", "Board 2", "off" ) } } };
         } );
         // ui/command: recorded, and "rename" changes the entry through menu/update.
         plugin.onCommand( [ &plugin ]( const QJsonObject& params ) {
@@ -323,12 +362,47 @@ int main( int argc, char** argv )
                                                    { "text", "ready tables" } },
                                       table } } };
     };
-    const auto rootFor = [ tipsRoot, tablesRoot ]( const QString& viewId ) {
+    // E17e: a lazy tree with check boxes, an element menu, tooltips and reordering.
+    const auto treesRoot = [] {
+        const auto lazy = []( const QString& id, const QString& name ) {
+            return QJsonObject{ { "id", id },
+                                { "cells", QJsonArray{ name, "" } },
+                                { "has_children", true },
+                                { "icon", "builtin:folder" } };
+        };
+        const QJsonObject tree{
+            { "type", "tree" },
+            { "id", "nodes" },
+            { "columns", QJsonArray{ QJsonObject{ { "id", "name" }, { "title", "Name" } },
+                                     QJsonObject{ { "id", "state" }, { "title", "State" } } } },
+            { "lazy", true },
+            { "checkboxes", true },
+            { "auto_tristate", true },
+            { "selection", "multi" },
+            { "context_menu", "nodes_menu" },
+            { "tooltip_provider", true },
+            { "expand_events", true },
+            { "reorderable", true },
+            { "nodes", QJsonArray{ lazy( "a", "Bench A" ), lazy( "b", "Bench B" ),
+                                   lazy( "slow", "Slow" ), lazy( "bad", "Bad" ),
+                                   lazy( "empty", "Empty" ) } } };
+        return QJsonObject{
+            { "type", "column" },
+            { "id", "body" },
+            { "children", QJsonArray{ QJsonObject{ { "type", "label" },
+                                                   { "id", "status" },
+                                                   { "text", "ready trees" } },
+                                      tree } } };
+    };
+    const auto rootFor = [ tipsRoot, tablesRoot, treesRoot ]( const QString& viewId ) {
         if ( viewId == "tips" ) {
             return tipsRoot();
         }
         if ( viewId == "tables" ) {
             return tablesRoot();
+        }
+        if ( viewId == "trees" ) {
+            return treesRoot();
         }
         return QJsonObject{
             { "type", "column" },

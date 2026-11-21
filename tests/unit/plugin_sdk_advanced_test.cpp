@@ -504,7 +504,7 @@ TEST_CASE( "E17 host features, versions and limits are announced in initialize",
     REQUIRE( features
              == QJsonArray{ "views", "view_edit", "queries", "tooltips", "icons", "menus",
                             "shortcuts", "choices", "toggles", "field_kinds", "validation",
-                            "rich_tables", "element_menus" } );
+                            "rich_tables", "element_menus", "tree", "file_tree" } );
     REQUIRE( hostFeatureVersions().value( "views" ).toInt() == 2 );
     REQUIRE( hostLimits().value( "max_elements" ).toInt() == 512 );
     REQUIRE( hostLimits().value( "max_message_bytes" ).toInt() == MaxMessageBytes );
@@ -567,11 +567,11 @@ TEST_CASE( "E17 manifests validate handles, requires and icon_ref", "[plugins][E
              } ).valid() );
     const auto missing = parse( []( QJsonObject& json ) {
         json[ "requires" ]
-            = QJsonObject{ { "host_features", QJsonArray{ "tree", "views>=3", "icons" } } };
+            = QJsonObject{ { "host_features", QJsonArray{ "charts", "views>=3", "icons" } } };
     } );
     REQUIRE_FALSE( missing.valid() );
-    REQUIRE( missing.missingFeatures == QStringList{ "tree", "views>=3" } );
-    REQUIRE( missing.error == "Requires a newer CILogg (missing: tree, views>=3)." );
+    REQUIRE( missing.missingFeatures == QStringList{ "charts", "views>=3" } );
+    REQUIRE( missing.error == "Requires a newer CILogg (missing: charts, views>=3)." );
     REQUIRE_FALSE( parse( []( QJsonObject& json ) {
                        json[ "requires" ]
                            = QJsonObject{ { "host_features", QJsonArray{ "views >= 2" } } };

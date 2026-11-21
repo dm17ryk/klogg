@@ -106,10 +106,11 @@ Host requests:
 | Method | Parameters / result |
 | --- | --- |
 | `initialize` | `protocol_version`, `plugin_id`, `configuration`, `config_directory`, transport limits, `host_features` (`["views", "view_edit", "queries", "tooltips", "icons", "menus", "shortcuts"]`), `host_feature_versions`, `host_version`, `host_limits`; return identity/version, capabilities, actions, configuration fields, and optionally `features` (the host-to-plugin methods the plugin handles) and `sdk` (`{name, version}`) |
-| `invoke` | `job_id`, `action`, `arguments`, `context`; respond to the request ID when complete. An action run from a menu entry or its shortcut gets `context.menu`: `location`, `menu_id`, `item_id`, and for `log` entries `line` and `selection` (`ranges`, `count`, `text`, `truncated`) |
+| `invoke` | `job_id`, `action`, `arguments`, `context`; respond to the request ID when complete. An action run from a menu entry or its shortcut gets `context.menu`: `location`, `menu_id`, `item_id`, for `log` entries `line` and `selection` (`ranges`, `count`, `text`, `truncated`), and for `element` entries `view_id`, `element_id`, the clicked `row_id` and `column_id` (tables) or `node_id` (a tree's node, a file tree's path), `selected_ids` and `selected_count` |
 | `tooltip/resolve` | A host query (ids `q:<n>`), sent only to a plugin that lists it in `handles` and `features`: `view_id`, `window_id`, `element_id`, optional `row_id`, `column_id`, `tooltip_key`, `timeout_ms`, `context`; answer a tooltip object or `null` (see below) |
 | `menu/populate` | A host query for a `dynamic` menu entry (docs/plugin-sdk-advanced.md 7.4): `menu_id`, `item_id`, `location`, `window_id`, `context` (ids, the line under the pointer and the selected line ranges, never the text), `timeout_ms`; answer `{items, cache_ms}` with entries of the menu schema without shortcuts or dynamic entries; `null` is an empty list |
 | `field/complete` | A host query 150 ms after typing pauses in a view field with `completion` (docs/plugin-sdk-advanced.md 8.2): `view_id`, `window_id`, `element_id`, `text`, `cursor`, `timeout_ms` (500 ms, `completion_timeout_ms` up to 2,000), `context`; answer `{items: [{value, label, icon}]}` (at most 100, each with a string `value`), a list of items, or `null` |
+| `tree/children` | A host query when a node with `has_children` and no children of a `lazy` tree expands (docs/plugin-sdk-advanced.md 11.1 and 28.1): `view_id`, `window_id`, `element_id`, `node_id`, `context`, `timeout_ms` (10 s, at most 30 s); answer `{nodes: [...]}` (a list alone is accepted; nested `children` count, 1,000 nodes in all), or `null` or no nodes for no children |
 
 The plugin process environment also contains `CILOGG_EXECUTABLE` (the running CILogg
 executable) and `CILOGG_INSTANCE_ID` (the single-application name that Commander clients use to
@@ -154,6 +155,22 @@ scroll_to}` sets the selection. Tables send `checked` (`{row_id, row_ids, checke
 `location: "element"`; its entries get `view_id`, `element_id`, `row_id`, `column_id`,
 `selected_ids` and `selected_count` in their context. Hosts without these features announce no
 `rich_tables` or `element_menus`.
+
+Trees (E17e, docs/plugin-sdk-advanced.md sections 11 and 28): the element `tree` takes
+`columns`, `nodes`, `selection`, `toggle_selection`, `checkboxes`, `auto_tristate`, `lazy`,
+`expand_events`, `header`, `context_menu`, `copy`, `export` and `reorderable`; its nodes have
+`id`, `text` or `cells`, `icon`, `tooltip`, `tooltip_key`, `tone`, `children`, `has_children`,
+`expanded`, `checkable`, `checked` (`null`: partly), `editors` and `drag`. The element
+`file_tree` takes `roots`, `filters`, `hide_filtered`, `show_files`, `show_hidden`, `columns`,
+`selection`, `toggle_selection`, `select`, `checkboxes`, `value`, `context_menu` and `copy`. A
+tree's patch entry takes `replace_nodes`, `update_nodes`, `insert_nodes` (with `parent` and
+`before`), `remove_nodes`, `expand`, `collapse` and the selection keys; a file tree's takes
+`expand` (paths) and `set: {value}`. Trees send `selected`, `activated` (`{node_id,
+column_id}`), `checked` (`{node_id, checked, node_ids}`), `edited`, `moved` (`{node_ids, parent,
+before}`) and, with `expand_events`, `expanded` and `collapsed` (`{node_id}`) to every plugin;
+file trees send `selected` (the paths) and `activated` (`{path}`). Element menu entries on a tree
+get `node_id` (on a file tree, the clicked path) instead of `row_id` and `column_id`. Hosts
+without these features announce no `tree` or `file_tree` and skip the elements with a warning.
 
 Plugin notifications:
 
@@ -305,7 +322,8 @@ checked with `mypy --strict` in CI. Every name of the earlier SDK keeps working.
 - **Host queries.** `@plugin.tooltip(view_id, element_id=None)` registers the advanced-tooltip
   handler of one element, or of every other element of the view when `element_id` is None (the
   element's own handler wins). `@plugin.query(method)` registers a handler for any other query
-  method (`menu/populate`, `tree/children`, `field/complete`, …); one registered for
+  method (`menu/populate`, `tree/children`, `field/complete`, …; see also
+  `@plugin.tree_children` below); one registered for
   `tooltip/resolve` is the fallback after the tooltip handlers. A handler gets a `Query`
   (`id`, `method`, `params`, `context`, `timeout_ms`, `deadline`, `remaining()`, `cancelled`,
   `check_cancelled()`); a tooltip handler gets a `TooltipQuery`, which adds `view_id`,
@@ -365,8 +383,9 @@ label, a button, a field, table headers and every table cell, a registered icon,
 `invalidate_tooltips` and accessible names, a Plugins submenu with a check box, radio entries, a
 dynamic submenu and a shortcut, log and tab context menu entries, every choice style, check
 boxes, radio buttons, the new field kinds, validation and completion, a table with cell
-objects, a check column, row dragging, Export CSV and its own context menu, and degrades on an
-older CILogg.
+objects, a check column, row dragging, Export CSV and its own context menu, an explorer view
+with a lazy tree (check boxes, dragging, node tooltips, a context menu) and a file tree, and
+degrades on an older CILogg.
 
 ### Menus and commands (E17b)
 
@@ -628,6 +647,127 @@ def restart(command: UiCommand) -> None:
     print(command.row_id, command.selected_ids, command.selected_count)
 ```
 
+### Trees and file trees (E17e)
+
+A host that announces `tree` and `file_tree` (version 1 each) shows two new view elements (design
+sections 11 and 28). A host without them skips such an element with a warning, and the SDK does
+not turn a tree into another element, so check `plugin.supports("tree")` (or list the feature
+in `requires`) before you send one.
+
+- **Nodes.** `tree_node(id, text=None, *, cells=None, icon=None, tooltip=None,
+  tooltip_key=None, tone=None, children=None, has_children=None, expanded=None,
+  checkable=None, checked=<not given>, editors=None, drag=None)` (`TreeNode`). Pass `text` (the
+  first column) or `cells` (strings or `cell()` objects, one per column), not both. `children`
+  are nested nodes; in a `lazy` tree, `has_children=True` without children makes CILogg ask
+  `tree/children` when the node expands. `checked` is True, False or None (partly checked) and
+  is left out unless you pass it. `checkable=False` hides a node's check box, `editors` maps an
+  `editable` column to an `editor()`, and `drag` is accepted and used from E17g.
+- **Trees.** `tree(id, nodes=None, columns=None, selection=None, *, toggle_selection=None,
+  checkboxes=None, auto_tristate=None, lazy=None, expand_events=None, header=None,
+  context_menu=None, copy=None, export=None, reorderable=None)` (`TreeElement`). Columns are
+  `table_column()` objects or plain column ids; without columns the tree has one column and no
+  header. `selection` is `none` (the default), `single` or `multi`. `checkboxes` gives every
+  checkable node a check box and `auto_tristate` makes parents follow their children; `lazy`
+  loads children through `tree/children`; `expand_events` sends `expanded` and `collapsed`;
+  `reorderable` lets the user drag nodes; `copy` (default on) and `export` add Copy, Copy All
+  and Export CSV... to the context menu, before the entries of the `context_menu` menu.
+- **File trees.** `file_tree(id, roots, *, filters=None, hide_filtered=None, show_files=None,
+  show_hidden=None, columns=None, selection=None, toggle_selection=None, select=None,
+  checkboxes=None, value=None, context_menu=None, copy=None)` (`FileTreeElement`) shows the
+  folders and files under at most 16 absolute roots (`C:/x`, `C:\x`, `/x`, `//server/share`).
+  `filters` are name globs such as `"*.bin"`; `hide_filtered=False` greys out the files that do
+  not match; `columns` come from `FILE_TREE_COLUMNS` (`name`, `size`, `type`, `modified`;
+  default `name`, `size`, `modified`); `selection` is `single` by default; `select`
+  (`FILE_TREE_SELECT`: `files`, `dirs`, `both`) is what can be selected; `checkboxes` makes a
+  pick list. `value` is the selected (or checked) paths, with forward slashes; change it later
+  with `set_props(id, value=[...])`. CILogg lists names and sizes only: it never reads the
+  files.
+
+  The builders raise ValueError for what CILogg refuses: an empty node id, an unknown tone,
+  `text` and `cells` together, a `checked` that is not True, False or None, an unknown
+  `selection`, `toggle_selection` without `selection="multi"`, a `context_menu` that is not a
+  menu id, a tree of more than `MAX_TREE_NODES` (50,000) nodes or `MAX_TREE_DEPTH` (64) levels,
+  more than `MAX_FILE_TREE_ROOTS` roots, a relative root, or an unknown file tree column or
+  `select` value.
+- **Patches.** Each helper returns one entry for `plugin.patch()` (`TreePatch`):
+  `replace_nodes(tree_id, nodes, parent=None)` (the top-level nodes, or the children of
+  `parent`), `update_nodes(tree_id, nodes)` (only the keys given change; `children` replaces
+  the node's children), `insert_nodes(tree_id, nodes, parent=None, before=None)`,
+  `remove_nodes(tree_id, node_ids)` (descendants go too), `expand_nodes(element_id,
+  ids_or_paths)` (nodes of a tree, folders of a file tree; expanding a lazy node loads it),
+  `collapse_nodes(tree_id, node_ids)` and `select_nodes(tree_id, node_ids=None, *,
+  current=None, scroll_to=None)`, which sends no `selected` event and expands the ancestors of
+  `current` and `scroll_to`. CILogg keeps expanded nodes and the selection by id when nodes are
+  replaced.
+- **Lazy children.** `@plugin.tree_children(view_id, element_id=None)` registers
+  `handler(TreeChildrenQuery)` for one tree, or for every lazy tree of the view (an element's
+  own handler wins; a `@plugin.query("tree/children")` handler is the last fallback, its result
+  unchanged). `TreeChildrenQuery` adds `view_id`, `element_id`, `node_id` and `window_id` to
+  `Query`. The handler returns a list of nodes, a dict `{"nodes": [...]}` or None (no
+  children); the SDK answers `{"nodes": [...]}` (`TreeChildrenResult`), and the error `-32000`
+  for any other return value, a node that is not a dict, more than `MAX_TREE_CHILDREN` (1,000)
+  nodes counting nested children, or children nested more than 64 levels. Handlers run on the
+  `tree/children` lane (two workers, default timeout 10 seconds). CILogg shows "Could not load"
+  after an error or a timeout and asks again on the next expand. The initialize result lists
+  `tree/children` (and `query/cancel`), which `plugin.json` must list in `handles`.
+- **Events** (`view/event`, `ViewEventParams`; every key goes to every plugin). A tree sends
+  `selected` (node ids in tree order, at most 1000, with `selected_count`, `truncated` and
+  `current`), `activated` (`TreeActivatedValue` `{node_id, column_id}`; `column_id` is None in
+  a tree without columns, also in `edited`), `checked` (`TreeCheckedValue` `{node_id, checked,
+  node_ids}`: the clicked node first and, with `auto_tristate`, its loaded descendants),
+  `edited` (the value, with `node_id`, `column_id` and `previous`), `moved` (`TreeMovedValue` `{node_ids, parent, before}`, None for the top
+  level and for the end) and, with `expand_events`, `expanded` and `collapsed`
+  (`TreeExpandValue` `{node_id}`); `TREE_EVENTS` lists them. CILogg does not move the nodes:
+  the plugin keeps its own order and confirms a move with a patch. A file tree sends `selected`
+  (the paths, also in `inputs`) and `activated` (`FileActivatedValue` `{path}`, on a file).
+- **Context menus and tooltips.** The `element` menu that `context_menu` names follows CILogg's
+  own entries (Copy, Copy All and Export CSV... on a tree, Copy Path on a file tree). In its
+  commands and populate queries, `UiCommand.node_id` and `MenuQuery.node_id` are the clicked
+  node (on a file tree, the clicked path; None off a node) instead of `row_id` and `column_id`,
+  and `selected_ids` holds node ids or paths (`ElementMenuContext`). With `tooltip_provider` on
+  a tree, `TooltipQuery.node_id` is the node under the pointer; on a file tree it is the path.
+- **Older hosts.** `update()` and `patch()` send `tree` and `file_tree` elements and their node
+  operations as they are (only the element keys of the E17a features go, like on every
+  element). A tree's selection patch stays on a host with `tree`; a host with neither `tree`
+  nor `rich_tables` does not get it.
+
+```python
+from typing import List, Optional
+
+from cilogg_plugin import (
+    JsonObject, Plugin, TreeChildrenQuery, TreeNode, UiCommand, builtin_ref, column, file_tree,
+    label, tree, tree_node,
+)
+
+plugin = Plugin()
+BOARDS = {"bench1": ["Board 1", "Board 2"], "bench2": ["Board 3"]}
+
+
+def explorer() -> JsonObject:
+    if not (plugin.supports("tree") and plugin.supports("file_tree")):
+        return label("note", "This CILogg cannot show trees.")
+    benches = [tree_node(bench_id, f"Bench {bench_id[-1]}", icon=builtin_ref("folder"),
+                         has_children=True) for bench_id in BOARDS]
+    return column(
+        tree("benches", benches, selection="multi", lazy=True, checkboxes=True,
+             auto_tristate=True, context_menu="node_actions"),
+        file_tree("files", ["C:/Firmware"], filters=["*.bin", "*.hex"], selection="multi"),
+        id="body")
+
+
+@plugin.tree_children("main", "benches")  # "handles": [..., "tree/children", "query/cancel"]
+def boards(query: TreeChildrenQuery) -> Optional[List[TreeNode]]:
+    names = BOARDS.get(query.node_id)
+    if names is None:
+        return None  # no children
+    return [tree_node(f"{query.node_id}.{n}", name) for n, name in enumerate(names)]
+
+
+@plugin.on_command("node_actions", "reset")  # {"location": "element", ...} in plugin.json
+def reset(command: UiCommand) -> None:
+    print(command.node_id, command.selected_ids, command.selected_count)
+```
+
 ### Testing plugins without CILogg
 
 `plugins/sdk/python/cilogg_plugin_testing.py` (standard library only) has a `FakeHost` that
@@ -648,9 +788,10 @@ with FakeHost.start_package("path/to/my-plugin") as host:   # its plugin.json, e
   a `Plugin` object in the test process, `FakeHost.in_process(plugin)`.
 - `initialize(configuration, host_features=…, host_feature_versions=…, host_version=…,
   host_limits=…)` sends the current host's keys by default (`HOST_FEATURES`, with `menus`,
-  `shortcuts`, `choices`, `toggles`, `field_kinds`, `validation`, `rich_tables` and
-  `element_menus`); pass None to leave one out, `E17C_HOST_FEATURES` and
-  `E17C_HOST_FEATURE_VERSIONS` to play a CILogg without rich tables and element menus,
+  `shortcuts`, `choices`, `toggles`, `field_kinds`, `validation`, `rich_tables`,
+  `element_menus`, `tree` and `file_tree`); pass None to leave one out, `E17D_HOST_FEATURES`
+  and `E17D_HOST_FEATURE_VERSIONS` to play a CILogg without trees, `E17C_HOST_FEATURES` and
+  `E17C_HOST_FEATURE_VERSIONS` to play one without rich tables and element menus,
   `E17B_HOST_FEATURES` and `E17B_HOST_FEATURE_VERSIONS` to play one without the E17c form
   controls, or `E17A_HOST_FEATURES` and `E17A_HOST_FEATURE_VERSIONS` to play one without
   menus.
@@ -686,6 +827,21 @@ with FakeHost.start_package("path/to/my-plugin") as host:   # its plugin.json, e
   selected_ids=(), selected_count=None)` picks an `event` entry of an element menu;
   `element_context(...)` builds the same `context` for `populate_menu(..., "element",
   context=...)`.
+- Trees: `request_children(view_id, element_id, node_id, window_id="w1", timeout_ms=10000,
+  timeout=None, context=None)` asks `tree/children` as when a lazy node expands and returns the
+  answer (`{"nodes": [...]}`, a list or None). `select_nodes(view_id, element_id, node_ids,
+  current=None, selected_count=None)` sends `selected` (always with `current`, and with
+  `truncated` beyond 1000 ids); `activate_node(view_id, element_id, node_id, column_id=None)`,
+  `check_nodes(view_id, element_id, node_ids, checked=True, node_id=None)`,
+  `edit_node(view_id, element_id, node_id, column_id, value, previous="")`,
+  `move_nodes(view_id, element_id, node_ids, parent=None, before=None)`, `expand_node(view_id,
+  element_id, node_id)` and `collapse_node(...)` send the other tree events. File trees:
+  `select_files(view_id, element_id, paths, selected_count=None, inputs=None)` sends `selected`
+  with the paths (forward slashes) in the value and in `inputs`, and `activate_file(view_id,
+  element_id, path)` sends `activated`. `send_node_command(menu_id, item_id, view_id,
+  element_id, node_id=None, selected_ids=(), selected_count=None)` picks an `event` entry of the
+  element menu of a tree or file tree; `node_context(...)` builds the same `context` (with
+  `node_id` instead of `row_id` and `column_id`) for `populate_menu`.
 - `frames` (`Frame`: `direction`, `message`, `raw`, `time`) holds the whole session; `errors`
   lists frames that CILogg would refuse (malformed envelopes, requests from the plugin);
   `stderr` holds a subprocess plugin's diagnostics; `shutdown()` returns its exit code.

@@ -27,6 +27,7 @@ set(UI_TEST_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/workbench_e17b_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/workbench_e17c_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/workbench_e17d_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/workbench_e17e_test.cpp
 )
 
 if(NOT APPLE)

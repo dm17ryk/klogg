@@ -55,6 +55,13 @@ QJsonArray editorChoices( const QJsonObject& editor );
 bool sameValue( const QJsonValue& left, const QJsonValue& right );
 // Tooltips are plain text: Qt would render text that looks like HTML as rich text.
 QString plainToolTip( const QString& tip );
+// E17d Copy and Export: a cell in tab-separated text (tabs and line breaks become spaces), and in
+// CSV (RFC 4180); in both, text a spreadsheet would run as a formula gets a leading apostrophe.
+QString tsvField( QString text );
+QString csvField( QString text );
+// Copy and Copy All of tables and trees stop at whole rows before this much text (the clipboard
+// limit of docs/plugin-sdk-advanced.md section 29).
+constexpr qsizetype MaxCopyChars = 1024 * 1024;
 // Parts joined so that no two different lists give the same key (each part is length-prefixed):
 // tooltip keys and ids may contain any character.
 QString joinedKey( std::initializer_list<QString> parts );
@@ -155,6 +162,12 @@ public:
     // Whether a table of `rows` rows stays within PluginView::MaxTableCells.
     bool fits( qsizetype rows ) const;
     bool setColumns( const QJsonArray& columns );
+    // E17e: shared with trees. A column (a string id or a column object), and the cells of a
+    // row or node: strings and cell objects, at most `limit`; `styles` stays empty unless a
+    // cell is an object.
+    static Column parseColumn( const QJsonValue& value );
+    static void parseCells( const QJsonArray& cells, int limit, QStringList* texts,
+                            QVector<CellStyle>* styles );
     Row parse( const QJsonObject& object ) const;
     bool replace( const QJsonArray& rows );
     void update( const QJsonArray& rows );

@@ -2,19 +2,24 @@
 (E17a); a Plugins submenu with a check box, radio items, a dynamic submenu and a shortcut, and
 entries in the log and tab context menus (E17b); choices with icons, separators and styles,
 check boxes, radio buttons, the new field kinds, validation and completion (E17c); a rich table
-with cell objects, a check column, row dragging, Export CSV and a context menu (E17d)."""
+with cell objects, a check column, row dragging, Export CSV and a context menu (E17d); and the
+explorer view: a lazy tree with check boxes, dragging and a context menu, and a file tree of
+the gallery's own folder (E17e)."""
 from __future__ import annotations
 
 import json
+import os
 import threading
 from typing import Dict, List, Optional, Set, Tuple
 
 from cilogg_plugin import (
     CompleteQuery, CompletionItem, JsonObject, MenuPopulateResult, MenuQuery, Plugin, Tooltip,
-    TooltipQuery, UiCommand, builtin_ref, button, cell, check_group, checkbox, choice,
-    choice_section, choice_separator, column, completion_item, field, group, image_ref, label,
-    menu_item, menu_set, radio_group, replace_rows, row, select_rows, set_props, status_ref,
-    svg_icon, table, table_column, table_row, tooltip_content, update_rows,
+    TooltipQuery, TreeChildrenQuery, TreeNode, UiCommand, builtin_ref, button, cell,
+    check_group, checkbox, choice, choice_section, choice_separator, collapse_nodes, column,
+    completion_item, field, file_tree, group, image_ref, label, menu_item, menu_set,
+    radio_group, replace_nodes, replace_rows, row, select_nodes, select_rows, set_props,
+    status_ref, svg_icon, table, table_column, table_row, tooltip_content, tree, tree_node,
+    update_nodes, update_rows,
 )
 
 plugin = Plugin()
@@ -55,6 +60,37 @@ boards: Dict[str, Dict[str, object]] = {
            "checked": False},
 }
 removed_boards: Dict[str, Dict[str, object]] = {}  # "Remove from List", until "Restore".
+
+# The explorer view (E17e): a tree of benches, their boards (loaded when a bench expands) and
+# the boards' modules, and a file tree of the gallery's own folder. Node ids: benches
+# "bench1", boards "board1", modules "board1.modem".
+EXPLORER = "explorer"
+TREE = "benches"
+FILES = "files"
+NODE_MENU = "node_actions"  # The context menu of the tree (location "element").
+FILE_MENU = "file_actions"  # The context menu of the file tree.
+GALLERY_DIR = os.path.dirname(os.path.abspath(__file__)).replace("\\", "/")
+BENCH_NAMES = {"bench1": "Bench 1", "bench2": "Bench 2"}
+MODULE_NAMES = {"modem": "Modem", "radio": "Radio"}
+CHILD_KIND = {"top": "bench", "bench": "board", "board": "module"}  # What a parent may hold.
+EXPLORER_HINT = "Expand a bench, check, drag or right-click a node, or pick a file: it shows here."
+explorer_boards: Dict[str, Dict[str, str]] = {
+    "board1": {"name": "Board 1", "state": "connected", "firmware": "3.2.1"},
+    "board2": {"name": "Board 2", "state": "idle", "firmware": "3.2.0"},
+    "board3": {"name": "Board 3", "state": "offline", "firmware": "3.1.9"},
+}
+# The plugin's own node order: the children of every node (None: the top level). The host
+# never moves nodes; the plugin changes this order and patches the tree.
+explorer_children: Dict[Optional[str], List[str]] = {
+    None: ["bench1", "bench2"], "bench1": ["board1", "board2"], "bench2": ["board3"],
+    **{board_id: [f"{board_id}.{module}" for module in MODULE_NAMES]
+       for board_id in explorer_boards},
+}
+loaded_benches: Set[str] = set()  # Benches whose boards the host has.
+checked_nodes: Set[str] = set()
+selected_files: List[str] = []  # The file tree's last selection, shown again when it opens.
+last_explorer_event: Optional[str] = None  # The explorer's status label.
+explorer_windows: Set[str] = set()
 
 
 # The helpers below read the shared state: call them with state_lock held.
@@ -297,6 +333,9 @@ def change_data() -> Tuple[List[JsonObject], str, int, bool]:
 def opened(params: JsonObject) -> None:
     global icons_registered
     window_id = params.get("window_id")
+    if params.get("view_id") == EXPLORER:
+        explorer_opened(window_id if isinstance(window_id, str) else None)
+        return
     with state_lock:
         if isinstance(window_id, str):
             open_windows.add(window_id)
@@ -307,8 +346,9 @@ def opened(params: JsonObject) -> None:
 
 @plugin.on_view_closed
 def closed(params: JsonObject) -> None:
+    windows = explorer_windows if params.get("view_id") == EXPLORER else open_windows
     with state_lock:
-        open_windows.discard(str(params.get("window_id")))
+        windows.discard(str(params.get("window_id")))
 
 
 def event_value(value: object) -> str:
@@ -358,6 +398,9 @@ def fleet_changed(offline: int) -> None:
 
 @plugin.on_view_event
 def event(params: JsonObject) -> None:
+    if params.get("view_id") == EXPLORER:
+        explorer_event(params)
+        return
     if params.get("element_id") == TABLE:
         table_event(params)
         return
@@ -561,6 +604,323 @@ def describe_tab(command: UiCommand) -> None:
     with state_lock:
         last_command = f"Tab {context.get('tab_id', '?')}{kind}: {source}."
     show_changes()
+
+
+# The explorer view (E17e). The helpers below read the shared state: call them with
+# state_lock held.
+def node_kind(node_id: Optional[str]) -> Optional[str]:
+    """top (None), bench, board, module, or None for an unknown id."""
+    if node_id is None:
+        return "top"
+    if node_id in BENCH_NAMES:
+        return "bench"
+    if node_id in explorer_boards:
+        return "board"
+    board_id, _, module = node_id.partition(".")
+    return "module" if board_id in explorer_boards and module in MODULE_NAMES else None
+
+
+def parent_of(node_id: str) -> Optional[str]:
+    return next((parent for parent, children in explorer_children.items()
+                 if node_id in children), None)
+
+
+def plural(count: int, word: str) -> str:
+    return f"{count} {word}{'' if count == 1 else 's'}"
+
+
+def module_node(node_id: str) -> TreeNode:
+    board_id, _, module = node_id.partition(".")
+    power = "off" if explorer_boards[board_id]["state"] == "offline" else "on"
+    return tree_node(node_id, cells=[MODULE_NAMES[module], power], icon=builtin_ref("chip"),
+                     tone="muted" if power == "off" else None, tooltip_key=f"{node_id}-{power}",
+                     checked=node_id in checked_nodes)
+
+
+def board_node(board_id: str) -> TreeNode:
+    """A board with its modules inline: the host never asks for them."""
+    board = explorer_boards[board_id]
+    state = board["state"]
+    return tree_node(board_id,
+                     cells=[board["name"], cell(state, icon=status_ref(STATE_TONES[state]))],
+                     icon=builtin_ref("device"), tooltip_key=f"{board_id}-{state}",
+                     checked=board_id in checked_nodes,
+                     children=[module_node(module) for module in explorer_children[board_id]])
+
+
+def bench_node(bench_id: str) -> TreeNode:
+    """A bench: with its boards once the host has them, else `has_children`, so expanding it
+    asks tree/children (the tree is `lazy`)."""
+    boards = explorer_children[bench_id]
+    loaded = bench_id in loaded_benches
+    return tree_node(bench_id, cells=[BENCH_NAMES[bench_id], plural(len(boards), "board")],
+                     icon=builtin_ref("folder"), tooltip_key=f"{bench_id}-{len(boards)}",
+                     checked=bench_id in checked_nodes,
+                     children=[board_node(board_id) for board_id in boards] if loaded else None,
+                     has_children=True if boards and not loaded else None)
+
+
+def explorer_node(node_id: str) -> TreeNode:
+    kind = node_kind(node_id)
+    if kind == "bench":
+        return bench_node(node_id)
+    return board_node(node_id) if kind == "board" else module_node(node_id)
+
+
+def explorer_view() -> JsonObject:
+    """A lazy tree with check boxes (parents follow their children), dragging, expand events,
+    node tooltips and a context menu, and a file tree of the gallery's folder. A CILogg
+    without trees skips these elements, so the plugin leaves them out and says why."""
+    has_tree, has_files = plugin.supports("tree"), plugin.supports("file_tree")
+    with state_lock:
+        nodes = [bench_node(bench_id) for bench_id in explorer_children[None]]
+        files = list(selected_files)
+        status = last_explorer_event if last_explorer_event is not None else EXPLORER_HINT
+    if has_tree and has_files:
+        note = "Boards load when their bench expands; drag nodes to reorder them."
+    else:
+        note = "This CILogg cannot show trees: the explorer needs a newer CILogg."
+    items = [label("explorer_note", note)]
+    if has_tree:
+        items.append(group("Benches", tree(
+            TREE, nodes, [table_column("name", "Name", 200, tooltip="Benches, boards and modules"),
+                          table_column("state", "State", 110)],
+            "multi", lazy=True, checkboxes=True, auto_tristate=True, reorderable=True,
+            expand_events=True, context_menu=NODE_MENU, tooltip_provider=True,
+            accessible_name="Benches"), id="bench_group"))
+    if has_files:
+        items.append(group("Gallery files", file_tree(
+            FILES, [GALLERY_DIR], filters=["*.py", "*.json", "*.md"], selection="multi",
+            context_menu=FILE_MENU, value=files or None, accessible_name="Gallery files"),
+            id="file_group"))
+    items.append(label("explorer_status", status))
+    return column(*items, id="explorer_body")
+
+
+def explorer_opened(window_id: Optional[str]) -> None:
+    with state_lock:
+        if window_id:
+            explorer_windows.add(window_id)
+    plugin.update(EXPLORER, explorer_view(), window_id)
+
+
+def show_explorer_event(text: str, changes: Optional[List[JsonObject]] = None) -> None:
+    """Show an event or a command in the explorer's status label, after the tree changes. A
+    closed explorer shows the text when it opens, built from the same state."""
+    global last_explorer_event
+    with state_lock:
+        last_explorer_event = text
+        if not explorer_windows:
+            return
+    tree_changes = changes if changes and plugin.supports("tree") else []
+    plugin.patch(EXPLORER, [*tree_changes, set_props("explorer_status", text=text)])
+
+
+@plugin.tree_children(EXPLORER, TREE)
+def load_boards(query: TreeChildrenQuery) -> Optional[List[TreeNode]]:
+    """A bench expanded: its boards, each with its modules inline (None: no children)."""
+    with state_lock:
+        kind = node_kind(query.node_id) if query.node_id else None
+        if kind not in ("bench", "board"):
+            return None
+        if kind == "bench":
+            loaded_benches.add(query.node_id)
+        return [explorer_node(child) for child in explorer_children[query.node_id]]
+
+
+@plugin.tooltip(EXPLORER, TREE)
+def node_tooltip(query: TooltipQuery) -> Optional[Tooltip]:
+    """The advanced tooltip of a node: the query carries node_id."""
+    node_id = query.node_id or ""
+    with state_lock:
+        kind = node_kind(node_id) if node_id else None
+        if kind == "bench":
+            names = [explorer_boards[board_id]["name"] for board_id in explorer_children[node_id]]
+            return tooltip_content(f"{plural(len(names), 'board')} on this bench.",
+                                   title=BENCH_NAMES[node_id],
+                                   rows=[("Boards", ", ".join(names) or "none")],
+                                   icon=builtin_ref("folder"))
+        if kind == "board":
+            board = explorer_boards[node_id]
+            tone = STATE_TONES[board["state"]]
+            bench = BENCH_NAMES.get(parent_of(node_id) or "", "none")
+            return tooltip_content(f"{board['name']} is {board['state']}.", title=board["name"],
+                                   rows=[("Firmware", board["firmware"]), ("Bench", bench)],
+                                   tone=tone, icon=status_ref(tone))
+        if kind == "module":
+            board_id, _, module = node_id.partition(".")
+            return tooltip_content(f"The {MODULE_NAMES[module].lower()} of "
+                                   f"{explorer_boards[board_id]['name']}.", tone="muted")
+    return None
+
+
+def descendants(node_id: str) -> List[str]:
+    found: List[str] = []
+    pending = list(explorer_children.get(node_id, []))
+    while pending:
+        child = pending.pop()
+        found.append(child)
+        pending.extend(explorer_children.get(child, []))
+    return found
+
+
+def follow_children(parent: Optional[str]) -> None:
+    """A parent and its ancestors are checked when all their children are (auto_tristate)."""
+    while parent is not None:
+        children = explorer_children[parent]
+        if children and all(child in checked_nodes for child in children):
+            checked_nodes.add(parent)
+        else:
+            checked_nodes.discard(parent)
+        parent = parent_of(parent)
+
+
+def set_checked(node_ids: List[str], checked: bool) -> None:
+    """Keep the check boxes like the host shows them (auto_tristate): a node and every
+    descendant, also the ones not loaded yet, and parents checked when all children are."""
+    for node_id in node_ids:
+        if node_kind(node_id) in (None, "top"):
+            continue
+        for item in [node_id, *descendants(node_id)]:
+            if checked:
+                checked_nodes.add(item)
+            else:
+                checked_nodes.discard(item)
+        follow_children(parent_of(node_id))
+
+
+def move_explorer_nodes(node_ids: List[str], parent: Optional[str],
+                        before: Optional[str]) -> Optional[Tuple[List[str], List[JsonObject]]]:
+    """Move dragged nodes under `parent` (None: the top level) before `before` (None: the
+    end) in the plugin's order and return them with the patch entries that show the new
+    order; None (nothing changes) when the drop makes no sense: benches stay at the top
+    level, boards go into benches and modules into boards."""
+    target = node_kind(parent)
+    moved = [node_id for node_id in dict.fromkeys(node_ids) if node_kind(node_id) is not None]
+    if target is None or not moved or any(node_kind(node_id) != CHILD_KIND.get(target)
+                                          for node_id in moved):
+        return None
+    siblings = explorer_children[parent]
+    if before is not None and before not in siblings:
+        return None
+    if before in moved:  # Dropped on one of the dragged nodes: before the next one that stays.
+        after = siblings[siblings.index(before) + 1:]
+        before = next((node_id for node_id in after if node_id not in moved), None)
+    sources: List[str] = []
+    for node_id in moved:
+        source = parent_of(node_id)
+        explorer_children[source].remove(node_id)
+        if source is not None and source != parent and source not in sources:
+            sources.append(source)
+    rest = explorer_children[parent]
+    position = rest.index(before) if before is not None else len(rest)
+    explorer_children[parent] = rest[:position] + moved + rest[position:]
+    for changed in [*sources, parent]:  # Their check boxes follow their new children.
+        follow_children(changed)
+    if parent in BENCH_NAMES:
+        loaded_benches.add(parent)  # The patch below gives the host its boards.
+    if parent is None:
+        entry = replace_nodes(TREE, [bench_node(bench_id) for bench_id in explorer_children[None]])
+    else:  # The sources first, so no node is in two places at once.
+        entry = update_nodes(TREE, [explorer_node(node_id) for node_id in [*sources, parent]])
+    return moved, [entry, select_nodes(TREE, moved, current=moved[0], scroll_to=moved[0])]
+
+
+def tree_event(event_type: object, params: JsonObject) -> Optional[Tuple[str, List[JsonObject]]]:
+    """The status text of a tree event and the patch entries it needs."""
+    value = params.get("value")
+    fields: Dict[str, object] = value if isinstance(value, dict) else {}
+    if event_type == "selected":
+        current = params.get("current")
+        return (f"selected {','.join(id_list(value)) or 'none'} current "
+                f"{current if isinstance(current, str) else 'none'}"), []
+    if event_type == "activated":
+        return f"activated {fields.get('node_id')} {fields.get('column_id')}", []
+    if event_type in ("expanded", "collapsed"):
+        return f"{event_type} {fields.get('node_id')}", []
+    if event_type == "checked":
+        node_ids = id_list(fields.get("node_ids")) or id_list([fields.get("node_id")])
+        checked = fields.get("checked") is True
+        with state_lock:
+            set_checked(node_ids, checked)
+        return f"checked {','.join(node_ids)} {'true' if checked else 'false'}", []
+    if event_type == "moved":
+        node_ids = id_list(fields.get("node_ids"))
+        parent, before = fields.get("parent"), fields.get("before")
+        with state_lock:
+            result = move_explorer_nodes(node_ids, parent if isinstance(parent, str) else None,
+                                         before if isinstance(before, str) else None)
+        text = (f"moved {','.join(node_ids)} into {parent if isinstance(parent, str) else 'top'} "
+                f"before {before if isinstance(before, str) else 'end'}")
+        return (f"{text} refused", []) if result is None else (text, result[1])
+    return None
+
+
+def file_name(path: str) -> str:
+    """A path of the file tree relative to the gallery's folder."""
+    return path[len(GALLERY_DIR) + 1:] if path.startswith(GALLERY_DIR + "/") else path
+
+
+def explorer_event(params: JsonObject) -> None:
+    """Tree events change the plugin's model (checked, moved) and show in the status label;
+    the file tree's selection is kept for the next time the explorer opens."""
+    element_id, event_type = params.get("element_id"), params.get("type")
+    value = params.get("value")
+    if element_id == TREE:
+        shown = tree_event(event_type, params)
+        if shown is not None:
+            show_explorer_event(*shown)
+    elif element_id == FILES and event_type == "selected":
+        paths = id_list(value)
+        with state_lock:
+            selected_files[:] = paths
+        show_explorer_event(f"selected files {','.join(map(file_name, paths)) or 'none'}")
+    elif element_id == FILES and event_type == "activated":
+        path = value.get("path") if isinstance(value, dict) else None
+        name = file_name(path) if isinstance(path, str) else "none"
+        show_explorer_event(f"activated file {name}")
+
+
+def boards_under(node_id: str) -> List[str]:
+    kind = node_kind(node_id)
+    if kind == "bench":
+        return list(explorer_children[node_id])
+    if kind == "board":
+        return [node_id]
+    return [node_id.partition(".")[0]] if kind == "module" else []
+
+
+@plugin.on_command(NODE_MENU)
+def node_action(command: UiCommand) -> None:
+    """The tree's context menu (plugin.json menu "node_actions", location "element"): Reset
+    Node connects the boards of the clicked or selected nodes again; Collapse All closes every
+    bench and board. The command carries node_id (the clicked node) instead of row_id."""
+    targets = command.selected_ids or ([command.node_id] if command.node_id else [])
+    changes: List[JsonObject] = []
+    with state_lock:
+        if command.item_id == "reset_node":
+            reset = [board_id for node_id in targets for board_id in boards_under(node_id)
+                     if explorer_boards[board_id]["state"] != "connected"]
+            for board_id in reset:
+                explorer_boards[board_id]["state"] = "connected"
+            shown = [board_id for board_id in dict.fromkeys(reset)
+                     if parent_of(board_id) in loaded_benches]
+            if shown:
+                changes.append(update_nodes(TREE, [board_node(board_id) for board_id in shown]))
+        elif command.item_id == "collapse_all":
+            benches = explorer_children[None]
+            changes.append(collapse_nodes(TREE, [*benches, *(
+                board_id for bench_id in benches if bench_id in loaded_benches
+                for board_id in explorer_children[bench_id])]))
+    show_explorer_event(f"menu {command.item_id} {command.node_id or 'none'} "
+                        f"{command.selected_count}", changes)
+
+
+@plugin.on_command(FILE_MENU)
+def file_action(command: UiCommand) -> None:
+    """The file tree's context menu: Show Path shows the clicked path (node_id) and the number
+    of selected paths."""
+    show_explorer_event(f"path {command.node_id or 'none'} ({command.selected_count} selected)")
 
 
 if __name__ == "__main__":

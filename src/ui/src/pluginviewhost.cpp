@@ -7,6 +7,7 @@
 #include "pluginicons.h"
 #include "pluginmanager.h"
 #include "pluginmenus.h"
+#include "plugintablemodel.h"
 #include <QAbstractButton>
 #include <QDateTime>
 #include <QDialog>
@@ -222,6 +223,9 @@ PluginMenuContext PluginViewHost::elementMenuContext( const QString& viewId,
     context.elementMenuId = menuId;
     context.rowId = target.value( "row_id" ).toString();
     context.columnId = target.value( "column_id" ).toString();
+    // E17e: trees name the clicked node or path instead of a row and column.
+    context.tree = target.contains( "node_id" );
+    context.nodeId = target.value( "node_id" ).toString();
     for ( const auto& id : target.value( "selected_ids" ).toArray() ) {
         context.selectedIds.append( id.toString() );
     }
@@ -465,6 +469,56 @@ bool PluginViewHost::openView( const QString& pluginId, const QString& viewId,
                 answered( outcome.status == cilogg::plugins::PluginQueries::Status::Answered
                               ? outcome.result.toObject().value( "items" ).toArray()
                               : QJsonArray{} );
+            } );
+    };
+    // E17e lazy tree children (section 28.1). The exclusive key is the node: expanding it again
+    // replaces its query, other nodes' queries continue.
+    queries.treeChildren = [ host = QPointer<PluginViewHost>( this ), pluginId, viewId, key ](
+                               const QJsonObject& params,
+                               std::function<void( bool, const QJsonArray& )> done ) {
+        if ( !host ) {
+            return QString{};
+        }
+        const auto it = host->open_.find( key );
+        if ( !host->manager_ || it == host->open_.end() || it->second->stopped ) {
+            return QString{};
+        }
+        auto full = params;
+        full.insert( "view_id", viewId );
+        full.insert( "window_id", host->windowId_ );
+        full.insert( "context",
+                     QJsonObject::fromVariantMap( host->contextFor( it->second->source, nullptr ) ) );
+        const auto scope = cilogg::plugins::PluginManager::viewScope( host->windowId_, viewId );
+        return host->manager_->query(
+            pluginId, QStringLiteral( "tree/children" ), full, 0,
+            // Length-prefixed ids: two nodes never share a key, whatever characters they hold.
+            QStringLiteral( "tree:" ) + scope + QLatin1Char( '/' )
+                + pluginview::joinedKey( { params.value( "element_id" ).toString(),
+                                           params.value( "node_id" ).toString() } ),
+            scope,
+            [ answered = std::move( done ), pluginId, viewId,
+              params ]( const cilogg::plugins::PluginQueries::Outcome& outcome ) {
+                using Status = cilogg::plugins::PluginQueries::Status;
+                if ( outcome.status == Status::Cancelled ) {
+                    // A newer query of the node replaced it, the view closed or the plugin
+                    // stopped (the host fails the loading nodes then): no answer to give.
+                    return;
+                }
+                // Ids and latency only, never the nodes (design 5.3).
+                cilogg::diagnostics::ActivityJournal::record(
+                    QStringLiteral( "plugin" ),
+                    QStringLiteral( "Plugin tree children query %1" )
+                        .arg( outcome.status == Status::Answered    ? "answered"
+                              : outcome.status == Status::Nothing   ? "nothing"
+                              : outcome.status == Status::TimedOut  ? "timed out"
+                                                                    : "failed" ),
+                    { { "plugin", pluginId },
+                      { "view", viewId },
+                      { "element", params.value( "element_id" ).toString() },
+                      { "latencyMs", outcome.latencyMs } } );
+                const bool ok
+                    = outcome.status == Status::Answered || outcome.status == Status::Nothing;
+                answered( ok, outcome.result.toObject().value( "nodes" ).toArray() );
             } );
     };
     // E17d element context menus (section 10.4): the window's PluginMenus adds the entries.
@@ -904,8 +958,10 @@ void PluginViewHost::setStopped( const QString& pluginId, bool stopped )
         // Pending tooltip queries end; cached answers go with the stop and the restart.
         open->view->resetTooltips();
         if ( stopped ) {
-            // An edit the plugin never confirmed must not look saved.
+            // An edit the plugin never confirmed must not look saved, and a stopped plugin
+            // never answers tree/children (its queries end as cancelled).
             open->view->revertPendingEdits();
+            open->view->failTreeLoads();
         }
         open->view->setEnabled( false );
         open->pendingRoot.reset();

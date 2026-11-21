@@ -1201,7 +1201,7 @@ TEST_CASE( "Plugins receive host features and the instance environment", "[plugi
     REQUIRE( result.value( "host_features" ).toList()
              == QVariantList{ "views", "view_edit", "queries", "tooltips", "icons", "menus",
                               "shortcuts", "choices", "toggles", "field_kinds", "validation",
-                              "rich_tables", "element_menus" } );
+                              "rich_tables", "element_menus", "tree", "file_tree" } );
     REQUIRE( QFileInfo( result.value( "executable" ).toString() )
              == QFileInfo( QCoreApplication::applicationFilePath() ) );
     REQUIRE( result.value( "instance" ) == "cilogg-test-instance" );

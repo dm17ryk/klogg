@@ -305,6 +305,23 @@ def run(build: Path, artifacts: Path) -> None:
                     cell = cli("get_plugin_tooltip", "--plugin-id", gallery, "--view-id", "gallery",
                                "--element-id", "boards", "--row-id", "b1", "--column-id", "state")
                     assert cell["tooltip"]["title"] == "Connected", cell
+                    # E17e: the explorer view's tree answers node tooltips by node id.
+                    cli("trigger_plugin_menu", "--plugin-id", gallery, "--menu-id", "main",
+                        "--item-id", "open_explorer")
+                    benches = f"pluginView_{gallery}_explorer_benches"
+                    deadline = time.monotonic() + 30
+                    while not any(o.get("objectName") == benches and o.get("enabled")
+                                  for o in cli("get_ui")["objects"]):
+                        assert time.monotonic() < deadline, "UI gallery explorer was not rendered"
+                        time.sleep(0.1)
+                    node = cli("get_plugin_tooltip", "--plugin-id", gallery, "--view-id",
+                               "explorer", "--element-id", "benches", "--node-id", "bench1",
+                               "--no-cache")
+                    node_mcp = mcp.command("get_plugin_tooltip", {
+                        "plugin_id": gallery, "view_id": "explorer", "element_id": "benches",
+                        "node_id": "bench1", "no_cache": True})
+                    assert node["tooltip"]["title"] == "Bench 1", node
+                    assert node["tooltip"] == node_mcp["tooltip"], (node, node_mcp)
                 # Syslog crosses real UDP, the plugin protocol and the native capture writer.
                 syslog = "org.cilogg.syslog-server"
                 for protocol in ("cli", "mcp", "gui"):
