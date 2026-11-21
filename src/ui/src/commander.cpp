@@ -826,8 +826,8 @@ std::optional<CommanderRequest> commanderRequestFromVariantMap( const QVariantMa
          || request.action == CommanderAction::TriggerPluginMenu ) {
         // E17b: the same folding for the menu operations; `lines` may also be a list. E17d:
         // `element` menus name the view element and its row.
-        for ( const auto* key :
-              { "location", "menuId", "itemId", "lines", "checked", "elementId", "rowId" } ) {
+        for ( const auto* key : { "location", "menuId", "itemId", "lines", "checked", "elementId",
+                                  "rowId", "nodeId" } ) {
             const QString name = QLatin1String( key );
             if ( map.contains( name ) && !request.pluginArguments.contains( name ) ) {
                 request.pluginArguments.insert( name, map.value( name ) );

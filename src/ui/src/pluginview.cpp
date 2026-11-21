@@ -4,8 +4,11 @@
 #include "checkcombobox.h"
 #include "pluginchoicewidgets.h"
 #include "pluginfeatures.h"
+#include "pluginfiletree.h"
 #include "plugintablebehaviour.h"
 #include "plugintablemodel.h"
+#include "plugintree.h"
+#include "pluginviewnode.h"
 #include "log.h"
 #include <QMenu>
 #include <QAbstractTableModel>
@@ -61,7 +64,8 @@ namespace {
 const QStringList ContainerTypes{ "column", "row", "group" };
 const QStringList ElementTypes{ "column",   "row",      "group",       "label",
                                 "badge",    "field",    "button",      "progress",
-                                "table",    "checkbox", "radio_group", "check_group" };
+                                "table",    "checkbox", "radio_group", "check_group",
+                                "tree",     "file_tree" };
 // E17c adds the kinds after multichoice (docs/plugin-sdk-advanced.md section 8.5).
 const QStringList FieldKinds{ "text",      "number",   "choice",  "boolean", "file_open",
                               "file_save", "directory", "multichoice", "multiline", "secret",
@@ -89,9 +93,12 @@ const QStringList CommonKeys{ "id",
                               "accessible_description" };
 // Properties that keep their state when a same-shaped root omits them. `rows` and `columns` are
 // a table's content; on a field (multiline rows, inline choice columns) they are looks, which a
-// root that omits them returns to their defaults.
+// root that omits them returns to their defaults. E17e: a tree's `nodes` and `columns` and a
+// file tree's `roots` and `columns` are content too.
 const QStringList KeptWhenAbsent{ "value", "kind", "children" };
 const QStringList TableKeptWhenAbsent{ "rows", "columns" };
+const QStringList TreeKeptWhenAbsent{ "nodes", "columns" };
+const QStringList FileTreeKeptWhenAbsent{ "roots", "columns" };
 
 QStringList knownKeys( const QString& type )
 {
@@ -127,6 +134,17 @@ QStringList knownKeys( const QString& type )
     }
     if ( type == "radio_group" || type == "check_group" ) {
         return { "title", "choices", "value", "orientation", "columns", "all_none" };
+    }
+    // E17e: trees and file trees (section 28).
+    if ( type == "tree" ) {
+        return { "columns",       "nodes",       "selection", "toggle_selection", "checkboxes",
+                 "auto_tristate", "lazy",        "expand_events", "header",        "context_menu",
+                 "copy",          "export",      "reorderable" };
+    }
+    if ( type == "file_tree" ) {
+        return { "roots",     "filters",          "hide_filtered", "show_files", "show_hidden",
+                 "columns",   "selection",        "toggle_selection", "select",  "checkboxes",
+                 "value",     "context_menu",     "copy" };
     }
     // E17d: rich tables and element context menus (section 10).
     return { "columns",      "rows",   "sortable",    "filter_box",  "selection",
@@ -196,6 +214,31 @@ QJsonObject defaultsFor( const QString& type )
         defaults.insert( "reorderable", false );
         defaults.insert( "keep_columns", true );
     }
+    else if ( type == "tree" ) {
+        defaults.insert( "selection", "none" );
+        defaults.insert( "toggle_selection", false );
+        defaults.insert( "checkboxes", false );
+        defaults.insert( "auto_tristate", false );
+        defaults.insert( "lazy", false );
+        defaults.insert( "expand_events", false );
+        defaults.insert( "header", true );
+        defaults.insert( "context_menu", "" );
+        defaults.insert( "copy", true );
+        defaults.insert( "export", false );
+        defaults.insert( "reorderable", false );
+    }
+    else if ( type == "file_tree" ) {
+        defaults.insert( "filters", QJsonArray{} );
+        defaults.insert( "hide_filtered", true );
+        defaults.insert( "show_files", true );
+        defaults.insert( "show_hidden", false );
+        defaults.insert( "selection", "single" );
+        defaults.insert( "toggle_selection", false );
+        defaults.insert( "select", "both" );
+        defaults.insert( "checkboxes", false );
+        defaults.insert( "context_menu", "" );
+        defaults.insert( "copy", true );
+    }
     return defaults;
 }
 
@@ -224,26 +267,6 @@ bool runDialog( Dialog* dialog )
     return !guard.isNull();
 }
 } // namespace
-
-struct PluginView::Node {
-    QString id;
-    QString type;
-    QString kind;
-    bool automatic = false;
-    QPointer<QWidget> widget; // the element itself (object name base)
-    QPointer<QWidget> outer;  // what sits in the parent layout
-    QPointer<QWidget> content;
-    QPointer<QLabel> error;  // E17c: the validation message below a field
-    QString invalid;         // the message shown (empty: valid)
-    QPointer<QTimer> debounce;
-    QJsonObject props;
-    QJsonValue pluginValue;
-    QJsonValue lastRows; // rows last set as a whole (root or replace_rows)
-    bool rowsDirty = true;
-    PluginTableModel* model = nullptr;
-    QSortFilterProxyModel* proxy = nullptr;
-    PluginTableBehaviour* behaviour = nullptr; // E17d
-};
 
 PluginViewDialogs PluginViewDialogs::native()
 {
@@ -371,7 +394,8 @@ void PluginView::resetTooltips()
 }
 
 PluginTooltips::Target PluginView::tooltipTarget( const QString& elementId, const QString& rowId,
-                                                  const QString& columnId ) const
+                                                  const QString& columnId, const QString& nodeId,
+                                                  const QModelIndex& pointed ) const
 {
     PluginTooltips::Target target;
     const auto node = nodes_.value( elementId );
@@ -386,6 +410,9 @@ PluginTooltips::Target PluginView::tooltipTarget( const QString& elementId, cons
     target.staticTip = text( props, "tooltip" );
     target.timeoutMs = props.value( "tooltip_timeout_ms" ).toInt();
     target.rect = node->widget->rect();
+    if ( node->treeModel || node->fileTree ) {
+        return treeTooltipTarget( *node, target, nodeId, columnId, pointed ); // E17e
+    }
     if ( node->type != "table" || !node->model ) {
         return target;
     }
@@ -420,6 +447,10 @@ PluginTooltips::Target PluginView::tooltipTarget( const QString& elementId, cons
 void PluginView::watchTooltips( Node& node )
 {
     const auto id = node.id;
+    if ( node.treeModel || node.fileTree ) {
+        watchTreeTooltips( node ); // E17e: per node or path
+        return;
+    }
     if ( node.type != "table" ) {
         tooltips_->watch( node.widget, [ this, id ]( const QPoint& ) {
             return tooltipTarget( id, {}, {} );
@@ -446,20 +477,39 @@ bool PluginView::resolveTooltip( const QString& elementId, const QString& rowId,
                                  const QString& columnId, bool useCache, TooltipResolved done,
                                  QString* error )
 {
+    return resolveTooltip( elementId, rowId, columnId, {}, useCache, std::move( done ), error );
+}
+
+bool PluginView::resolveTooltip( const QString& elementId, const QString& rowId,
+                                 const QString& columnId, const QString& nodeId, bool useCache,
+                                 TooltipResolved done, QString* error )
+{
+    const auto fail = [ error ]( const QString& message ) {
+        if ( error ) {
+            *error = message;
+        }
+        return false;
+    };
     const auto node = nodes_.value( elementId );
     if ( !node || node->automatic ) {
-        if ( error ) {
-            *error = tr( "The view has no element %1." ).arg( elementId.left( 128 ) );
-        }
-        return false;
+        return fail( tr( "The view has no element %1." ).arg( elementId.left( 128 ) ) );
+    }
+    // E17e: a tree node (with an optional column) or a file tree path; nothing else takes --node-id.
+    const bool tree = node->treeModel || node->fileTree;
+    if ( tree != !nodeId.isEmpty() ) {
+        return fail( tree ? tr( "A tree tooltip needs a node id." )
+                          : tr( "Only trees and file trees take a node id." ) );
+    }
+    if ( tree && !rowId.isEmpty() ) {
+        return fail( tr( "A tree has nodes, not rows." ) );
     }
     if ( node->type == "table" && ( rowId.isEmpty() || columnId.isEmpty() ) ) {
-        if ( error ) {
-            *error = tr( "A table tooltip needs a row id and a column id." );
-        }
-        return false;
+        return fail( tr( "A table tooltip needs a row id and a column id." ) );
     }
-    const auto target = tooltipTarget( elementId, rowId, columnId );
+    const auto target = tooltipTarget( elementId, rowId, columnId, nodeId );
+    if ( tree && target.nodeId.isEmpty() ) {
+        return fail( tr( "The tree has no node %1." ).arg( nodeId.left( 128 ) ) );
+    }
     if ( node->type == "table" && target.rowId.isEmpty() ) {
         if ( error ) {
             *error = tr( "The table has no cell %1 / %2." )
@@ -479,6 +529,7 @@ bool PluginView::resolveTooltip( const QString& elementId, const QString& rowId,
 PluginView::~PluginView()
 {
     cancelDialogs();
+    cancelAllChildren();
     flushKeptColumns();
     detachTables();
 }
@@ -494,15 +545,20 @@ void PluginView::flushKeptColumns()
     }
 }
 
-// Table models call back into the view. The widget teardown after the destructor can still commit
-// an open cell editor (closing a window moves the focus), and a replaced tree is deleted later:
-// neither may reach this view any more.
+// Table and tree models call back into the view. The widget teardown after the destructor can
+// still commit an open cell editor (closing a window moves the focus), and a replaced tree is
+// deleted later: neither may reach this view any more.
 void PluginView::detachTables()
 {
     for ( const auto& node : std::as_const( nodes_ ) ) {
         if ( node && node->model ) {
             node->model->canEdit = {};
             node->model->onEdited = {};
+        }
+        if ( node && node->treeModel ) {
+            node->treeModel->canEdit = {};
+            node->treeModel->onEdited = {};
+            node->treeModel->onCheckRequested = {};
         }
     }
 }
@@ -554,6 +610,9 @@ void PluginView::revertPendingEdits()
     for ( const auto& node : std::as_const( nodes_ ) ) {
         if ( node && node->model ) {
             node->model->revertPending();
+        }
+        if ( node && node->treeModel ) {
+            node->treeModel->revertPending();
         }
     }
 }
@@ -619,6 +678,7 @@ bool PluginView::sameShape( const QJsonObject& element ) const
 void PluginView::clear()
 {
     cancelDialogs();
+    cancelAllChildren();
     flushKeptColumns();
     detachTables();
     if ( auto* old = scroll_->takeWidget() ) {
@@ -654,7 +714,8 @@ void PluginView::setRoot( const QJsonObject& root )
         }
         bool hasTable = false;
         for ( const auto& node : nodes_ ) {
-            hasTable = hasTable || node->type == "table";
+            hasTable = hasTable || node->type == "table" || node->type == "tree"
+                       || node->type == "file_tree";
         }
         if ( !hasTable ) {
             layout->addStretch( 1 );
@@ -788,6 +849,12 @@ QWidget* PluginView::build( const QJsonObject& element, QWidget* parent, const Q
         bar->setValue( 0 );
         node->widget = bar;
         outer = bar;
+    }
+    else if ( type == "tree" ) {
+        outer = buildTree( *node, parent ); // E17e
+    }
+    else if ( type == "file_tree" ) {
+        outer = buildFileTree( *node, parent );
     }
     else {
         outer = buildTable( *node, element, parent );
@@ -1325,17 +1392,7 @@ QWidget* PluginView::buildTable( Node& node, const QJsonObject& element, QWidget
     };
     hooks.saveFile = [ guard, id ]( const QString& title, const QString& nameFilter,
                                     const QString& suggested ) {
-        if ( !guard || !guard->dialogs_.saveFile ) {
-            return QString{};
-        }
-        const auto name = guard->nameFor( id ) + QStringLiteral( "_export_dialog" );
-        guard->activeDialogs_.insert( name );
-        const auto path
-            = guard->dialogs_.saveFile( guard->dialogParent(), name, title, nameFilter, suggested );
-        if ( guard ) {
-            guard->activeDialogs_.remove( name );
-        }
-        return path;
+        return exportPath( guard, id, title, nameFilter, suggested );
     };
     hooks.loadState = [ guard, id ] {
         return guard && guard->queries_.loadState ? guard->queries_.loadState( id ) : QJsonObject{};
@@ -1345,8 +1402,11 @@ QWidget* PluginView::buildTable( Node& node, const QJsonObject& element, QWidget
             guard->queries_.saveState( id, state );
         }
     };
-    hooks.selectionSettled = [ guard, id ] {
-        if ( guard && !guard->applying_ ) {
+    hooks.selectionSettled = [ guard, id, table ] {
+        // Only for the table the view still shows for this id: a report a replaced table
+        // deferred must not speak for its successor.
+        const auto found = guard ? guard->nodes_.value( id ) : nullptr;
+        if ( found && found->widget.data() == table && !guard->applying_ ) {
             guard->emitSelection( id );
         }
     };
@@ -1400,7 +1460,9 @@ void PluginView::apply( Node& node, const QJsonObject& incoming, bool fromRoot )
         const auto defaults = defaultsFor( node.type );
         for ( auto it = previous.begin(); it != previous.end(); ++it ) {
             if ( props.contains( it.key() ) || KeptWhenAbsent.contains( it.key() )
-                 || ( node.type == "table" && TableKeptWhenAbsent.contains( it.key() ) ) ) {
+                 || ( node.type == "table" && TableKeptWhenAbsent.contains( it.key() ) )
+                 || ( node.type == "tree" && TreeKeptWhenAbsent.contains( it.key() ) )
+                 || ( node.type == "file_tree" && FileTreeKeptWhenAbsent.contains( it.key() ) ) ) {
                 continue;
             }
             if ( defaults.contains( it.key() ) ) {
@@ -1697,6 +1759,12 @@ void PluginView::apply( Node& node, const QJsonObject& incoming, bool fromRoot )
             }
         }
     }
+    else if ( type == "tree" ) {
+        applyTree( node, props, previous, fromRoot ); // E17e
+    }
+    else if ( type == "file_tree" ) {
+        applyFileTree( node, props, previous, fromRoot );
+    }
     updateAccessibility( node );
 }
 
@@ -1870,6 +1938,9 @@ void PluginView::applyPatch( const QJsonArray& patch )
             }
             apply( *node, set, false );
         }
+        if ( node->type == "tree" || node->type == "file_tree" ) {
+            applyTreeOperation( *node, entry ); // E17e (section 28)
+        }
         if ( node->type == "table" ) {
             applyTableOperation( *node, entry );
             // E17d selection patch (section 10.2), after any row changes of the same entry; it
@@ -1889,9 +1960,49 @@ void PluginView::applyPatch( const QJsonArray& patch )
 bool PluginView::elementMenu( const QString& elementId, const QString& rowId, QString* menuId,
                               QJsonObject* target, QString* error ) const
 {
+    return elementMenu( elementId, rowId, {}, menuId, target, error );
+}
+
+bool PluginView::elementMenu( const QString& elementId, const QString& rowId,
+                              const QString& nodeId, QString* menuId, QJsonObject* target,
+                              QString* error ) const
+{
     const auto node = nodes_.value( elementId );
+    // E17e: trees and file trees name the clicked node or path.
+    if ( node && !node->automatic && ( node->tree || node->fileTree ) ) {
+        if ( !rowId.isEmpty() ) {
+            *error = tr( "A tree has nodes, not rows: use --node-id." );
+            return false;
+        }
+        *menuId = node->tree ? node->tree->options().contextMenu
+                             : node->fileTree->options().contextMenu;
+        if ( menuId->isEmpty() ) {
+            *error = tr( "The tree has no context_menu." );
+            return false;
+        }
+        if ( node->tree ) {
+            if ( !nodeId.isEmpty() && !node->treeModel->contains( nodeId ) ) {
+                *error = tr( "The tree has no node with this id." );
+                return false;
+            }
+            *target = node->tree->menuTarget( nodeId );
+            return true;
+        }
+        // As tooltips: an existing item of the roots, its links resolved.
+        const auto path = PluginFileRootsModel::normalize( nodeId );
+        if ( !nodeId.isEmpty() && !node->fileTree->model()->reaches( path ) ) {
+            *error = tr( "The path is not an item in the file tree's roots." );
+            return false;
+        }
+        *target = node->fileTree->menuTarget( nodeId.isEmpty() ? QString{} : path );
+        return true;
+    }
+    if ( !nodeId.isEmpty() ) {
+        *error = tr( "Only trees and file trees take --node-id." );
+        return false;
+    }
     if ( !node || node->automatic || !node->behaviour ) {
-        *error = tr( "The view has no table with this id." );
+        *error = tr( "The view has no table or tree with this id." );
         return false;
     }
     *menuId = node->behaviour->options().contextMenu;
@@ -1910,11 +2021,21 @@ bool PluginView::elementMenu( const QString& elementId, const QString& rowId, QS
 QMenu* PluginView::buildElementMenu( const QString& elementId, const QPoint& position )
 {
     const auto node = nodes_.value( elementId );
+    if ( node && node->tree ) {
+        return node->tree->buildMenu( position ); // E17e
+    }
+    if ( node && node->fileTree ) {
+        return node->fileTree->buildMenu( position );
+    }
     return node && node->behaviour ? node->behaviour->buildMenu( position ) : nullptr;
 }
 
 QJsonValue PluginView::fieldValue( const Node& node ) const
 {
+    if ( node.fileTree ) {
+        // E17e: the selected (or checked) paths (section 28.2).
+        return QJsonArray::fromStringList( node.fileTree->value( MaxSelectedIds ) );
+    }
     auto* widget = node.widget.data();
     if ( auto* group = qobject_cast<ChoiceGroup*>( widget ) ) {
         return group->value();
@@ -2133,7 +2254,8 @@ QJsonObject PluginView::inputs( bool* truncated ) const
     QJsonObject values;
     qsizetype budget = MaxInputsBytes;
     bool shortened = false;
-    static const QStringList InputTypes{ "field", "checkbox", "radio_group", "check_group" };
+    static const QStringList InputTypes{ "field", "checkbox", "radio_group", "check_group",
+                                         "file_tree" };
     for ( const auto& id : order_ ) {
         const auto node = nodes_.value( id );
         if ( !node || !InputTypes.contains( node->type ) ) {

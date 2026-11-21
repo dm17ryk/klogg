@@ -7,7 +7,8 @@ invalidation, registered icons, menus with dynamic submenus and commands
 menu builders), choices, check boxes, radio buttons, new field kinds, validation and field
 completion (`choice`, `checkbox`, `radio_group`, `check_group`, `@plugin.complete`), rich tables
 and element context menus (`cell`, the new `table`, `table_column` and `table_row` keys,
-`select_rows`) and forward compatibility with newer hosts. See docs/plugin-sdk.md and
+`select_rows`), trees and file trees (`tree`, `tree_node`, `file_tree`, the node patch helpers,
+`@plugin.tree_children`) and forward compatibility with newer hosts. See docs/plugin-sdk.md and
 docs/plugin-sdk-advanced.md.
 """
 from __future__ import annotations
@@ -142,6 +143,24 @@ _RICH_TABLE_KEYS = frozenset({"header", "toggle_selection", "copy", "export", "r
                               "keep_columns"})
 _SELECTION_PATCH_KEYS = frozenset({"select", "current", "scroll_to"})
 _ELEMENT_MENU_KEYS = frozenset({"context_menu"})  # the element_menus feature
+
+# Trees and file trees (docs/plugin-sdk-advanced.md, sections 11 and 28; host features tree and
+# file_tree). An older host skips these element types: the SDK sends them unchanged.
+TREE_CHILDREN = "tree/children"
+MAX_TREE_NODES = 50000  # nodes in one tree
+MAX_TREE_DEPTH = 64  # levels of a tree; the top-level nodes are level 1
+MAX_TREE_CHILDREN = 1000  # nodes in one tree/children answer, nested children included
+MAX_FILE_TREE_ROOTS = 16
+FILE_TREE_COLUMNS = ("name", "size", "type", "modified")
+FILE_TREE_SELECT = ("files", "dirs", "both")
+SELECTION_MODES = ("none", "single", "multi")
+# Tree events besides selected (expanded and collapsed with expand_events).
+TREE_EVENTS = ("activated", "checked", "edited", "moved", "expanded", "collapsed")
+_TREE_TYPES = frozenset({"tree", "file_tree"})
+# Table keys that trees and file trees have too (a patch of an element of unknown type keeps
+# them on a host with trees).
+_TREE_SHARED_KEYS = frozenset({"header", "toggle_selection", "copy", "export", "reorderable",
+                               "context_menu"})
 
 
 # Message shapes (docs/plugin-sdk.md and docs/plugin-sdk-advanced.md). Keys of the
@@ -346,13 +365,16 @@ class LogSelection(TypedDict, total=False):
 
 class ElementMenuContext(TypedDict, total=False):
     """The `context` of an element menu entry (location "element", host feature
-    element_menus): the clicked row and column (None when the click was not on a cell) and the
-    selected row ids (at most 1000) with their count."""
+    element_menus): in a table the clicked row and column (None when the click was not on a
+    cell), in a tree (host feature tree) the clicked node instead and in a file tree (host
+    feature file_tree) the clicked path as node_id (None off a node), and the selected row ids,
+    node ids or paths (at most 1000) with their count."""
     window_id: str
     view_id: str
     element_id: str
     row_id: Optional[str]
     column_id: Optional[str]
+    node_id: Optional[str]
     selected_ids: List[str]
     selected_count: int
 
@@ -600,10 +622,144 @@ class TableMovedValue(TypedDict):
     before: Optional[str]
 
 
+class TreeNode(TypedDict, total=False):
+    """A tree node (host feature tree). `id` is unique in the tree; `text` is the first column
+    (ignored when `cells` is given); `children` are nodes; `has_children` (with the tree's
+    `lazy`) makes the host ask tree/children when the node expands; `checked` None is partly
+    checked; `editors` maps editable column ids to editor() specs; `drag` is accepted and used
+    from E17g."""
+    id: str
+    text: str
+    cells: List[Union[str, TableCell]]
+    icon: IconRef
+    tooltip: str
+    tooltip_key: str
+    tone: str  # CELL_TONES
+    children: List[TreeNode]
+    has_children: bool
+    expanded: bool
+    checkable: bool
+    checked: Optional[bool]
+    editors: JsonObject
+    drag: Union[bool, JsonObject]
+
+
+class TreeElement(ElementProperties, total=False):
+    """A `tree` element (host feature tree); an older host skips it. Columns are table_column()
+    objects or plain column ids; without columns the tree has one column and no header."""
+    type: str  # tree
+    columns: List[Union[str, TableColumn]]
+    nodes: List[TreeNode]
+    selection: str  # none (default), single, multi
+    toggle_selection: bool
+    checkboxes: bool
+    auto_tristate: bool
+    lazy: bool
+    expand_events: bool
+    header: bool
+    context_menu: str
+    copy: bool
+    export: bool
+    reorderable: bool
+
+
+class FileTreeElement(ElementProperties, total=False):
+    """A `file_tree` element (host feature file_tree); an older host skips it. `value` is the
+    selected paths (the checked ones with `checkboxes`) with forward slashes."""
+    type: str  # file_tree
+    roots: List[str]
+    filters: List[str]
+    hide_filtered: bool
+    show_files: bool
+    show_hidden: bool
+    columns: List[str]  # FILE_TREE_COLUMNS
+    selection: str  # single (default), none, multi
+    toggle_selection: bool
+    select: str  # FILE_TREE_SELECT
+    checkboxes: bool
+    value: List[str]
+    context_menu: str
+    copy: bool
+
+
+class TreePatch(_SelectionPatchRequired, total=False):
+    """A patch entry of a tree (host feature tree), applied in this order: `replace_nodes` (the
+    top-level nodes, or the children of `parent`), `update_nodes` (only the keys given change;
+    `children` replaces the node's children), `insert_nodes` (under `parent`, before `before`),
+    `remove_nodes`, `expand` and `collapse` (node ids; a file tree's `expand` takes paths), and
+    the selection (`select`, `current`, `scroll_to`), which sends no `selected` event."""
+    replace_nodes: List[TreeNode]
+    update_nodes: List[TreeNode]
+    insert_nodes: List[TreeNode]
+    parent: str
+    before: str
+    remove_nodes: List[str]
+    expand: List[str]
+    collapse: List[str]
+    select: List[str]
+    current: str
+    scroll_to: str
+
+
+class _TreeChildrenParamsRequired(TypedDict):
+    view_id: str
+    element_id: str
+    node_id: str
+
+
+class TreeChildrenParams(_TreeChildrenParamsRequired, total=False):
+    """A tree/children query: a node with `has_children` of a `lazy` tree expands (default
+    timeout 10 s, at most 30 s)."""
+    window_id: str
+    timeout_ms: int
+    context: JsonObject
+
+
+class TreeChildrenResult(TypedDict):
+    """A tree/children answer: the node's children (nested children included, at most 1000
+    nodes in all); an empty list means no children."""
+    nodes: List[TreeNode]
+
+
+class TreeActivatedValue(TypedDict):
+    """The value of a tree's `activated` event: a double-click or Enter on a cell that is not
+    editable and not a check box (`column_id` None in a tree without columns)."""
+    node_id: str
+    column_id: Optional[str]
+
+
+class TreeCheckedValue(TypedDict):
+    """The value of a tree's `checked` event: `node_id` is the clicked node, `node_ids` every
+    node set to `checked` (the clicked one first; with auto_tristate its loaded descendants
+    too, at most 1000; the parents' derived states are not listed)."""
+    node_id: str
+    checked: bool
+    node_ids: List[str]
+
+
+class TreeMovedValue(TypedDict):
+    """The value of a reorderable tree's `moved` event: the dragged nodes, the new parent
+    (None: the top level) and the node they were dropped before (None: the end). The host
+    does not move them: the plugin confirms with a patch."""
+    node_ids: List[str]
+    parent: Optional[str]
+    before: Optional[str]
+
+
+class TreeExpandValue(TypedDict):
+    """The value of a tree's `expanded` and `collapsed` events (with `expand_events`)."""
+    node_id: str
+
+
+class FileActivatedValue(TypedDict):
+    """The value of a file tree's `activated` event: a double-click or Enter on a file."""
+    path: str
+
+
 class _ViewEventParamsRequired(TypedDict):
     view_id: str
     element_id: str
-    type: str  # changed, clicked, selected, edited, activated, checked, moved
+    type: str  # changed, clicked, selected, edited, activated, checked, moved, expanded, collapsed
 
 
 class ViewEventParams(_ViewEventParamsRequired, total=False):
@@ -613,7 +769,14 @@ class ViewEventParams(_ViewEventParamsRequired, total=False):
     check groups send `changed` with their value. A table's `selected` event carries
     `selected_count` and, for plugins whose manifest declares `handles` on a host with
     rich_tables, `current` (the row with the keyboard focus, or None); `activated`, `checked`
-    and `moved` carry TableActivatedValue, TableCheckedValue and TableMovedValue."""
+    and `moved` carry TableActivatedValue, TableCheckedValue and TableMovedValue.
+
+    A tree's `selected` event carries the node ids (at most 1000, in tree order),
+    `selected_count`, `truncated` when more were selected and `current`; `activated`,
+    `checked`, `moved`, `expanded` and `collapsed` carry TreeActivatedValue, TreeCheckedValue,
+    TreeMovedValue and TreeExpandValue, and `edited` has `node_id`, `column_id` (None in a tree
+    without columns) and `previous` (sent to every plugin). A file tree's `selected` event
+    carries the paths (forward slashes) and `activated` a FileActivatedValue."""
     window_id: str
     value: Any
     inputs: JsonObject
@@ -622,7 +785,8 @@ class ViewEventParams(_ViewEventParamsRequired, total=False):
     selected_count: int
     current: Optional[str]
     row_id: str
-    column_id: str
+    node_id: str
+    column_id: Optional[str]
     previous: str
 
 
@@ -1071,6 +1235,203 @@ def table(id: str, columns: Sequence[JsonObject], rows: Optional[Sequence[JsonOb
                     export=export, reorderable=reorderable, keep_columns=keep_columns, **props)
 
 
+class _NotGiven:
+    """The default of an argument whose None has a meaning (tree_node's checked: partly)."""
+
+    def __repr__(self) -> str:
+        return "<not given>"
+
+
+_NOT_GIVEN: Any = _NotGiven()
+
+
+def _check_id(name: str, value: Any) -> None:
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{name} is a non-empty string, not {value!r}")
+
+
+def _id_list(name: str, values: Any) -> List[str]:
+    """A list of ids (or paths) from a sequence of strings."""
+    if isinstance(values, (str, bytes)) or not isinstance(values, collections.abc.Iterable):
+        raise ValueError(f"{name} is a list of strings")
+    result = list(values)
+    for value in result:
+        _check_id(f"Every entry of {name}", value)
+    return result
+
+
+def _check_selection(selection: Optional[str], toggle_selection: Optional[bool],
+                     context_menu: Optional[str]) -> None:
+    """The selection, toggle_selection and context_menu rules of tables, trees and file
+    trees."""
+    _check_one_of("selection", selection, SELECTION_MODES)
+    if toggle_selection and selection != "multi":
+        raise ValueError('toggle_selection needs selection "multi"')
+    if context_menu is not None and (not isinstance(context_menu, str) or not context_menu
+                                     or "/" in context_menu):
+        raise ValueError(f"context_menu is the id of a menu with location element: "
+                         f"{context_menu!r}")
+
+
+def _node_copy(node: Any) -> JsonObject:
+    if not isinstance(node, collections.abc.Mapping):
+        raise ValueError(f"A tree node is a dict (see tree_node()), not {type(node).__name__}")
+    return dict(node)
+
+
+def _count_nodes(nodes: Sequence[Any], depth: int = 1) -> int:
+    """The nodes of a tree, nested children included; raises ValueError for a tree the host
+    would cut (more than MAX_TREE_NODES nodes or deeper than MAX_TREE_DEPTH)."""
+    if depth > MAX_TREE_DEPTH and nodes:
+        raise ValueError(f"A tree is at most {MAX_TREE_DEPTH} levels deep")
+    count = 0
+    for node in nodes:
+        count += 1
+        children = node.get("children") if isinstance(node, collections.abc.Mapping) else None
+        if isinstance(children, collections.abc.Sequence) and not isinstance(children, str):
+            count += _count_nodes(children, depth + 1)
+        if count > MAX_TREE_NODES:
+            raise ValueError(f"A tree has at most {MAX_TREE_NODES} nodes")
+    return count
+
+
+def tree_node(id: str, text: Any = None, *, cells: Optional[Sequence[Any]] = None,
+              icon: Optional[IconRef] = None, tooltip: Optional[str] = None,
+              tooltip_key: Optional[str] = None, tone: Optional[str] = None,
+              children: Optional[Sequence[Mapping[str, Any]]] = None,
+              has_children: Optional[bool] = None, expanded: Optional[bool] = None,
+              checkable: Optional[bool] = None, checked: Optional[bool] = _NOT_GIVEN,
+              editors: Optional[Mapping[str, Any]] = None,
+              drag: Union[bool, Mapping[str, Any], None] = None) -> TreeNode:
+    """A tree node (TreeNode, host feature tree). `text` is the first column (other values are
+    converted with str()); `cells` gives every column instead (strings or cell() objects, other
+    values converted with str()), so pass one of them. `icon` shows in the first column,
+    `tooltip` is the static tooltip of the node's cells, `tooltip_key` part of the host's
+    tooltip cache key and `tone` one of CELL_TONES. `children` are tree_node()s; in a `lazy`
+    tree `has_children=True` without children makes the host ask tree/children when the node
+    expands. `expanded` opens the node, `checkable=False` hides its check box in a tree with
+    `checkboxes`, and `checked` is True, False or None (partly checked); it is left out unless
+    given. `editors` maps editable column ids to editor() specs; `drag` is accepted and used
+    from E17g."""
+    _check_id("A tree node id", id)
+    _check_one_of("tone", tone, CELL_TONES)
+    if text is not None and cells is not None:
+        raise ValueError(f"Tree node {id} has text or cells, not both")
+    if checked is not _NOT_GIVEN and checked is not None and not isinstance(checked, bool):
+        raise ValueError(f"checked is True, False or None (partly checked), not {checked!r}")
+    if isinstance(children, (str, bytes)):
+        raise ValueError("children is a list of tree nodes")
+    node: JsonObject = {"id": id}
+    if text is not None:
+        node["text"] = text if isinstance(text, str) else str(text)
+    for key, value in (
+            ("cells", None if cells is None else [_row_cell(item) for item in cells]),
+            ("icon", icon), ("tooltip", tooltip), ("tooltip_key", tooltip_key), ("tone", tone),
+            ("children", None if children is None else [_node_copy(child) for child in children]),
+            ("has_children", has_children), ("expanded", expanded), ("checkable", checkable)):
+        if value is not None:
+            node[key] = value
+    if checked is not _NOT_GIVEN:
+        node["checked"] = checked
+    if editors is not None:
+        node["editors"] = dict(editors)
+    if drag is not None:
+        node["drag"] = dict(drag) if isinstance(drag, collections.abc.Mapping) else drag
+    return cast(TreeNode, node)
+
+
+def _tree_column(value: Any) -> Any:
+    """A tree column: a column id stays a string, a table_column() object is copied."""
+    if isinstance(value, str):
+        _check_id("A column id", value)
+        return value
+    if isinstance(value, collections.abc.Mapping):
+        return dict(value)
+    raise ValueError("A tree column is a column id or a table_column()")
+
+
+def tree(id: str, nodes: Optional[Sequence[Mapping[str, Any]]] = None,
+         columns: Optional[Sequence[Any]] = None, selection: Optional[str] = None, *,
+         toggle_selection: Optional[bool] = None, checkboxes: Optional[bool] = None,
+         auto_tristate: Optional[bool] = None, lazy: Optional[bool] = None,
+         expand_events: Optional[bool] = None, header: Optional[bool] = None,
+         context_menu: Optional[str] = None, copy: Optional[bool] = None,
+         export: Optional[bool] = None, reorderable: Optional[bool] = None,
+         **props: Any) -> JsonObject:
+    """A tree (TreeElement, host feature tree; an older host skips it, so check
+    plugin.supports("tree")). `nodes` are tree_node()s; `columns` are table_column() objects
+    (the keys id, title, width, align, hidden, min_width, editable, tooltip, tooltip_provider,
+    tooltip_key and icon) or plain column ids; without columns the tree has one column and no
+    header. `selection` is none (default), single or multi; `toggle_selection` (with "multi")
+    makes every click add or remove a node.
+
+    `checkboxes` shows a check box on every checkable node, `auto_tristate` makes parents
+    follow their children, `lazy` lets nodes with `has_children` load through tree/children
+    (@plugin.tree_children), `expand_events` sends `expanded` and `collapsed`, `header` (default
+    True with columns) shows the header, `context_menu` names a plugin.json menu with location
+    "element", `copy` (default True) gives Copy and Copy All, `export` Export CSV... and
+    `reorderable` lets the user drag nodes (the plugin gets `moved` and confirms with a patch).
+    Raises ValueError for a combination CILogg refuses and for more than MAX_TREE_NODES nodes
+    or MAX_TREE_DEPTH levels."""
+    _check_selection(selection, toggle_selection, context_menu)
+    node_list = None if nodes is None else [_node_copy(node) for node in nodes]
+    if node_list is not None:
+        _count_nodes(node_list)
+    if isinstance(columns, (str, bytes)):
+        raise ValueError("columns is a list of column ids or table_column() objects")
+    return _element("tree", id, columns=None if columns is None else [
+        _tree_column(item) for item in columns], nodes=node_list, selection=selection,
+        toggle_selection=toggle_selection, checkboxes=checkboxes, auto_tristate=auto_tristate,
+        lazy=lazy, expand_events=expand_events, header=header, context_menu=context_menu,
+        copy=copy, export=export, reorderable=reorderable, **props)
+
+
+def _is_absolute_path(path: str) -> bool:
+    """An absolute path in any form the host takes: C:/x, C:\\x, /x, //server/share or
+    \\\\server\\share."""
+    if len(path) >= 3 and path[0].isascii() and path[0].isalpha() and path[1] == ":" \
+            and path[2] in "/\\":
+        return True
+    return path.startswith("/") or path.startswith("\\\\")
+
+
+def file_tree(id: str, roots: Sequence[str], *, filters: Optional[Sequence[str]] = None,
+              hide_filtered: Optional[bool] = None, show_files: Optional[bool] = None,
+              show_hidden: Optional[bool] = None, columns: Optional[Sequence[str]] = None,
+              selection: Optional[str] = None, toggle_selection: Optional[bool] = None,
+              select: Optional[str] = None, checkboxes: Optional[bool] = None,
+              value: Optional[Sequence[str]] = None, context_menu: Optional[str] = None,
+              copy: Optional[bool] = None, **props: Any) -> JsonObject:
+    """A folder and file browser (FileTreeElement, host feature file_tree; an older host skips
+    it, so check plugin.supports("file_tree")). `roots` are absolute paths (C:/x, C:\\x, /x or
+    //server/share; at most MAX_FILE_TREE_ROOTS); `filters` are name globs such as "*.bin";
+    `hide_filtered=False` greys out the files that do not match instead of hiding them;
+    `show_files=False` shows folders only; `show_hidden` shows hidden files. `columns` are
+    FILE_TREE_COLUMNS in the order given (default name, size, modified); `selection` is single
+    (default), none or multi; `select` (FILE_TREE_SELECT) is what can be selected;
+    `checkboxes` makes a pick list. `value` is the selected (or checked) paths; set it later
+    with set_props(id, value=[...]). The host lists names and sizes only: it never reads file
+    contents."""
+    roots_list = _id_list("roots", roots)
+    if len(roots_list) > MAX_FILE_TREE_ROOTS:
+        raise ValueError(f"A file tree has at most {MAX_FILE_TREE_ROOTS} roots")
+    for root in roots_list:
+        if not _is_absolute_path(root):
+            raise ValueError(f"A file tree root is an absolute path: {root!r}")
+    _check_selection(selection, toggle_selection, context_menu)
+    _check_one_of("select", select, FILE_TREE_SELECT)
+    column_list = None if columns is None else _id_list("columns", columns)
+    for name in column_list or []:
+        _check_one_of("A file tree column", name, FILE_TREE_COLUMNS)
+    return _element("file_tree", id, roots=roots_list,
+                    filters=None if filters is None else _id_list("filters", filters),
+                    hide_filtered=hide_filtered, show_files=show_files, show_hidden=show_hidden,
+                    columns=column_list, selection=selection, toggle_selection=toggle_selection,
+                    select=select, checkboxes=checkboxes,
+                    value=None if value is None else _id_list("value", value),
+                    context_menu=context_menu, copy=copy, **props)
+
+
 # Patch entries for Plugin.patch().
 def set_props(element_id: str, **props: Any) -> JsonObject:
     return {"id": element_id, "set": props}
@@ -1130,6 +1491,74 @@ def select_rows(table_id: str, row_ids: Optional[Sequence[str]] = None, *,
     if scroll_to is not None:
         entry["scroll_to"] = scroll_to
     return entry
+
+
+# Tree patch entries (TreePatch, host feature tree; a file tree takes expand_nodes() and
+# set_props(id, value=[...])). One patch may hold several entries for the same tree.
+def _patch_nodes(nodes: Sequence[Mapping[str, Any]]) -> List[JsonObject]:
+    if isinstance(nodes, (str, bytes)):
+        raise ValueError("nodes is a list of tree nodes")
+    copies = [_node_copy(node) for node in nodes]
+    for node in copies:
+        _check_id("A tree node id", node.get("id"))
+    return copies
+
+
+def replace_nodes(tree_id: str, nodes: Sequence[Mapping[str, Any]],
+                  parent: Optional[str] = None) -> JsonObject:
+    """Replace the top-level nodes of a tree, or the children of `parent`. The host keeps
+    expanded nodes and the selection by id."""
+    entry: JsonObject = {"id": tree_id, "replace_nodes": _patch_nodes(nodes)}
+    if parent is not None:
+        entry["parent"] = parent
+    return entry
+
+
+def update_nodes(tree_id: str, nodes: Sequence[Mapping[str, Any]]) -> JsonObject:
+    """Change nodes by id: only the keys given change, and `children` replaces the node's
+    children (which also ends a tree/children query for it)."""
+    return {"id": tree_id, "update_nodes": _patch_nodes(nodes)}
+
+
+def insert_nodes(tree_id: str, nodes: Sequence[Mapping[str, Any]], parent: Optional[str] = None,
+                 before: Optional[str] = None) -> JsonObject:
+    """Insert nodes under `parent` (None: the top level) before the node `before` (None: at
+    the end)."""
+    entry: JsonObject = {"id": tree_id, "insert_nodes": _patch_nodes(nodes)}
+    if parent is not None:
+        entry["parent"] = parent
+    if before is not None:
+        entry["before"] = before
+    return entry
+
+
+def remove_nodes(tree_id: str, node_ids: Sequence[str]) -> JsonObject:
+    """Remove nodes by id; their descendants go too."""
+    return {"id": tree_id, "remove_nodes": _id_list("node_ids", node_ids)}
+
+
+def expand_nodes(element_id: str, ids_or_paths: Sequence[str]) -> JsonObject:
+    """Expand nodes of a tree (expanding a lazy node loads it) or open folders of a file tree
+    (paths)."""
+    return {"id": element_id, "expand": _id_list("ids_or_paths", ids_or_paths)}
+
+
+def collapse_nodes(tree_id: str, node_ids: Sequence[str]) -> JsonObject:
+    """Collapse nodes of a tree; loaded children stay loaded."""
+    return {"id": tree_id, "collapse": _id_list("node_ids", node_ids)}
+
+
+def select_nodes(tree_id: str, node_ids: Optional[Sequence[str]] = None, *,
+                 current: Optional[str] = None, scroll_to: Optional[str] = None) -> JsonObject:
+    """A tree's selection patch entry: `node_ids` replace the selection (an empty list clears
+    it; unknown ids are ignored, at most 1000 used), `current` sets the node with the keyboard
+    focus and `scroll_to` scrolls a node into view; the host expands the ancestors of `current`
+    and `scroll_to` and sends no `selected` event for it."""
+    if isinstance(node_ids, str):
+        raise ValueError("node_ids is a list of node ids")
+    if node_ids is None and current is None and scroll_to is None:
+        raise ValueError("A selection patch needs node_ids, current or scroll_to")
+    return select_rows(tree_id, node_ids, current=current, scroll_to=scroll_to)
 
 
 # Advanced tooltips and icons (host features tooltips and icons).
@@ -1380,6 +1809,50 @@ def _complete_answer(answer: object) -> Optional[JsonObject]:
         raise TypeError("A field/complete answer needs a list of items")
     result["items"] = [_completion_entry(item) for item in list(items)[:MAX_COMPLETION_ITEMS]]
     return result
+
+
+def _is_list(value: object) -> bool:
+    return isinstance(value, collections.abc.Sequence) and not isinstance(value, (str, bytes))
+
+
+def _answer_nodes(nodes: Sequence[Any], depth: int, budget: List[int]) -> List[JsonObject]:
+    """Copies of the nodes of a tree/children answer with their nested children, counted
+    against budget[0] and checked like the host does (node objects, at most MAX_TREE_DEPTH
+    levels below the expanded node)."""
+    if depth > MAX_TREE_DEPTH:
+        raise ValueError(f"A tree/children answer is at most {MAX_TREE_DEPTH} levels deep")
+    copies: List[JsonObject] = []
+    for node in nodes:
+        if not isinstance(node, collections.abc.Mapping):
+            raise TypeError("A tree/children answer holds tree nodes (dicts)")
+        budget[0] -= 1
+        if budget[0] < 0:
+            raise ValueError(f"A tree/children answer holds at most {MAX_TREE_CHILDREN} nodes, "
+                             "nested children included")
+        copy = dict(node)
+        children = copy.get("children")
+        if _is_list(children):
+            copy["children"] = _answer_nodes(cast(Sequence[Any], children), depth + 1, budget)
+        copies.append(copy)
+    return copies
+
+
+def _tree_children_answer(answer: object) -> JsonObject:
+    """The tree/children result of a @plugin.tree_children handler's return value: {"nodes":
+    [...]} (empty for None), at most MAX_TREE_CHILDREN nodes with their nested children."""
+    nodes: object
+    if answer is None:
+        nodes = []
+    elif isinstance(answer, collections.abc.Mapping):
+        nodes = answer.get("nodes")
+    elif _is_list(answer):
+        nodes = answer
+    else:
+        raise TypeError("A tree/children handler returns a list of nodes, a dict with nodes or "
+                        "None")
+    if not _is_list(nodes):
+        raise TypeError("A tree/children answer needs a list of nodes")
+    return {"nodes": _answer_nodes(cast(Sequence[Any], nodes), 1, [MAX_TREE_CHILDREN])}
 
 
 class Cancelled(Exception):
@@ -1707,8 +2180,14 @@ class _MenuContext:
         return _optional_text(self.context.get("column_id"))
 
     @property
+    def node_id(self) -> Optional[str]:
+        """The clicked node of a tree, or the clicked path of a file tree; None when the click
+        was not on a node (and in other menus)."""
+        return _optional_text(self.context.get("node_id"))
+
+    @property
     def selected_ids(self) -> List[str]:
-        """The selected row ids (at most 1000); [] without a selection."""
+        """The selected row ids, node ids or paths (at most 1000); [] without a selection."""
         ids = self.context.get("selected_ids")
         return [item for item in ids if isinstance(item, str)] if isinstance(ids, list) else []
 
@@ -1770,11 +2249,33 @@ class CompleteQuery(Query):
         return max(0, min(len(self.text), cursor))
 
 
+class TreeChildrenQuery(Query):
+    """A tree/children query: the node `node_id` of a `lazy` tree, with `has_children` and no
+    children, expanded (default timeout 10 s)."""
+
+    @property
+    def view_id(self) -> str:
+        return _optional_text(self.params.get("view_id")) or ""
+
+    @property
+    def element_id(self) -> str:
+        return _optional_text(self.params.get("element_id")) or ""
+
+    @property
+    def node_id(self) -> str:
+        return _optional_text(self.params.get("node_id")) or ""
+
+    @property
+    def window_id(self) -> Optional[str]:
+        return _optional_text(self.params.get("window_id"))
+
+
 class UiCommand(_MenuContext):
     """A ui/command: the user picked an `event` menu entry (origin "menu") or pressed its
     shortcut ("shortcut"); toolbars and status items come later ("toolbar", "status"). An
-    entry of an element menu (location "element") also has view_id, element_id, row_id,
-    column_id, selected_ids and selected_count."""
+    entry of an element menu (location "element") also has view_id, element_id, row_id and
+    column_id (a table) or node_id (a tree's node, a file tree's path), selected_ids and
+    selected_count."""
 
     def __init__(self, plugin: Plugin, params: JsonObject) -> None:
         self.plugin = plugin
@@ -1824,8 +2325,12 @@ TooltipHandler = Callable[[TooltipQuery], TooltipAnswer]
 MenuPopulateHandler = Callable[[MenuQuery], MenuAnswer]
 CommandHandler = Callable[[UiCommand], None]
 CompleteHandler = Callable[[CompleteQuery], CompleteAnswer]
+TreeChildrenAnswer = Union[TreeChildrenResult, Sequence[TreeNode], Sequence[Mapping[str, Any]],
+                           Mapping[str, Any], None]
+TreeChildrenHandler = Callable[[TreeChildrenQuery], TreeChildrenAnswer]
 _QUERY_CLASSES: Dict[str, Type[Query]] = {
-    TOOLTIP_RESOLVE: TooltipQuery, MENU_POPULATE: MenuQuery, FIELD_COMPLETE: CompleteQuery}
+    TOOLTIP_RESOLVE: TooltipQuery, MENU_POPULATE: MenuQuery, FIELD_COMPLETE: CompleteQuery,
+    TREE_CHILDREN: TreeChildrenQuery}
 
 
 def _tooltip_answer(answer: object) -> Optional[JsonObject]:
@@ -1899,7 +2404,7 @@ class _QueryLane:
 
 class _StripRules(NamedTuple):
     """What update() and patch() change for the host: keys removed from every element, table
-    column and row, and whether the host has each E17c and E17d feature."""
+    column and row, and whether the host has each E17c, E17d and E17e feature."""
     element: FrozenSet[str]
     column: FrozenSet[str]
     row: FrozenSet[str]
@@ -1909,6 +2414,8 @@ class _StripRules(NamedTuple):
     validation: bool = True
     rich_tables: bool = True
     element_menus: bool = True
+    tree: bool = True
+    file_tree: bool = True
 
     def table_keys(self) -> FrozenSet[str]:
         """The table keys the host does not know."""
@@ -1918,6 +2425,11 @@ class _StripRules(NamedTuple):
         if not self.element_menus:
             keys |= _ELEMENT_MENU_KEYS
         return keys
+
+    def shows(self, element_type: Optional[str]) -> bool:
+        """True for a tree or file tree element on a host with its feature."""
+        return ((element_type == "tree" and self.tree)
+                or (element_type == "file_tree" and self.file_tree))
 
 
 # A patch entry that update rules leave out entirely (a selection patch on an older host).
@@ -2020,7 +2532,10 @@ def _compatible_unknown(props: JsonObject, rules: _StripRules) -> JsonObject:
         remove |= _VALIDATION_KEYS - _BOUND_KEYS  # also integer and slider bounds
     if not rules.toggles:
         remove |= _TOGGLE_KEYS
-    remove |= rules.table_keys()  # no other element type has them
+    table_keys = rules.table_keys()
+    if rules.tree or rules.file_tree:
+        table_keys -= _TREE_SHARED_KEYS  # the element may be a tree or a file tree
+    remove |= table_keys  # no other element type has them
     result: JsonObject = _without(props, remove)
     return result if rules.choices else _with_compatible_choices(result)
 
@@ -2072,6 +2587,10 @@ def _compatible_props(props: Any, rules: _StripRules, element_type: Optional[str
     if not isinstance(props, dict):
         return props
     result = _without(props, rules.element)
+    if element_type in _TREE_TYPES:
+        # Trees are never converted: an older host skips them, and their columns, nodes and
+        # cells belong to the tree and file_tree features.
+        return result
     if element_type in _TOGGLE_FIELDS and not rules.toggles:
         result = _toggle_as_field(result, element_type, whole)
         element_type, kind = "field", _TOGGLE_FIELDS[element_type][0]
@@ -2109,18 +2628,22 @@ def _compatible_element(element: Any, rules: _StripRules) -> Any:
 
 
 def _compatible_patch_entry(entry: Any, rules: _StripRules, kinds: _ElementKinds) -> Any:
-    """A patch entry the host knows, or _DROPPED for a selection patch it does not know."""
+    """A patch entry the host knows, or _DROPPED for a selection patch it does not know. The
+    node operations, expand and collapse of trees are sent unchanged, and so is the selection
+    patch of a tree on a host with the tree feature (it belongs to that feature, not to
+    rich_tables)."""
     if not isinstance(entry, dict):
         return entry
-    if not rules.rich_tables and not _SELECTION_PATCH_KEYS.isdisjoint(entry):
+    identifier = entry.get("id")
+    element_type, kind = (kinds.get(identifier, (None, None)) if isinstance(identifier, str)
+                          else (None, None))
+    if not rules.rich_tables and not rules.shows(element_type) \
+            and not _SELECTION_PATCH_KEYS.isdisjoint(entry):
         entry = _without(entry, _SELECTION_PATCH_KEYS)
         if set(entry) <= {"id"}:
             return _DROPPED
     changes: JsonObject = {}
     if "set" in entry:
-        identifier = entry.get("id")
-        element_type, kind = (kinds.get(identifier, (None, None)) if isinstance(identifier, str)
-                              else (None, None))
         properties = _compatible_props(entry["set"], rules, element_type, kind, False)
         if properties is not entry["set"]:
             changes["set"] = properties
@@ -2186,6 +2709,7 @@ class Plugin:
         self.menu_populate_handlers: Dict[Tuple[str, Optional[str]], MenuPopulateHandler] = {}
         self.command_handlers: Dict[Tuple[Optional[str], Optional[str]], CommandHandler] = {}
         self.complete_handlers: Dict[Tuple[str, Optional[str]], CompleteHandler] = {}
+        self.tree_children_handlers: Dict[Tuple[str, Optional[str]], TreeChildrenHandler] = {}
         self.queries: Dict[str, Query] = {}
         self.lanes: Dict[str, _QueryLane] = {}
         # The element types of each view's last update() on an older host, for patch(), by
@@ -2320,6 +2844,28 @@ class Plugin:
             return handler
         return register
 
+    # Trees (docs/plugin-sdk-advanced.md, sections 11 and 28).
+    def tree_children(self, view_id: str, element_id: Optional[str] = None
+                      ) -> Callable[[TreeChildrenHandler], TreeChildrenHandler]:
+        """Register handler(TreeChildrenQuery) that loads the children of a node of one `lazy`
+        tree, or of any lazy tree of the view when element_id is None (an element's own
+        handler wins; a @plugin.query("tree/children") handler is the last fallback, its
+        result unchanged).
+
+        The handler runs on the tree/children lane (two workers; default timeout 10 s) and
+        returns a list of nodes (tree_node()), a dict {"nodes": [...]} or None (no children).
+        The SDK answers {"nodes": [...]}; nodes may hold nested `children`, at most
+        MAX_TREE_CHILDREN nodes in all, and any other return value answers error -32000.
+        plugin.json must list tree/children (and query/cancel) in `handles`."""
+        if not view_id or element_id == "":
+            raise ValueError("A tree/children handler needs a view id (and a non-empty element "
+                             "id)")
+
+        def register(handler: TreeChildrenHandler) -> TreeChildrenHandler:
+            self.tree_children_handlers[(view_id, element_id)] = handler
+            return handler
+        return register
+
     def handled_methods(self) -> List[str]:
         """The host-to-plugin methods the registered handlers answer (`features`)."""
         methods = set(self.query_handlers)
@@ -2329,6 +2875,8 @@ class Plugin:
             methods.add(MENU_POPULATE)
         if self.complete_handlers:
             methods.add(FIELD_COMPLETE)
+        if self.tree_children_handlers:
+            methods.add(TREE_CHILDREN)
         if methods:
             methods.add(QUERY_CANCEL)
         if self.command_handlers:
@@ -2421,17 +2969,21 @@ class Plugin:
         if not rich_tables:
             column_keys |= _RICH_COLUMN_KEYS
             row_keys |= _RICH_ROW_KEYS
+        # Trees are never converted, so a host without tree or file_tree needs no rules of its
+        # own; they only decide what the other rules keep.
         if not (element or column_keys or row_keys) and choices and toggles and field_kinds \
                 and validation and rich_tables and element_menus:
             return None
         return _StripRules(element, column_keys, row_keys, choices, toggles, field_kinds,
-                           validation, rich_tables, element_menus)
+                           validation, rich_tables, element_menus, self.supports("tree"),
+                           self.supports("file_tree"))
 
     def update(self, view_id: str, root: JsonObject, window_id: Optional[str] = None) -> None:
         """Replace a view's element tree (in every window without window_id). On an older host
         the tree is sent without what the host does not know (see _strip_rules), E17c elements
-        as the fields it knows and table cell objects as their text; the caller's tree is not
-        changed."""
+        as the fields it knows and table cell objects as their text; `tree` and `file_tree`
+        elements are sent as they are (a host without their feature skips them, so check
+        supports("tree") first). The caller's tree is not changed."""
         rules = self._strip_rules()
         if rules is not None:
             elements = _element_kinds(root)  # patch() converts by the element's type
@@ -2462,10 +3014,11 @@ class Plugin:
 
     def patch(self, view_id: str, changes: Sequence[JsonObject],
               window_id: Optional[str] = None) -> None:
-        """Apply set_props(), row operation and select_rows() entries to existing elements. On
-        an older host they are converted like update() converts the elements of the view's
-        last tree; a host without rich_tables gets no selection patch (and no frame when
-        nothing else is left)."""
+        """Apply set_props(), row and node operation, select_rows() and select_nodes() entries
+        to existing elements. On an older host they are converted like update() converts the
+        elements of the view's last tree; a host without rich_tables gets no selection patch
+        of a table (and no frame when nothing else is left), while the node operations of a
+        tree go out unchanged, and so does its selection patch on a host with tree."""
         rules = self._strip_rules()
         entries = list(changes)
         if rules is not None:
@@ -2610,7 +3163,8 @@ class Plugin:
         return (method in self.query_handlers
                 or (method == TOOLTIP_RESOLVE and bool(self.tooltip_handlers))
                 or (method == MENU_POPULATE and bool(self.menu_populate_handlers))
-                or (method == FIELD_COMPLETE and bool(self.complete_handlers)))
+                or (method == FIELD_COMPLETE and bool(self.complete_handlers))
+                or (method == TREE_CHILDREN and bool(self.tree_children_handlers)))
 
     def _submit_query(self, identifier: Any, method: str, params: JsonObject) -> None:
         if self.stopping.is_set():
@@ -2679,6 +3233,11 @@ class Plugin:
                         or self.complete_handlers.get((query.view_id, None)))
             if complete is not None:
                 return _complete_answer(complete(query))
+        if isinstance(query, TreeChildrenQuery):
+            children = (self.tree_children_handlers.get((query.view_id, query.element_id))
+                        or self.tree_children_handlers.get((query.view_id, None)))
+            if children is not None:
+                return _tree_children_answer(children(query))
         query_handler = self.query_handlers.get(query.method)
         return None if query_handler is None else query_handler(query)
 

@@ -84,7 +84,8 @@ const std::vector<std::pair<QString, int>>& hostFeatures()
         { QStringLiteral( "shortcuts" ), 1 }, { QStringLiteral( "choices" ), 1 },
         { QStringLiteral( "toggles" ), 1 }, { QStringLiteral( "field_kinds" ), 1 },
         { QStringLiteral( "validation" ), 1 }, { QStringLiteral( "rich_tables" ), 1 },
-        { QStringLiteral( "element_menus" ), 1 },
+        { QStringLiteral( "element_menus" ), 1 }, { QStringLiteral( "tree" ), 1 },
+        { QStringLiteral( "file_tree" ), 1 },
     };
     return features;
 }
@@ -313,6 +314,50 @@ QJsonObject sanitizeCompletion( const QJsonValue& answer, QString* error )
         kept.append( entry );
     }
     return { { "items", kept } };
+}
+
+namespace {
+// Counts the nodes of a tree/children answer, nested children included; false when one is no
+// object or the count passes `budget`.
+bool countTreeNodes( const QJsonArray& nodes, int depth, int* budget )
+{
+    if ( depth > MaxTreeDepth ) {
+        return false;
+    }
+    for ( const auto& node : nodes ) {
+        if ( !node.isObject() || --*budget < 0 ) {
+            return false;
+        }
+        const auto children = node.toObject().value( "children" );
+        if ( children.isArray() && !countTreeNodes( children.toArray(), depth + 1, budget ) ) {
+            return false;
+        }
+    }
+    return true;
+}
+} // namespace
+
+QJsonObject sanitizeTreeChildren( const QJsonValue& answer, QString* error )
+{
+    if ( answer.isNull() || answer.isUndefined() ) {
+        return {};
+    }
+    const auto nodes = answer.isArray() ? QJsonValue( answer ) : answer.toObject().value( "nodes" );
+    if ( !nodes.isArray() ) {
+        *error = QStringLiteral( "A tree/children answer is {nodes: [...]}." );
+        return {};
+    }
+    int budget = MaxTreeChildrenNodes;
+    if ( !countTreeNodes( nodes.toArray(), 1, &budget ) ) {
+        *error = QStringLiteral( "A tree/children answer holds at most %1 node objects, depth %2." )
+                     .arg( MaxTreeChildrenNodes )
+                     .arg( MaxTreeDepth );
+        return {};
+    }
+    if ( nodes.toArray().isEmpty() ) {
+        return {};
+    }
+    return { { "nodes", nodes } };
 }
 
 QJsonObject sanitizeTooltip( const QJsonValue& answer, QString* error )

@@ -13,9 +13,15 @@
     "U15": ["u15_python_source_parity", "u15b_sources"],
     "U16": ["pane_operations_parity"],
     "E15": ["e15a_repositories"],
-    "E17": ["e17_tooltips", "e17_menus", "e17_choices", "e17_tables"]
+    "E17": ["e17_tooltips", "e17_menus", "e17_choices", "e17_tables", "e17_trees"]
   },
   "cases": [
+    {
+      "id": "e17_trees",
+      "kind": "e17-trees",
+      "action": "trigger_plugin_menu",
+      "operations": ["plugin_manage", "open_plugin_view", "get_ui", "set_ui", "get_plugin_menus", "trigger_plugin_menu", "get_plugin_tooltip", "run_global_script", "get_global_script_status", "stop_global_script"]
+    },
     {
       "id": "e17_tables",
       "kind": "e17-tables",

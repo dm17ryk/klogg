@@ -3,7 +3,8 @@
 A small tour of the plugin view, menu, form and table features of the advanced plugin SDK (see
 `docs/plugin-sdk.md` and `docs/plugin-sdk-advanced.md`). It grows with each E17 slice. It is
 disabled by default; enable it in **Plugins → Manage Plugins…**, then open **Plugins → UI
-Gallery → Open gallery** (or press **Ctrl+Alt+Shift+G**).
+Gallery → Open gallery** (or press **Ctrl+Alt+Shift+G**). **Plugins → UI Gallery → Open
+explorer** opens a second view with a tree and a file tree (E17e).
 
 ## What it shows
 
@@ -114,10 +115,43 @@ The **Boards** table of the "Advanced tooltips" group uses the rich table keys:
   on the selected rows, and **Restore Removed Boards** puts removed boards back in their place.
   The label shows each command as `menu <entry> <clicked row|none> <selected count>`.
 
+### Explorer: a tree and a file tree (E17e)
+
+The **UI Gallery Explorer** view (`explorer`, a dock on the left; **Plugins → UI Gallery → Open
+explorer**) has:
+
+- **Benches**, a `tree` with the columns Name and State, `selection="multi"`, `checkboxes` with
+  `auto_tristate` (a bench follows its boards, a board its modules), `reorderable`,
+  `expand_events`, node tooltips (`tooltip_provider`) and the context menu `node_actions`:
+  - the benches are `lazy`: each has `has_children` and no children, so expanding one makes
+    CILogg ask `tree/children`, which `@plugin.tree_children("explorer", "benches")` answers
+    with the bench's boards; each board carries its Modem and Radio modules inline;
+  - a node's advanced tooltip comes from `@plugin.tooltip("explorer", "benches")`: the query
+    carries `node_id` (a bench lists its boards, a board shows its firmware and bench);
+  - dragging (`moved`): CILogg does not move nodes, so the plugin keeps its own order. Boards
+    go into benches, modules into boards and benches stay at the top level; other drops are
+    refused. The plugin confirms a move with `update_nodes` (the old and the new parent with
+    their children) or, for benches, `replace_nodes`, and selects the moved nodes again
+    (`select_nodes`);
+  - the plugin keeps the check boxes (`checked`), so a new window and a moved node show them;
+  - **Reset Node** connects the boards of the clicked or selected nodes again (`update_nodes`)
+    and **Collapse All** collapses every bench and board (`collapse_nodes`); the commands
+    carry `node_id` (the clicked node) instead of `row_id`.
+- **Gallery files**, a `file_tree` rooted at the gallery's own folder with `filters` (`*.py`,
+  `*.json`, `*.md`), `selection="multi"` and the context menu `file_actions` (**Show Path**:
+  the command's `node_id` is the clicked path). The plugin keeps the last selection and sets it
+  as `value` when the explorer opens again.
+- A status label that shows the last event or command: `selected <nodes|none> current
+  <node|none>`, `activated <node> <column>`, `checked <nodes> <true|false>`, `moved <nodes>
+  into <parent|top> before <node|end>` (with ` refused` for a drop the plugin does not take),
+  `expanded <node>`, `collapsed <node>`, `menu <entry> <clicked node|none> <selected count>`,
+  `selected files <paths>`, `activated file <path>` (paths relative to the gallery's folder)
+  and `path <clicked path|none> (<count> selected)`.
+
 `plugin.json` lists the host-to-plugin methods the plugin handles in `handles`
-(`tooltip/resolve`, `menu/populate`, `field/complete`, `ui/command`, `query/cancel`); without
-them CILogg never sends them (an `event` entry is then disabled), and the SDK warns on stderr
-at start.
+(`tooltip/resolve`, `menu/populate`, `field/complete`, `tree/children`, `ui/command`,
+`query/cancel`); without them CILogg never sends them (an `event` entry is then disabled), and
+the SDK warns on stderr at start.
 
 ## On an older CILogg
 
@@ -141,6 +175,10 @@ alignment, row dragging, Export CSV and the selection patch are left out; withou
 `element_menus`, the table has no plugin context menu. The label under the table then says
 that these need a newer CILogg.
 
+A CILogg without `tree` and `file_tree` skips those elements, and the SDK does not convert
+them, so the explorer checks `plugin.supports("tree")` and `plugin.supports("file_tree")` and
+leaves them out; its first label then says that the explorer needs a newer CILogg.
+
 ## Testing without CILogg
 
 ```python
@@ -161,7 +199,14 @@ with FakeHost.start_package("plugins/examples/ui-gallery") as host:  # with cilo
     print(host.wait_for("view/update", lambda params: "patch" in params))  # rows, selection, "moved b3 before b1"
     host.send_element_command("board_actions", "restart", "gallery", "boards", row_id="b3",
                               selected_ids=["b3"])                   # the table's context menu
+    host.open_view("explorer")                                       # the explorer (E17e)
+    host.wait_for("view/update", lambda params: params["view_id"] == "explorer")
+    print(host.request_children("explorer", "benches", "bench1"))    # a bench expands
+    host.move_nodes("explorer", "benches", ["board2"], parent="bench2", before="board3")
+    print(host.wait_for("view/update", lambda params: "patch" in params))  # update_nodes, select_nodes
+    host.send_node_command("node_actions", "reset_node", "explorer", "benches", node_id="board3")
 ```
 
 `tests/plugins/test_ui_gallery.py` does this for every tooltip, menu entry, command, control,
-completion and table event, on a current, an E17c, an E17b, an E17a and an older host.
+completion, table event and tree event, on a current, an E17d, an E17c, an E17b, an E17a and an
+older host.

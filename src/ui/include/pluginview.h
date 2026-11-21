@@ -6,6 +6,7 @@
 #include <QHash>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QModelIndex>
 #include <QPointer>
 #include <QSet>
 #include <QVariantMap>
@@ -114,6 +115,10 @@ public:
                                                 const QString& staticTip, qint64 latencyMs )>;
     bool resolveTooltip( const QString& elementId, const QString& rowId, const QString& columnId,
                          bool useCache, TooltipResolved done, QString* error = nullptr );
+    // E17e: also a tree node (`nodeId`, with an optional column) or a file tree path.
+    bool resolveTooltip( const QString& elementId, const QString& rowId, const QString& columnId,
+                         const QString& nodeId, bool useCache, TooltipResolved done,
+                         QString* error = nullptr );
 
     // Design principle 11: the keys and events E17 adds to existing elements (`current` in
     // `selected`, `valid` in `changed`, `activated`) go only to plugins that declare `handles`.
@@ -130,6 +135,14 @@ public:
     // *error) when the element has no element menu.
     bool elementMenu( const QString& elementId, const QString& rowId, QString* menuId,
                       QJsonObject* target, QString* error ) const;
+    // E17e: a tree's or file tree's menu; `nodeId` is the clicked node or path.
+    bool elementMenu( const QString& elementId, const QString& rowId, const QString& nodeId,
+                      QString* menuId, QJsonObject* target, QString* error ) const;
+    // E17e: tree/children queries per view (docs/plugin-sdk-advanced.md section 28.1).
+    static constexpr int MaxChildrenQueries = 4;
+    static constexpr int MaxWaitingChildrenQueries = 16;
+    // The plugin stopped: its tree/children queries end and loading nodes show "Could not load".
+    void failTreeLoads();
     // E17d: the context menu a right-click at `position` (the table's viewport) would show;
     // the caller owns it (tests and automation).
     QMenu* buildElementMenu( const QString& elementId, const QPoint& position );
@@ -186,8 +199,46 @@ private:
     void focusFirstInvalid();
     void updateAccessibility( Node& node );
     void watchTooltips( Node& node );
+    // `pointed`: the file tree item under the pointer, when the request comes from it (then the path
+    // is not looked up again).
     PluginTooltips::Target tooltipTarget( const QString& elementId, const QString& rowId,
-                                          const QString& columnId ) const;
+                                          const QString& columnId, const QString& nodeId = {},
+                                          const QModelIndex& pointed = {} ) const;
+    // E17e (docs/plugin-sdk-advanced.md section 28): trees and file trees, in
+    // pluginviewtrees.cpp.
+    QWidget* buildTree( Node& node, QWidget* parent );
+    QWidget* buildFileTree( Node& node, QWidget* parent );
+    void applyTree( Node& node, const QJsonObject& props, const QJsonObject& previous,
+                    bool fromRoot );
+    void applyFileTree( Node& node, const QJsonObject& props, const QJsonObject& previous,
+                        bool fromRoot );
+    void applyTreeOperation( Node& node, const QJsonObject& entry );
+    void emitTreeSelection( const QString& id );
+    // The element's target (`target`) narrowed to a node and column, or a file tree path.
+    PluginTooltips::Target treeTooltipTarget( const Node& node, PluginTooltips::Target target,
+                                              const QString& nodeId, const QString& columnId,
+                                              const QModelIndex& pointed = {} ) const;
+    void watchTreeTooltips( Node& node );
+    bool requestChildren( const QString& elementId, const QString& nodeId );
+    void cancelChildren( const QString& elementId, const QString& nodeId );
+    void cancelAllChildren();
+    // By token, not by reference: the host may answer, and so change the list, during the call.
+    bool startChildrenQuery( quint64 token );
+    void childrenFinished( quint64 token, bool answered, const QJsonArray& nodes );
+    void sendChildrenQueries();
+    // The host save dialog of an element's Export (tables and trees); empty when cancelled. Static:
+    // the dialog's event loop may delete the view.
+    static QString exportPath( const QPointer<PluginView>& guard, const QString& elementId,
+                               const QString& title, const QString& filter,
+                               const QString& suggested );
+    struct ChildrenQuery {
+        QString elementId;
+        QString nodeId;
+        QString queryId;   // empty while it waits
+        quint64 token = 0; // the answer finds its own query by it, never a newer one
+    };
+    QList<ChildrenQuery> childrenQueries_;
+    quint64 nextChildrenToken_ = 0;
     PluginTooltips* tooltips_ = nullptr;
     PluginViewQueries queries_;
 

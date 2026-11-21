@@ -2308,6 +2308,11 @@ QString PluginManager::query( const QString& pluginId, const QString& method,
             return sanitizeCompletion( result, error );
         };
     }
+    else if ( method == QLatin1String( "tree/children" ) ) {
+        validator = []( const QJsonValue& result, QString* error ) -> QJsonValue {
+            return sanitizeTreeChildren( result, error );
+        };
+    }
     else if ( method == QLatin1String( "menu/populate" ) ) {
         // Entries may name only the actions and views the manifest declares (design 7.4).
         const auto& manifest = entries_.at( pluginId )->manifest.json;

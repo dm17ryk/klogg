@@ -161,6 +161,19 @@ minimum width, a check box (`check`) and a header icon; and tables take `header`
 header menu shows and hides columns, and the host keeps widths, order, hidden columns and the sort
 per view. The host announces these as `rich_tables` and `element_menus`.
 
+Since E17e ([advanced plugin SDK](plugin-sdk-advanced.md), sections 11 and 28), two more element
+types exist. A `tree` shows plugin nodes (`id`, `text` or `cells`, `icon`, `tooltip`, `tone`,
+`children`, `checked`, `editors`) under optional table-like `columns`, with `selection`,
+`toggle_selection`, `checkboxes` and `auto_tristate`, lazy children that the host asks for with
+the `tree/children` query (`lazy` and `has_children`), and the patches `replace_nodes`,
+`update_nodes`, `insert_nodes`, `remove_nodes`, `expand`, `collapse` and
+`{select, current, scroll_to}`. It sends `selected`, `activated`, `checked`, `edited`, `moved`
+and, with `expand_events`, `expanded` and `collapsed`. A `file_tree` shows the folders and files
+under absolute `roots` with the native file model, with `filters`, `selection`, `select` (files,
+folders or both) and `checkboxes`; its `value` (the selected or checked paths) is an input and
+comes with `selected`, and a double-click on a file sends `activated`. The host announces these as
+`tree` and `file_tree`.
+
 #### `multichoice` fields
 
 A `multichoice` field is a check-dropdown built from the same `choices` as a `choice` field. Its
@@ -313,6 +326,13 @@ Since E17d, a table's element menu is readable and usable like the other menus:
 <row>]` (the selection is the table's). `set_ui` on a table with `indexPath` makes a row current
 (and selects it), and `checkState` changes a check box. The menus are named `<element>_menu`
 (entries `_copy`, `_copy_all`, `_export`) and `<element>_columns` (entries `_column_<id>`).
+
+Since E17e, trees and file trees take `--node-id <node or path>` instead of `--row-id` in
+`get_plugin_menus`, `trigger_plugin_menu` and `get_plugin_tooltip` (native MCP and Python:
+`node_id`). `set_ui` reaches a node with a multi-level `indexPath` (the rows from the top level
+down) and changes its check box with `checkState`; `get_ui` lists the items of the current level.
+A tree's menu is `<element>_menu` (entries `_copy`, `_copy_all`, `_export`); a file tree's is
+`<element>_menu` with `_copy` (Copy Path).
 
 ## 6. Related small host changes
 

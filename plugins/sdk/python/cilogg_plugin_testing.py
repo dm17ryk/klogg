@@ -16,6 +16,10 @@
         host.move_rows("main", "devices", ["r2"], before="r1")
         host.send_element_command("rows", "forget", "main", "devices", row_id="r1",
                                   selected_ids=["r1"])               # an element menu entry
+        assert host.request_children("main", "benches", "bench1")["nodes"]  # a lazy node expands
+        host.move_nodes("main", "benches", ["board2"], parent="bench1", before="board1")
+        host.send_node_command("nodes", "reset", "main", "benches", node_id="board2")
+        host.select_files("main", "files", ["C:/fw/a.bin"])       # a file tree's selection
 
 The host records every frame in both directions (`frames`), answers stream/open and
 stream/data like CILogg, and checks the plugin's JSON-RPC envelopes (`errors`). See
@@ -44,15 +48,23 @@ PathLike = Union[str, "os.PathLike[str]"]
 # What the current CILogg announces in initialize (docs/plugin-sdk-advanced.md, section 4.1).
 HOST_FEATURES = ("views", "view_edit", "queries", "tooltips", "icons", "menus", "shortcuts",
                  "choices", "toggles", "field_kinds", "validation", "rich_tables",
-                 "element_menus")
+                 "element_menus", "tree", "file_tree")
 HOST_FEATURE_VERSIONS: Mapping[str, int] = {
     "views": 2, "view_edit": 1, "queries": 1, "tooltips": 1, "icons": 1, "menus": 1,
     "shortcuts": 1, "choices": 1, "toggles": 1, "field_kinds": 1, "validation": 1,
-    "rich_tables": 1, "element_menus": 1}
+    "rich_tables": 1, "element_menus": 1, "tree": 1, "file_tree": 1}
 HOST_LIMITS: Mapping[str, int] = {
     "max_elements": 512, "max_table_cells": 50000, "max_text_chars": 4096,
     "max_message_bytes": 1048576}
 HOST_VERSION = "0.0.0-fakehost"
+# What CILogg announced with E17d: rich tables and element menus, no trees or file trees.
+E17D_HOST_FEATURES = ("views", "view_edit", "queries", "tooltips", "icons", "menus", "shortcuts",
+                      "choices", "toggles", "field_kinds", "validation", "rich_tables",
+                      "element_menus")
+E17D_HOST_FEATURE_VERSIONS: Mapping[str, int] = {
+    "views": 2, "view_edit": 1, "queries": 1, "tooltips": 1, "icons": 1, "menus": 1,
+    "shortcuts": 1, "choices": 1, "toggles": 1, "field_kinds": 1, "validation": 1,
+    "rich_tables": 1, "element_menus": 1}
 # What CILogg announced with E17c: choices, toggles, field kinds and validation, no rich tables
 # or element menus.
 E17C_HOST_FEATURES = ("views", "view_edit", "queries", "tooltips", "icons", "menus", "shortcuts",
@@ -77,6 +89,7 @@ QUERY_DEFAULT_TIMEOUT_MS: Mapping[str, int] = {
 MAX_MESSAGE = 1024 * 1024
 MAX_PENDING = 8 * MAX_MESSAGE
 MAX_TABLE_IDS = 1000  # selected and checked ids in one event or menu context
+MAX_TREE_IDS = 1000  # node ids or paths in one tree event or menu context
 MAX_ID_BYTES = 256 * 1024  # ... and the JSON of those ids, so a frame stays below MAX_MESSAGE
 TO_PLUGIN = "to_plugin"
 FROM_PLUGIN = "from_plugin"
@@ -292,9 +305,26 @@ def element_context(view_id: str, element_id: str, *, row_id: Optional[str] = No
             "selected_count": len(ids) if selected_count is None else selected_count}
 
 
+def node_context(view_id: str, element_id: str, *, node_id: Optional[str] = None,
+                 selected_ids: Sequence[str] = (), selected_count: Optional[int] = None,
+                 window_id: str = "w1") -> JsonObject:
+    """The `context` of an element menu entry on a tree or a file tree: the view and element,
+    the clicked node (a file tree's clicked path; None: the click was not on a node), the
+    selected node ids or paths (CILogg sends at most 1000, and at most MAX_ID_BYTES of them)
+    and their count (default: the number of ids). It has node_id instead of a table's row_id
+    and column_id."""
+    if isinstance(selected_ids, str):
+        raise ValueError("selected_ids is a list of node ids or paths")
+    ids = [str(node) for node in selected_ids]
+    return {"window_id": window_id, "view_id": view_id, "element_id": element_id,
+            "node_id": node_id, "selected_ids": bounded_ids(ids),
+            "selected_count": len(ids) if selected_count is None else selected_count}
+
+
 def bounded_ids(ids: Sequence[str]) -> List[str]:
-    """The leading ids CILogg sends in one event or menu context: at most MAX_TABLE_IDS, and only
-    as many as fit in MAX_ID_BYTES of JSON (ids may be 4,096 characters each)."""
+    """The leading ids CILogg sends in one event or menu context: at most MAX_TABLE_IDS (or
+    MAX_TREE_IDS, the same), and only as many as fit in MAX_ID_BYTES of JSON (ids may be 4,096
+    characters each)."""
     kept: List[str] = []
     budget = MAX_ID_BYTES
     for identifier in ids[:MAX_TABLE_IDS]:
@@ -308,6 +338,19 @@ def bounded_ids(ids: Sequence[str]) -> List[str]:
 
 def _row_ids(row_ids: Union[str, Sequence[str]]) -> List[str]:
     return [row_ids] if isinstance(row_ids, str) else [str(row) for row in row_ids]
+
+
+def _paths(paths: Union[str, Sequence[str]]) -> List[str]:
+    """Paths as CILogg sends them: with forward slashes."""
+    return [path.replace("\\", "/") for path in _row_ids(paths)]
+
+
+def _selected_extra(ids: List[str], selected_count: Optional[int]) -> JsonObject:
+    """`selected_count` (default: the number of ids) and `truncated` when CILogg cut the ids."""
+    extra: JsonObject = {"selected_count": len(ids) if selected_count is None else selected_count}
+    if len(bounded_ids(ids)) < len(ids) or extra["selected_count"] > len(ids):
+        extra["truncated"] = True
+    return extra
 
 
 def _envelope_error(message: Any) -> Optional[str]:
@@ -591,6 +634,95 @@ class FakeHost:
         self.view_event(view_id, element_id, "moved",
                         {"row_ids": bounded_ids(ids), "before": before}, window_id=window_id)
 
+    # Trees (host feature tree). CILogg sends every key of these events to every plugin.
+    def select_nodes(self, view_id: str, element_id: str, node_ids: Union[str, Sequence[str]], *,
+                     current: Optional[str] = None, selected_count: Optional[int] = None,
+                     window_id: str = "w1") -> None:
+        """Send a tree's `selected` event, as when the user selects nodes: the ids in tree
+        order (bounded like CILogg's, see bounded_ids(), with `truncated` when more were
+        selected), `selected_count` (default: the number of ids) and `current`, the node with
+        the keyboard focus (None: no node)."""
+        ids = _row_ids(node_ids)
+        extra = _selected_extra(ids, selected_count)
+        extra["current"] = current
+        self.view_event(view_id, element_id, "selected", bounded_ids(ids),
+                        window_id=window_id, **extra)
+
+    def activate_node(self, view_id: str, element_id: str, node_id: str,
+                      column_id: Optional[str] = None, *, window_id: str = "w1") -> None:
+        """Send a tree's `activated` event, as on a double-click or Enter on a cell that is not
+        editable and not a check box (`column_id` None: a tree without columns)."""
+        self.view_event(view_id, element_id, "activated",
+                        {"node_id": node_id, "column_id": column_id}, window_id=window_id)
+
+    def check_nodes(self, view_id: str, element_id: str, node_ids: Union[str, Sequence[str]],
+                    checked: bool = True, *, node_id: Optional[str] = None,
+                    window_id: str = "w1") -> None:
+        """Send a tree's `checked` event, as when the user changes a node's check box:
+        `node_ids` every node set to `checked` (the clicked one first; with auto_tristate its
+        loaded descendants too), `node_id` the clicked node (default: the first of node_ids)."""
+        ids = _row_ids(node_ids)
+        if not ids:
+            raise ValueError("check_nodes needs at least one node id")
+        self.view_event(view_id, element_id, "checked",
+                        {"node_id": ids[0] if node_id is None else node_id, "checked": checked,
+                         "node_ids": bounded_ids(ids)}, window_id=window_id)
+
+    def edit_node(self, view_id: str, element_id: str, node_id: str, column_id: Optional[str],
+                  value: Any, previous: str = "", *, window_id: str = "w1") -> None:
+        """Send a tree's `edited` event, as when the user edits a cell of an `editable` column
+        of a node with an editor: the new value, and `node_id`, `column_id` (None: a tree
+        without columns) and the previous text."""
+        self.view_event(view_id, element_id, "edited", value, window_id=window_id,
+                        node_id=node_id, column_id=column_id, previous=previous)
+
+    def move_nodes(self, view_id: str, element_id: str, node_ids: Union[str, Sequence[str]],
+                   parent: Optional[str] = None, before: Optional[str] = None, *,
+                   window_id: str = "w1") -> None:
+        """Send a reorderable tree's `moved` event, as when the user drops nodes (bounded like
+        CILogg's, see bounded_ids()) under `parent` (None: the top level) before the node
+        `before` (None: at the end)."""
+        ids = _row_ids(node_ids)
+        if not ids:
+            raise ValueError("move_nodes needs at least one node id")
+        self.view_event(view_id, element_id, "moved",
+                        {"node_ids": bounded_ids(ids), "parent": parent, "before": before},
+                        window_id=window_id)
+
+    def expand_node(self, view_id: str, element_id: str, node_id: str, *,
+                    window_id: str = "w1") -> None:
+        """Send a tree's `expanded` event (a tree with expand_events). It does not ask
+        tree/children: see request_children()."""
+        self.view_event(view_id, element_id, "expanded", {"node_id": node_id},
+                        window_id=window_id)
+
+    def collapse_node(self, view_id: str, element_id: str, node_id: str, *,
+                      window_id: str = "w1") -> None:
+        """Send a tree's `collapsed` event (a tree with expand_events)."""
+        self.view_event(view_id, element_id, "collapsed", {"node_id": node_id},
+                        window_id=window_id)
+
+    # File trees (host feature file_tree).
+    def select_files(self, view_id: str, element_id: str, paths: Union[str, Sequence[str]], *,
+                     selected_count: Optional[int] = None, window_id: str = "w1",
+                     inputs: Optional[Mapping[str, Any]] = None) -> None:
+        """Send a file tree's `selected` event, as when the user selects (or, with
+        `checkboxes`, checks) files or folders: the paths with forward slashes (bounded like
+        CILogg's, see bounded_ids(), with `truncated` when more were selected) and
+        `selected_count`; `inputs` gets the paths under element_id, like the host's."""
+        sent = _paths(paths)
+        all_inputs = dict(inputs or {})
+        all_inputs[element_id] = bounded_ids(sent)
+        self.view_event(view_id, element_id, "selected", bounded_ids(sent),
+                        window_id=window_id, inputs=all_inputs,
+                        **_selected_extra(sent, selected_count))
+
+    def activate_file(self, view_id: str, element_id: str, path: str, *,
+                      window_id: str = "w1") -> None:
+        """Send a file tree's `activated` event, as on a double-click or Enter on a file."""
+        self.view_event(view_id, element_id, "activated", {"path": _paths(path)[0]},
+                        window_id=window_id)
+
     def message_result(self, message_id: str, button: str, timed_out: bool = False) -> None:
         self.notify("ui/message_result", {"message_id": message_id, "button": button,
                                           "timed_out": timed_out})
@@ -661,6 +793,21 @@ class FakeHost:
             raise RpcError(-32603, "A field/complete answer is null or an object")
         return result
 
+    def request_children(self, view_id: str, element_id: str, node_id: str, *,
+                         window_id: str = "w1", timeout_ms: int = 10000,
+                         timeout: Optional[float] = None,
+                         context: Optional[Mapping[str, Any]] = None) -> Any:
+        """Ask tree/children, as when a node with `has_children` and no children of a `lazy`
+        tree expands. Returns the answer: {"nodes": [...]} (what the SDK's
+        @plugin.tree_children sends), a list of nodes or None, which CILogg all accept."""
+        params: JsonObject = {"view_id": view_id, "window_id": window_id,
+                              "element_id": element_id, "node_id": node_id}
+        result = self.query("tree/children", params, timeout_ms=timeout_ms, timeout=timeout,
+                            context=context)
+        if result is not None and not isinstance(result, (dict, list)):
+            raise RpcError(-32603, "A tree/children answer is null, a list or an object")
+        return result
+
     # Menus.
     def populate_menu(self, menu_id: str, item_id: str, location: str = "plugins",
                       context: Optional[Mapping[str, Any]] = None, timeout_ms: int = 1000, *,
@@ -707,6 +854,19 @@ class FakeHost:
                                                   column_id=column_id, selected_ids=selected_ids,
                                                   selected_count=selected_count,
                                                   window_id=window_id))
+
+    def send_node_command(self, menu_id: str, item_id: str, view_id: str, element_id: str, *,
+                          node_id: Optional[str] = None, selected_ids: Sequence[str] = (),
+                          selected_count: Optional[int] = None, checked: Optional[bool] = None,
+                          window_id: str = "w1") -> None:
+        """Send ui/command for an `event` entry of an element menu picked in the context menu
+        of the tree or file tree element_id: the context holds the clicked node (a file tree's
+        path) and the selected nodes or paths (see node_context())."""
+        self.send_command(menu_id, item_id, "element", window_id=window_id, checked=checked,
+                          context=node_context(view_id, element_id, node_id=node_id,
+                                               selected_ids=selected_ids,
+                                               selected_count=selected_count,
+                                               window_id=window_id))
 
     # Receiving.
     def wait_response(self, identifier: str, timeout: Optional[float] = None) -> JsonObject:
