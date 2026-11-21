@@ -2337,7 +2337,8 @@
         "2026-11-21: the local Codex review of #137 head eb8891e2 (round 3) found 2 P2 issues; they are fixed with tests (commit 4bc40ad3).",
         "2026-11-21: the local Codex review of #137 head 8db0c315 (round 4) found 6 P2 issues; they are fixed with tests (commit f9119dd8).",
         "2026-11-21: the local Codex review of #137 head bf20a043 (round 5) found 1 P1 and 3 P2 issues; they are fixed with tests (commit 8ed47e64).",
-        "2026-11-21: the local Codex review of #137 head 6bbd70d9 (round 6) found 2 P2 issues; they are fixed with tests (commit a59fcc57)."
+        "2026-11-21: the local Codex review of #137 head 6bbd70d9 (round 6) found 2 P2 issues; they are fixed with tests (commit a59fcc57).",
+        "2026-11-21: the local Codex review of #137 head e3b4b66b (round 7) found 1 P2 issue; it is fixed with a test (commit eb208955)."
       ],
       "limitations": [
         "Decision D17 accepted on 2026-11-19 with every recommended answer of the design's section 23 and a separate yes to question 13: E17i (host commands from plugins) is built as the last slice. Until it lands, plugins never send requests to the host (D11, D14).",
