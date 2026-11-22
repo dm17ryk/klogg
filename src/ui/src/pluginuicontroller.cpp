@@ -1265,9 +1265,9 @@ QWidget* PluginUiController::createInstalledTab( QWidget* parent )
                         bool reinstall = false;
                         QString chosenPath; // read while the dialog is still open
                         const auto decorate = [ &p, &reinstall, &chosenPath ](
-                                                  QDialog& dialog, QVBoxLayout* layout ) {
+                                                  QDialog& dialog, QVBoxLayout* dialogLayout ) {
                             const auto section = pluginsui::createSourceSection( &dialog, p );
-                            layout->addWidget( section.widget );
+                            dialogLayout->addWidget( section.widget );
                             if ( section.path == nullptr ) {
                                 return;
                             }

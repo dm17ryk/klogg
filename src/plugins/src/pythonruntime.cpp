@@ -61,13 +61,54 @@ QStringList pathInterpreterCandidates( const QStringList& searchPaths )
 #else
     const auto names = { "python3", "python" };
 #endif
-    QStringList candidates;
-    for ( const auto* name : names ) {
-        candidates << QStandardPaths::findExecutable( QString::fromLatin1( name ), searchPaths );
+    // Installed interpreters, then launcher scripts, then Microsoft Store aliases: without the
+    // Store's Python, its python.exe alias only prints how to install it and exits, so a working
+    // (if slow) launcher script is better. The Store's folders are searched on their own, so an
+    // alias never hides an interpreter later on PATH.
+    const auto paths
+        = searchPaths.isEmpty()
+              ? qEnvironmentVariable( "PATH" ).split( QDir::listSeparator(), Qt::SkipEmptyParts )
+              : searchPaths;
+    QStringList regularPaths;
+    QStringList storePaths;
+    for ( auto path : paths ) {
+        path = path.trimmed();
+        if ( path.size() > 1 && path.startsWith( QLatin1Char( '"' ) )
+             && path.endsWith( QLatin1Char( '"' ) ) ) {
+            path = path.mid( 1, path.size() - 2 ); // a quoted PATH entry
+        }
+        if ( !path.isEmpty() ) {
+            ( isStoreAlias( path + QLatin1Char( '/' ) ) ? storePaths : regularPaths )
+                .append( path );
+        }
     }
-    candidates.removeAll( QString{} );
+    const auto find = []( const char* name, const QStringList& in ) {
+        // findExecutable() searches PATH when given no folders.
+        return in.isEmpty() ? QString{}
+                            : QStandardPaths::findExecutable( QString::fromLatin1( name ), in );
+    };
+    QStringList interpreters;
+    QStringList scripts;
+    QStringList aliases;
+    for ( const auto* name : names ) {
+        const auto found = find( name, regularPaths );
+        if ( !found.isEmpty() ) {
+            ( isLauncherScript( found ) ? scripts : interpreters ).append( found );
+        }
+        const auto alias = find( name, storePaths );
+        if ( !alias.isEmpty() ) {
+            aliases.append( alias );
+        }
+    }
+    auto candidates = interpreters + scripts + aliases;
     candidates.removeDuplicates();
     return candidates;
+}
+
+bool isStoreAlias( const QString& path )
+{
+    return QDir::fromNativeSeparators( path ).contains( QLatin1String( "/Microsoft/WindowsApps/" ),
+                                                        Qt::CaseInsensitive );
 }
 
 bool isLauncherScript( const QString& path )

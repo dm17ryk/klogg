@@ -127,6 +127,13 @@ void PluginProcess::start( const QJsonObject& configuration, const QString& conf
                    ? pythonExecutable
                    : QDir( manifest_.directory ).absoluteFilePath( manifest_.executable );
     stderrBytes_ = 0;
+    if ( program_.isEmpty() ) {
+        // As a program that cannot start (errorOccurred): failed, then stopped.
+        fail( QStringLiteral( "No Python interpreter found: install Python with python.exe (or "
+                              "python3) on PATH, or set CILOGG_SCRIPT_PYTHON." ) );
+        Q_EMIT stopped();
+        return;
+    }
     // The plugin's diagnostics start with what was run, so a plugin that fails before writing
     // anything still says which interpreter it was given.
     note( QStringLiteral( "Starting %1 in %2" )

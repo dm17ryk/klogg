@@ -622,11 +622,14 @@ TEST_CASE( "Plugins installed from a folder or ZIP record it and reinstall from 
     REQUIRE( QDir().mkpath( empty ) );
     CHECK_FALSE( manager.manage( "set_source", "org.test.fixture", { { "path", empty } } ).ok() );
     CHECK_FALSE( manager.manage( "set_source", "org.test.fixture", {} ).ok() );
+    // A relative path would be read against CILogg's own working folder.
+    CHECK_FALSE(
+        manager.manage( "set_source", "org.test.fixture", { { "path", "source" } } ).ok() );
     // A shipped plugin has no install source to change or reinstall from.
     CHECK_FALSE( manager.manage( "set_source", "org.test.shipped", { { "path", source } } ).ok() );
-    const auto unknown = manager.manage( "reinstall", "org.test.shipped", {} );
-    REQUIRE_FALSE( unknown.ok() );
-    CHECK( unknown.error.contains( "set_source" ) );
+    const auto shippedReinstall = manager.manage( "reinstall", "org.test.shipped", {} );
+    REQUIRE_FALSE( shippedReinstall.ok() );
+    CHECK( shippedReinstall.error.contains( "ships with CILogg" ) );
 
     // Repointed to a ZIP of the same plugin.
     const auto archive = QDir( temp.path() ).filePath( "fixture.zip" );
@@ -653,6 +656,31 @@ TEST_CASE( "Plugins installed from a folder or ZIP record it and reinstall from 
         QDir( manager.pluginDirectory( "org.test.fixture" ) ).filePath( "marker.txt" ) ) );
     CHECK( manager.plugins()[ 0 ].toMap().value( "source" ).toMap().value( "path" )
            == QDir::cleanPath( source ) );
+}
+
+TEST_CASE( "A Python plugin without an interpreter says so", "[plugins][source]" )
+{
+    QTemporaryDir temp;
+    const QJsonObject json{ { "id", "org.test.python" },
+                            { "name", "Python fixture" },
+                            { "version", "1.0.0" },
+                            { "protocol_version", 1 },
+                            { "executable", "python" },
+                            { "arguments", QJsonArray{ "main.py" } },
+                            { "capabilities", QJsonArray{ "tool" } },
+                            { "actions", QJsonArray{} } };
+    const auto parsed = Manifest::parse( QJsonDocument( json ).toJson(), temp.path() );
+    REQUIRE( parsed.valid() );
+    PluginProcess process( parsed );
+    QStringList diagnostics;
+    QObject::connect( &process, &PluginProcess::diagnostic,
+                      [ &diagnostics ]( const QString& text ) { diagnostics.append( text ); } );
+    QSignalSpy stopped( &process, &PluginProcess::stopped );
+    process.start( {}, temp.path(), QString{} );
+    CHECK( process.state() == "failed" );
+    CHECK( process.error().startsWith( "No Python interpreter found" ) );
+    CHECK( stopped.count() == 1 );
+    CHECK( diagnostics.join( QString{} ).contains( "No Python interpreter found" ) );
 }
 
 TEST_CASE( "Catalog selects platform, verifies checksums and preserves old installs", "[plugins]" )

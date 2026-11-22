@@ -441,14 +441,16 @@ void PluginManager::failStorageJob( QString pluginId, QString jobId, QString err
     }
     const auto entry = entries_.find( pluginId );
     if ( entry != entries_.end() ) {
-        entry->second->diagnostics = ( entry->second->diagnostics + error + '\n' ).right( 32768 );
-        if ( entry->second->process ) {
-            const auto job = jobs_.find( jobId );
-            if ( job != jobs_.end() && !job->second.outputPath.isEmpty() ) {
-                // A converter writes independently; stop its process once a violation is observed.
-                entry->second->process->fail( error );
-            }
-            else {
+        const auto job = jobs_.find( jobId );
+        if ( entry->second->process && job != jobs_.end() && !job->second.outputPath.isEmpty() ) {
+            // A converter writes independently; stop its process once a violation is observed.
+            // fail() adds the error to the diagnostics.
+            entry->second->process->fail( error );
+        }
+        else {
+            entry->second->diagnostics
+                = ( entry->second->diagnostics + error + '\n' ).right( 32768 );
+            if ( entry->second->process ) {
                 entry->second->process->notify( "cancel", { { "job_id", jobId } } );
             }
         }
@@ -1305,8 +1307,19 @@ Result PluginManager::manage( const QString& operation, const QString& id,
     if ( operation == "reinstall" ) {
         // Installs the plugin again from the folder or ZIP it was installed from (set_source
         // repoints it), with the same checks as an install from that path.
-        if ( entries_.find( id ) == entries_.end() ) {
+        const auto reinstalled = entries_.find( id );
+        if ( reinstalled == entries_.end() ) {
             return { "Plugin not found.", {} };
+        }
+        const auto type = sourceInfo( id, *reinstalled->second ).value( "type" ).toString();
+        if ( type == QLatin1String( "repository" ) ) {
+            return { "This plugin was installed from a repository: update it, or install it "
+                     "again from the repository.",
+                     {} };
+        }
+        if ( type == QLatin1String( "shipped" ) ) {
+            return { "This plugin ships with CILogg and has no folder or ZIP to reinstall from.",
+                     {} };
         }
         const auto path = repositories_.localSource( id );
         if ( path.isEmpty() ) {
@@ -1531,10 +1544,12 @@ Result PluginManager::manage( const QString& operation, const QString& id,
             return { "set_source applies only to a plugin installed from a folder or ZIP.", {} };
         }
         const auto path = options.value( "path" ).toString();
-        if ( path.isEmpty() ) {
-            return { "set_source needs a path: the plugin's folder or ZIP.", {} };
+        // Absolute only: a relative path would be read against CILogg's working folder, which a
+        // CLI or MCP caller does not see.
+        if ( path.isEmpty() || QDir::isRelativePath( path ) ) {
+            return { "set_source needs the absolute path of the plugin's folder or ZIP.", {} };
         }
-        const auto absolute = QDir::cleanPath( QFileInfo( path ).absoluteFilePath() );
+        const auto absolute = QDir::cleanPath( path );
         const auto found = PluginRepository::packageManifest( absolute ).value( "id" ).toString();
         if ( found.isEmpty() ) {
             return { QStringLiteral( "No plugin.json in %1." )

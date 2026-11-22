@@ -125,6 +125,19 @@ TEST_CASE( "Python on PATH prefers interpreters over launcher scripts", "[python
     REQUIRE_FALSE( shimsOnly.isEmpty() );
     CHECK( isLauncherScript( shimsOnly.front() ) );
     CHECK( isLauncherScript( "C:/x/python3.CMD" ) );
+    // A Microsoft Store alias comes after a launcher script: without the Store's Python it only
+    // says how to install it.
+    const auto store = temp.filePath( "Local/Microsoft/WindowsApps" );
+    REQUIRE( executable( QDir( store ).filePath( "python.exe" ) ) );
+    const auto withStore = pathInterpreterCandidates( { store, shims } );
+    REQUIRE( withStore.size() >= 2 );
+    CHECK( isLauncherScript( withStore.front() ) );
+    CHECK( cilogg::pythonruntime::isStoreAlias( withStore.back() ) );
+    // An installed python.exe still comes first.
+    const auto all = pathInterpreterCandidates( { store, shims, python } );
+    REQUIRE_FALSE( all.isEmpty() );
+    CHECK_FALSE( cilogg::pythonruntime::isStoreAlias( all.front() ) );
+    CHECK_FALSE( isLauncherScript( all.front() ) );
 #else
     REQUIRE( executable( QDir( shims ).filePath( "python" ) ) );
     REQUIRE( executable( QDir( python ).filePath( "python3" ) ) );
