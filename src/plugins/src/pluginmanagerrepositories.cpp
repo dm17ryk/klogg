@@ -33,8 +33,8 @@ QString shortHash( const QString& text )
         QCryptographicHash::hash( text.toUtf8(), QCryptographicHash::Sha256 ).toHex().left( 16 ) );
 }
 
-// "zip" for a package file, "folder" otherwise (decided by the name: no disk access).
-QString localSourceKind( const QString& path )
+// "zip" for a .zip name, "folder" otherwise: for a source recorded before its kind was.
+QString kindByName( const QString& path )
 {
     return path.endsWith( QLatin1String( ".zip" ), Qt::CaseInsensitive )
                ? QStringLiteral( "zip" )
@@ -190,7 +190,8 @@ QVariantMap PluginManager::sourceInfo( const QString& id, const Entry& entry ) c
         const auto path = repositories_.localSource( id );
         if ( !path.isEmpty() ) {
             local.insert( "path", path );
-            local.insert( "pathKind", localSourceKind( path ) );
+            const auto kind = repositories_.localSourceKind( id );
+            local.insert( "pathKind", kind.isEmpty() ? kindByName( path ) : kind );
         }
         return local;
     }

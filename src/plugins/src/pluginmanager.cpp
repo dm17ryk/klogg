@@ -1549,7 +1549,22 @@ Result PluginManager::manage( const QString& operation, const QString& id,
         if ( path.isEmpty() || QDir::isRelativePath( path ) ) {
             return { "set_source needs the absolute path of the plugin's folder or ZIP.", {} };
         }
+        // An install or update of this plugin, or a local install whose plugin is not known yet,
+        // records its own source when it finishes: it would overwrite this one.
+        const bool installing = std::any_of(
+            jobs_.cbegin(), jobs_.cend(), [ &id ]( const auto& pair ) {
+                const auto& j = pair.second;
+                return !j.invocation && pending( j.state ) && packageOperation( j.action )
+                       && ( j.pluginId == id || ( j.action == "install" && j.pluginId.isEmpty() ) );
+            } );
+        if ( installing ) {
+            return { "A plugin management operation is already running.", {} };
+        }
         const auto absolute = QDir::cleanPath( path );
+        // As an install from it: a link is refused there (PluginRepository::stage).
+        if ( QFileInfo( absolute ).isSymLink() ) {
+            return { "Plugin source cannot be a symbolic link.", {} };
+        }
         const auto found = PluginRepository::packageManifest( absolute ).value( "id" ).toString();
         if ( found.isEmpty() ) {
             return { QStringLiteral( "No plugin.json in %1." )

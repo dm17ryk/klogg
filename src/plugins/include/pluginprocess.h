@@ -82,6 +82,8 @@ private:
     void setState( const QString& state );
     // A timestamped line for the plugin's diagnostics (what the host did, next to its stderr).
     void note( const QString& text );
+    // Reads what the plugin wrote to stderr so far into the diagnostics.
+    void readStandardError();
     QString initializationTimeoutError() const;
     Manifest manifest_;
     QString program_;

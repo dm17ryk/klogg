@@ -21,6 +21,8 @@ PluginProcess::PluginProcess( Manifest manifest, QObject* parent )
             process_.kill();
         }
         else {
+            // Stderr that arrived before the deadline but whose signal is still queued counts.
+            readStandardError();
             fail( initializationTimeoutError() );
         }
     } );
@@ -37,19 +39,8 @@ PluginProcess::PluginProcess( Manifest manifest, QObject* parent )
                 { "params", initializeParams_ } } );
     } );
     connect( &process_, &QProcess::readyReadStandardOutput, this, &PluginProcess::drain );
-    connect( &process_, &QProcess::readyReadStandardError, this, [ this ] {
-        // Drain in bounded chunks; never forward plugin text to host stdout.
-        process_.setReadChannel( QProcess::StandardError );
-        while ( process_.bytesAvailable() > 0 ) {
-            const auto bytes = process_.read( 32768 );
-            stderrBytes_ += bytes.size();
-            const auto text = QString::fromUtf8( bytes );
-            LOG_DEBUG << "Plugin stderr id=" << manifest_.id.toStdString() << " "
-                      << text.toStdString();
-            Q_EMIT diagnostic( text );
-        }
-        process_.setReadChannel( QProcess::StandardOutput );
-    } );
+    connect( &process_, &QProcess::readyReadStandardError, this,
+             &PluginProcess::readStandardError );
     connect( &process_, &QProcess::errorOccurred, this, [ this ]( QProcess::ProcessError error ) {
         if ( error == QProcess::FailedToStart ) {
             fail( QStringLiteral( "Cannot start %1: %2" )
@@ -152,6 +143,20 @@ QString PluginProcess::commandLine() const
         }
     }
     return parts.join( QLatin1Char( ' ' ) );
+}
+
+void PluginProcess::readStandardError()
+{
+    // Drain in bounded chunks; never forward plugin text to host stdout.
+    process_.setReadChannel( QProcess::StandardError );
+    while ( process_.bytesAvailable() > 0 ) {
+        const auto bytes = process_.read( 32768 );
+        stderrBytes_ += bytes.size();
+        const auto text = QString::fromUtf8( bytes );
+        LOG_DEBUG << "Plugin stderr id=" << manifest_.id.toStdString() << " " << text.toStdString();
+        Q_EMIT diagnostic( text );
+    }
+    process_.setReadChannel( QProcess::StandardOutput );
 }
 
 void PluginProcess::note( const QString& text )

@@ -93,6 +93,8 @@ public:
     // The folder or ZIP a plugin was installed from without a repository; empty when unknown
     // (installed before CILogg recorded it).
     QString localSource( const QString& pluginId ) const;
+    // "folder" or "zip", decided when the path was recorded; empty when unknown.
+    QString localSourceKind( const QString& pluginId ) const;
     void setLocalSource( const QString& pluginId, const QString& path );
 
     // The form two addresses are compared in: scheme and host lower case, default port and

@@ -1,6 +1,7 @@
 #include "pluginrepositories.h"
 
 #include "log.h"
+#include <QFileInfo>
 #include <QRegularExpression>
 #include <QUrl>
 #include <cmath>
@@ -539,6 +540,7 @@ void PluginRepositories::setSource( const QString& pluginId, const InstallSource
     settings_.setValue( sourceKey( pluginId, "sourceVersion" ), source.version );
     settings_.setValue( sourceKey( pluginId, "sourceUrl" ), source.url );
     settings_.remove( sourceKey( pluginId, "sourcePath" ) );
+    settings_.remove( sourceKey( pluginId, "sourceKind" ) );
 }
 
 void PluginRepositories::clearSource( const QString& pluginId )
@@ -547,6 +549,7 @@ void PluginRepositories::clearSource( const QString& pluginId )
     settings_.remove( sourceKey( pluginId, "sourceVersion" ) );
     settings_.remove( sourceKey( pluginId, "sourceUrl" ) );
     settings_.remove( sourceKey( pluginId, "sourcePath" ) );
+    settings_.remove( sourceKey( pluginId, "sourceKind" ) );
 }
 
 QString PluginRepositories::localSource( const QString& pluginId ) const
@@ -554,8 +557,18 @@ QString PluginRepositories::localSource( const QString& pluginId ) const
     return settings_.value( sourceKey( pluginId, "sourcePath" ) ).toString();
 }
 
+QString PluginRepositories::localSourceKind( const QString& pluginId ) const
+{
+    return settings_.value( sourceKey( pluginId, "sourceKind" ) ).toString();
+}
+
 void PluginRepositories::setLocalSource( const QString& pluginId, const QString& path )
 {
     settings_.setValue( sourceKey( pluginId, "sourcePath" ), path );
+    // Decided here, once, by what the path is (a package file need not end in .zip): the
+    // plugin list reads it often and must not touch the disk.
+    settings_.setValue( sourceKey( pluginId, "sourceKind" ), QFileInfo( path ).isDir()
+                                                                 ? QStringLiteral( "folder" )
+                                                                 : QStringLiteral( "zip" ) );
 }
 } // namespace cilogg::plugins

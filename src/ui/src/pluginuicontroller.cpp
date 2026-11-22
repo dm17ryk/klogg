@@ -427,6 +427,26 @@ void PluginUiController::reinstallFrom( QWidget* parent, QLabel* status, const Q
     if ( !manager_ ) {
         return;
     }
+    // The package that will be installed: a pack with Lua that is enabled runs that Lua, so it
+    // is asked first (design 4.3), as for any local install. The package is read, not the
+    // installed copy: its Lua may be new.
+    auto package = path;
+    if ( package.isEmpty() ) {
+        for ( const auto& value : manager_->plugins() ) {
+            if ( value.toMap().value( "id" ) == pluginId ) {
+                package = value.toMap().value( "source" ).toMap().value( "path" ).toString();
+            }
+        }
+    }
+    if ( !package.isEmpty() ) {
+        const auto manifest = cilogg::plugins::PluginRepository::packageManifest( package );
+        if ( cilogg::plugins::isConfigPack( manifest )
+             && !pluginsui::confirmPackLua( parent, manager_, pluginId, name,
+                                            cilogg::plugins::packContents( manifest ), false ) ) {
+            status->setText( tr( "%1 was not reinstalled." ).arg( name ) );
+            return;
+        }
+    }
     CommanderRequest request;
     request.action = CommanderAction::PluginManage;
     request.origin = CommanderOriginGui;
@@ -1411,15 +1431,8 @@ QWidget* PluginUiController::createInstalledTab( QWidget* parent )
         if ( id.isEmpty() || !manager_ ) {
             return;
         }
-        const auto name = plugin.value( "name", id ).toString();
-        // A pack with Lua that is enabled runs the reinstalled Lua: asked first (design 4.3).
-        const auto manifest = manager_->manifest( id );
-        if ( cilogg::plugins::isConfigPack( manifest )
-             && !pluginsui::confirmPackLua( tab, manager_, id, name,
-                                            cilogg::plugins::packContents( manifest ), false ) ) {
-            return;
-        }
-        reinstallFrom( tab, status, id, name, {} );
+        // reinstallFrom() asks about a pack's Lua from the package it installs.
+        reinstallFrom( tab, status, id, plugin.value( "name", id ).toString(), {} );
     } );
     const auto refreshSourceButtons = [ changeSource, reinstall, selectedPlugin ] {
         const auto source = selectedPlugin().value( "source" ).toMap();

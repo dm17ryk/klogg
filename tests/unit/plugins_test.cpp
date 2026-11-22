@@ -645,11 +645,30 @@ TEST_CASE( "Plugins installed from a folder or ZIP record it and reinstall from 
     recorded = manager.plugins()[ 0 ].toMap().value( "source" ).toMap();
     CHECK( recorded.value( "path" ) == QDir::cleanPath( archive ) );
     CHECK( recorded.value( "pathKind" ) == "zip" );
+    // A package file is a ZIP whatever its name, as for an install.
+    const auto renamed = QDir( temp.path() ).filePath( "fixture.pkg" );
+    REQUIRE( QFile::copy( archive, renamed ) );
+    REQUIRE( manager.manage( "set_source", "org.test.fixture", { { "path", renamed } } ).ok() );
+    CHECK( manager.plugins()[ 0 ].toMap().value( "source" ).toMap().value( "pathKind" ) == "zip" );
+    // A link is refused, as an install from it is.
+#ifdef Q_OS_WIN
+    const auto link = QDir( temp.path() ).filePath( "source-link.lnk" );
+#else
+    const auto link = QDir( temp.path() ).filePath( "source-link" );
+#endif
+    if ( QFile::link( source, link ) && QFileInfo( link ).isSymLink() ) {
+        CHECK_FALSE(
+            manager.manage( "set_source", "org.test.fixture", { { "path", link } } ).ok() );
+    }
 
     // Back to the folder; Reinstall installs from it again.
     REQUIRE( manager.manage( "set_source", "org.test.fixture", { { "path", source } } ).ok() );
     writeFile( QDir( source ).filePath( "marker.txt" ), "reinstalled" );
     const auto reinstall = jobId( manager.manage( "reinstall", "org.test.fixture", {} ) );
+    // While it installs, the source cannot change: the install records its own when it ends.
+    const auto during = manager.manage( "set_source", "org.test.fixture", { { "path", archive } } );
+    CHECK_FALSE( during.ok() );
+    CHECK( during.error.contains( "already running" ) );
     REQUIRE( waitFor( [ & ] { return finished( manager, reinstall ); } ) );
     REQUIRE( manager.job( reinstall ).payload[ "state" ] == "completed" );
     CHECK( QFileInfo::exists(
