@@ -1489,10 +1489,13 @@ CrawlerWidget::makeMatchLabeler( const FilteredView* view, const QString& search
     }
     const auto& filters
         = fromFilters ? pendingFilterSelection_.filters : QList<PredefinedFilter>{};
-    auto labeler
-        = std::make_shared<const MatchLabeler>( MatchLabeler::fromSearch( pattern, filters ) );
+    // Without the selection (a search restored from the session, picked from the history or run
+    // in all tabs), the quoted terms of a boolean search are matched to the filters by pattern.
+    const auto knownFilters = predefinedFilters_->filters();
+    auto labeler = std::make_shared<const MatchLabeler>(
+        MatchLabeler::fromSearch( pattern, filters, knownFilters ) );
     LOG_DEBUG << "Matched-by labels for search: predefined filters=" << filters.size()
-              << ", empty=" << labeler->isEmpty();
+              << ", known filters=" << knownFilters.size() << ", empty=" << labeler->isEmpty();
     return labeler;
 }
 

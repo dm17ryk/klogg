@@ -4,6 +4,8 @@
 
 #include <algorithm>
 #include <exception>
+#include <iterator>
+#include <optional>
 
 #include "booleanparser.h"
 #include "log.h"
@@ -41,6 +43,273 @@ int optionSettingLength( const QString& regex, int position )
         return 0;
     }
     return end - position + 1;
+}
+
+// "(x)" -> "x" when the parentheses are one plain capturing group around everything; otherwise
+// `alternative` itself.
+QString withoutOuterGroup( const QString& alternative )
+{
+    if ( alternative.size() < 3 || alternative.front() != QLatin1Char( '(' )
+         || alternative.back() != QLatin1Char( ')' ) || alternative.at( 1 ) == QLatin1Char( '?' )
+         || alternative.at( 1 ) == QLatin1Char( '*' ) ) {
+        return alternative;
+    }
+    int depth = 0;
+    bool inClass = false;
+    const auto size = static_cast<int>( alternative.size() );
+    for ( int i = 0; i < size; ++i ) {
+        const auto character = alternative.at( i );
+        if ( character == QLatin1Char( '\\' ) ) {
+            ++i;
+            continue;
+        }
+        if ( inClass ) {
+            inClass = character != QLatin1Char( ']' );
+            continue;
+        }
+        if ( character == QLatin1Char( '[' ) ) {
+            inClass = true;
+        }
+        else if ( character == QLatin1Char( '(' ) ) {
+            ++depth;
+        }
+        else if ( character == QLatin1Char( ')' ) ) {
+            --depth;
+            if ( depth == 0 && i != size - 1 ) {
+                return alternative; // "(a)(b)": the first group closes early
+            }
+        }
+    }
+    return depth == 0 ? alternative.mid( 1, size - 2 ) : alternative;
+}
+
+// One top-level item of a regular expression: an escape, a character class, a group or a single
+// character, with the quantifier that follows it.
+struct RegexToken {
+    QString atom;
+    QString quantifier;
+};
+
+// End (exclusive) of the character class that starts at `position`, or -1.
+int classEnd( const QString& regex, int position )
+{
+    const auto size = static_cast<int>( regex.size() );
+    auto i = position + 1;
+    if ( i < size && regex.at( i ) == QLatin1Char( '^' ) ) {
+        ++i;
+    }
+    const auto firstMember = i;
+    for ( ; i < size; ++i ) {
+        const auto character = regex.at( i );
+        if ( character == QLatin1Char( '\\' ) ) {
+            ++i;
+        }
+        else if ( character == QLatin1Char( ']' ) && i > firstMember ) {
+            return i + 1;
+        }
+    }
+    return -1;
+}
+
+// End (exclusive) of the group that starts at `position`, or -1.
+int groupEnd( const QString& regex, int position )
+{
+    const auto size = static_cast<int>( regex.size() );
+    int depth = 0;
+    for ( int i = position; i < size; ++i ) {
+        const auto character = regex.at( i );
+        if ( character == QLatin1Char( '\\' ) ) {
+            ++i;
+        }
+        else if ( character == QLatin1Char( '[' ) ) {
+            const auto end = classEnd( regex, i );
+            if ( end < 0 ) {
+                return -1;
+            }
+            i = end - 1;
+        }
+        else if ( character == QLatin1Char( '(' ) ) {
+            ++depth;
+        }
+        else if ( character == QLatin1Char( ')' ) && --depth == 0 ) {
+            return i + 1;
+        }
+    }
+    return -1;
+}
+
+// Length of the quantifier ("*", "+?", "{2,5}"...) that starts at `position`, or 0.
+int quantifierLength( const QString& regex, int position )
+{
+    const auto size = static_cast<int>( regex.size() );
+    if ( position >= size ) {
+        return 0;
+    }
+    auto end = position;
+    const auto character = regex.at( position );
+    if ( character == QLatin1Char( '*' ) || character == QLatin1Char( '+' )
+         || character == QLatin1Char( '?' ) ) {
+        end = position + 1;
+    }
+    else if ( character == QLatin1Char( '{' ) ) {
+        const auto close = regex.indexOf( QLatin1Char( '}' ), position );
+        static const QRegularExpression counted( QStringLiteral( "^\\{\\d+(,\\d*)?\\}$" ) );
+        if ( close < 0
+             || !counted.match( regex.mid( position, close - position + 1 ) ).hasMatch() ) {
+            return 0;
+        }
+        end = static_cast<int>( close ) + 1;
+    }
+    else {
+        return 0;
+    }
+    if ( end < size
+         && ( regex.at( end ) == QLatin1Char( '?' ) || regex.at( end ) == QLatin1Char( '+' ) ) ) {
+        ++end;
+    }
+    return end - position;
+}
+
+// The top-level items of `regex`; false when it does not split cleanly (an unbalanced group or
+// class, or a top-level '|').
+bool tokenizeRegex( const QString& regex, std::vector<RegexToken>* tokens )
+{
+    const auto size = static_cast<int>( regex.size() );
+    for ( int i = 0; i < size; ) {
+        const auto character = regex.at( i );
+        int end = i + 1;
+        if ( character == QLatin1Char( '\\' ) ) {
+            end = std::min( size, i + 2 );
+        }
+        else if ( character == QLatin1Char( '[' ) ) {
+            end = classEnd( regex, i );
+        }
+        else if ( character == QLatin1Char( '(' ) ) {
+            end = groupEnd( regex, i );
+        }
+        else if ( character == QLatin1Char( ')' ) || character == QLatin1Char( '|' ) ) {
+            return false;
+        }
+        if ( end < 0 ) {
+            return false;
+        }
+        RegexToken token{ regex.mid( i, end - i ), {} };
+        const auto quantifier = quantifierLength( regex, end );
+        token.quantifier = regex.mid( end, quantifier );
+        tokens->push_back( std::move( token ) );
+        i = end + quantifier;
+    }
+    return true;
+}
+
+// An item that names nothing on its own: an anchor, a lookaround, an option setting or a
+// ".*" / ".+" wildcard.
+bool isNameless( const RegexToken& token )
+{
+    static const QStringList anchors{ QStringLiteral( "^" ),   QStringLiteral( "$" ),
+                                      QStringLiteral( "\\A" ), QStringLiteral( "\\z" ),
+                                      QStringLiteral( "\\Z" ), QStringLiteral( "\\G" ),
+                                      QStringLiteral( "\\b" ), QStringLiteral( "\\B" ) };
+    const auto& atom = token.atom;
+    if ( token.quantifier.isEmpty() && anchors.contains( atom ) ) {
+        return true;
+    }
+    if ( atom.startsWith( QLatin1String( "(?=" ) ) || atom.startsWith( QLatin1String( "(?!" ) )
+         || atom.startsWith( QLatin1String( "(?<=" ) )
+         || atom.startsWith( QLatin1String( "(?<!" ) ) ) {
+        return true;
+    }
+    if ( token.quantifier.isEmpty() && optionSettingLength( atom, 0 ) == atom.size() ) {
+        return true;
+    }
+    return atom == QLatin1String( "." )
+           && ( token.quantifier.startsWith( QLatin1Char( '*' ) )
+                || token.quantifier.startsWith( QLatin1Char( '+' ) ) );
+}
+
+// The text `tokens` match when they are plain text (characters and escaped punctuation only).
+std::optional<QString> literalText( const std::vector<RegexToken>& tokens )
+{
+    static const QString metacharacters = QStringLiteral( ".^$|?*+()[]\\" );
+    QString text;
+    for ( const auto& token : tokens ) {
+        if ( !token.quantifier.isEmpty() ) {
+            return std::nullopt;
+        }
+        if ( token.atom.size() == 1 && !metacharacters.contains( token.atom.front() ) ) {
+            text.append( token.atom );
+        }
+        else if ( token.atom.size() == 2 && token.atom.front() == QLatin1Char( '\\' )
+                  && !token.atom.at( 1 ).isLetterOrNumber() ) {
+            text.append( token.atom.at( 1 ) );
+        }
+        else {
+            return std::nullopt;
+        }
+    }
+    return text;
+}
+
+// What an alternative says, without what names nothing (see alternativeDisplayName); empty when
+// nothing can be left out.
+QString essentialPart( const QString& regex, int depth = 0 )
+{
+    constexpr int MaxUnwrapDepth = 4;
+    std::vector<RegexToken> tokens;
+    if ( depth > MaxUnwrapDepth || !tokenizeRegex( regex, &tokens ) ) {
+        return {};
+    }
+    const auto first = std::find_if_not( tokens.begin(), tokens.end(), isNameless );
+    const auto last
+        = std::find_if_not( tokens.rbegin(), std::make_reverse_iterator( first ), isNameless )
+              .base();
+    std::vector<RegexToken> kept( first, last );
+    if ( kept.empty() ) {
+        return {};
+    }
+    if ( kept.size() == 1 && kept.front().quantifier.isEmpty() ) {
+        const auto inner = withoutOuterGroup( kept.front().atom );
+        if ( inner != kept.front().atom ) {
+            const auto unwrapped = essentialPart( inner, depth + 1 );
+            return unwrapped.isEmpty() ? inner : unwrapped;
+        }
+    }
+    if ( const auto text = literalText( kept ) ) {
+        return text->trimmed();
+    }
+    QString shown;
+    for ( const auto& token : kept ) {
+        shown += token.atom + token.quantifier;
+    }
+    return shown;
+}
+
+QString filterDisplayName( const PredefinedFilter& filter )
+{
+    return filter.name.isEmpty() ? filter.pattern : filter.name;
+}
+
+bool hasOwnName( const PredefinedFilter& filter )
+{
+    return !filter.name.isEmpty() && filter.name != filter.pattern;
+}
+
+// The predefined filter a quoted term of a boolean search was built from: the crawler quotes a
+// filter's pattern, escaped first when the filter is plain text and the search is not.
+const PredefinedFilter* filterOfTerm( const QList<PredefinedFilter>& filters,
+                                      const QString& termPattern, bool plainTextSearch )
+{
+    for ( const auto& filter : filters ) {
+        if ( filter.pattern.isEmpty() ) {
+            continue;
+        }
+        if ( termPattern == filter.pattern
+             || ( !filter.useRegex && !plainTextSearch
+                  && termPattern == QRegularExpression::escape( filter.pattern ) ) ) {
+            return &filter;
+        }
+    }
+    return nullptr;
 }
 } // namespace
 
@@ -164,43 +433,17 @@ MatchLabeler MatchLabeler::fromSpecs( const std::vector<TermSpec>& specs )
 
 QString MatchLabeler::alternativeDisplayName( const QString& alternative )
 {
-    // "(x)" -> "x" when the parentheses are one plain capturing group around everything.
-    if ( alternative.size() < 3 || alternative.front() != QLatin1Char( '(' )
-         || alternative.back() != QLatin1Char( ')' ) || alternative.at( 1 ) == QLatin1Char( '?' )
-         || alternative.at( 1 ) == QLatin1Char( '*' ) ) {
-        return alternative;
+    const auto shown = withoutOuterGroup( alternative );
+    if ( alternative.startsWith( QLatin1String( "(*" ) ) ) {
+        return shown;
     }
-    int depth = 0;
-    bool inClass = false;
-    const auto size = static_cast<int>( alternative.size() );
-    for ( int i = 0; i < size; ++i ) {
-        const auto character = alternative.at( i );
-        if ( character == QLatin1Char( '\\' ) ) {
-            ++i;
-            continue;
-        }
-        if ( inClass ) {
-            inClass = character != QLatin1Char( ']' );
-            continue;
-        }
-        if ( character == QLatin1Char( '[' ) ) {
-            inClass = true;
-        }
-        else if ( character == QLatin1Char( '(' ) ) {
-            ++depth;
-        }
-        else if ( character == QLatin1Char( ')' ) ) {
-            --depth;
-            if ( depth == 0 && i != size - 1 ) {
-                return alternative; // "(a)(b)": the first group closes early
-            }
-        }
-    }
-    return depth == 0 ? alternative.mid( 1, size - 2 ) : alternative;
+    const auto essential = essentialPart( shown );
+    return essential.isEmpty() ? shown : essential;
 }
 
 MatchLabeler MatchLabeler::fromSearch( const RegularExpressionPattern& search,
-                                       const QList<PredefinedFilter>& filters )
+                                       const QList<PredefinedFilter>& filters,
+                                       const QList<PredefinedFilter>& knownFilters )
 {
     // An inverse search selects lines because nothing matched them: there is nothing to name.
     if ( search.pattern.isEmpty() || search.isExclude ) {
@@ -218,9 +461,32 @@ MatchLabeler MatchLabeler::fromSearch( const RegularExpressionPattern& search,
         spec.pattern = termPattern( pattern, plainText );
         specs.push_back( std::move( spec ) );
     };
+    // A term made of several top-level alternatives, such as the predefined filter
+    // "(C_PROC:)|(EHCP)|(WiFi)", says which of them matched a line. `partOptions` are the option
+    // settings in force before `regex`.
+    const auto splitIntoAlternatives = [ & ]( TermSpec& spec, const QString& regex,
+                                              QString partOptions ) {
+        // "(*...)" settings only apply at the start of a pattern: such a pattern stays whole.
+        if ( regex.startsWith( QLatin1String( "(*" ) ) ) {
+            return;
+        }
+        for ( const auto& alternative : scanTopLevelAlternatives( regex ) ) {
+            if ( alternative.text != alternative.optionSettings ) {
+                spec.partPatterns.append( termPattern( partOptions + alternative.text, false ) );
+                spec.partNames.append( alternativeDisplayName( alternative.text ) );
+            }
+            partOptions += alternative.optionSettings;
+        }
+        if ( spec.partPatterns.size() < 2 ) {
+            spec.partPatterns.clear();
+            spec.partNames.clear();
+        }
+    };
     // Within one regular expression a top-level "(?i)" also applies to the alternatives after
     // it; each term inherits the option settings of the terms before it, as in the search.
     const bool optionsSpanAlternatives = !search.isBoolean && !search.isPlainText;
+    // Lines are labelled with filter names even when only one term is a filter.
+    bool namesFilters = !filters.isEmpty();
 
     if ( !filters.isEmpty() ) {
         QString inheritedOptions;
@@ -228,26 +494,10 @@ MatchLabeler MatchLabeler::fromSearch( const RegularExpressionPattern& search,
             const bool plainText = search.isPlainText || !filter.useRegex;
             const auto expression
                 = plainText ? QRegularExpression::escape( filter.pattern ) : filter.pattern;
-            addTerm( filter.name.isEmpty() ? filter.pattern : filter.name,
-                     inheritedOptions + expression, false );
-            if ( !plainText && !filter.pattern.startsWith( QLatin1String( "(*" ) ) ) {
-                // A filter of several alternatives, such as "(C_PROC:)|(EHCP)|(WiFi)", says
-                // which of them matched a line.
-                auto& spec = specs.back();
-                QString partOptions = inheritedOptions;
-                for ( const auto& alternative : scanTopLevelAlternatives( filter.pattern ) ) {
-                    if ( alternative.text != alternative.optionSettings ) {
-                        spec.partPatterns.append(
-                            termPattern( partOptions + alternative.text, false ) );
-                        spec.partNames.append( alternativeDisplayName( alternative.text ) );
-                    }
-                    partOptions += alternative.optionSettings;
-                }
-                if ( spec.partPatterns.size() < 2 ) {
-                    spec.partPatterns.clear();
-                    spec.partNames.clear();
-                }
-                spec.namePrefix = !filter.name.isEmpty() && filter.name != filter.pattern;
+            addTerm( filterDisplayName( filter ), inheritedOptions + expression, false );
+            if ( !plainText ) {
+                splitIntoAlternatives( specs.back(), filter.pattern, inheritedOptions );
+                specs.back().namePrefix = hasOwnName( filter );
             }
             if ( optionsSpanAlternatives && !plainText ) {
                 inheritedOptions += topLevelOptionSettings( filter.pattern );
@@ -260,9 +510,17 @@ MatchLabeler MatchLabeler::fromSearch( const RegularExpressionPattern& search,
             const auto leaves = parseBooleanExpressions( expression, search.isCaseSensitive,
                                                          search.isPlainText, search.matchMode );
             for ( const auto& leaf : leaves ) {
+                // Each quoted term is a regular expression of its own: option settings do not
+                // reach the next term.
+                const auto* filter = filterOfTerm( knownFilters, leaf.pattern, search.isPlainText );
                 TermSpec spec;
-                spec.name = leaf.pattern;
+                spec.name = filter != nullptr ? filterDisplayName( *filter ) : leaf.pattern;
                 spec.pattern = leaf;
+                if ( !search.isPlainText && ( filter == nullptr || filter->useRegex ) ) {
+                    splitIntoAlternatives( spec, leaf.pattern, {} );
+                    spec.namePrefix = filter != nullptr && hasOwnName( *filter );
+                }
+                namesFilters = namesFilters || filter != nullptr;
                 specs.push_back( std::move( spec ) );
             }
         } catch ( const std::exception& error ) {
@@ -295,7 +553,7 @@ MatchLabeler MatchLabeler::fromSearch( const RegularExpressionPattern& search,
         // A split broke a construct that spans alternatives; label with the whole pattern.
         return fromTerms( { search }, { search.pattern } );
     }
-    labeler.namesFilters_ = !filters.isEmpty();
+    labeler.namesFilters_ = namesFilters;
     return labeler;
 }
 

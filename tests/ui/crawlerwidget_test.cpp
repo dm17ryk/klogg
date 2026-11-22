@@ -319,6 +319,20 @@ struct CrawlerWidget::access_by<CrawlerWidgetPrivate> {
         crawler->setSearchPatternFromPredefinedFilters( filters );
     }
 
+    // The filters the predefined filter list offers, saved as the Filters dialog saves them.
+    void offerPredefinedFilters( const QList<PredefinedFilter>& filters )
+    {
+        PredefinedFiltersCollection::getSynced().saveToStorage( filters );
+        crawler->predefinedFilters_->populatePredefinedFilters();
+    }
+
+    // The search text as a session restore or the search history puts it in the box: no
+    // filter is ticked.
+    void restoreSearchText( const QString& text )
+    {
+        crawler->searchLineEdit_->setEditText( text );
+    }
+
     void applyCommanderFilter( const PredefinedFilter& filter )
     {
         CommanderRequest request;
@@ -1210,6 +1224,49 @@ TEST_CASE( "matched_by_names_predefined_filters_per_tab", "[workbench][U14][ui]"
     REQUIRE( waitUiState( [ & ] { return visitor.getLogFilteredNbLines() == 1_lcount; } ) );
     REQUIRE( waitUiState(
         [ & ] { return firstTab->matchedByText( 0_lnum ) == "Connection lost"; } ) );
+}
+
+TEST_CASE( "matched_by_names_filters_of_a_restored_boolean_search", "[workbench][U14][ui]" )
+{
+    // Build 26.04.2.1374: a search of several predefined filters, back in the search box
+    // without the filters ticked, labelled lines with whole patterns such as
+    // "(C_PROC:)|(EHCP)|(EHCI)|(WiFi)|…".
+    const QString errors = R"((^(?!.*\+CME ERROR: 553).*ERROR)|(^.*WARNING.*R.*)|( E \()|( W \())";
+    const QString modem = R"((C_PROC:)|(EHCP)|(EHCI)|(WiFi)|(\[TX\]))";
+    QTemporaryFile file{ "crawler_matched_by_restored_XXXXXX" };
+    REQUIRE( file.open() );
+    file.write( "boot\n"
+                "16/11/2026 02:24:56.322 [RX] - #12 4823 INFO:NET Socket bound to WiFi\n"
+                "16/11/2026 02:23:15.273 [RX] - #22 1668 ERROR:VoIP SipTask Exiting... State: 0\n"
+                "16/11/2026 02:23:20.454 [RX] - +CME ERROR: 553\n" );
+    file.flush();
+
+    struct RestoreFilters {
+        QList<PredefinedFilter> previous = PredefinedFiltersCollection::getSynced().getFilters();
+        ~RestoreFilters()
+        {
+            PredefinedFiltersCollection::getSynced().saveToStorage( previous );
+        }
+    } restoreFilters;
+
+    Session session;
+    CrawlerWidgetVisitor visitor;
+    visitor.crawler.reset( static_cast<CrawlerWidget*>(
+        session.open( file.fileName(), [] { return new CrawlerWidget(); } ) ) );
+    REQUIRE( waitUiState( [ & ] { return visitor.isLoadingFinished(); } ) );
+    visitor.resizeAndShow( 800, 600 );
+    visitor.offerPredefinedFilters( { PredefinedFilter{ "errors", "Errors", errors, true },
+                                      PredefinedFilter{ "modem", "Modem", modem, true } } );
+    visitor.enableBooleanCombinationMode();
+    visitor.enableRegexSearch();
+    visitor.enableCaseSensitiveSearch();
+
+    visitor.restoreSearchText( "\"" + errors + "\" or \"" + modem + "\"" );
+    visitor.runSearch();
+    REQUIRE( waitUiState( [ & ] { return visitor.getLogFilteredNbLines() == 2_lcount; } ) );
+    auto* view = visitor.activeFilteredView();
+    REQUIRE( waitUiState( [ & ] { return view->matchedByText( 0_lnum ) == "Modem: WiFi"; } ) );
+    REQUIRE( waitUiState( [ & ] { return view->matchedByText( 1_lnum ) == "Errors: ERROR"; } ) );
 }
 
 TEST_CASE( "clear_results_of_a_kept_tab", "[workbench][U14][ui]" )
