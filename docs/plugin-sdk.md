@@ -975,7 +975,7 @@ older one, needs its `catalog_entry_id`. Installing from another repository requ
 `source` (`type` `repository`, `local` or `shipped`, the repository and the
 installed version; for `local`, the `path` of the folder or ZIP it was installed
 from and `pathKind` `folder` or `zip`, once CILogg recorded it). `set_source`
-with `{"path"}` repoints a `local` plugin to another folder or ZIP of the same
+with `{"path"}` (absolute) repoints a `local` plugin to another folder or ZIP of the same
 plugin ID, and `reinstall` installs it again from there (the plugin's Configure
 dialog has the same: Folder…, ZIP… and Reinstall). A newer catalog request supersedes the previous request;
 obsolete selections are rejected after refresh. Packages reject traversal, links, Windows device names, and path

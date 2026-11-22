@@ -301,6 +301,10 @@ TEST_CASE( "Configure shows where a plugin came from, why it fails and reinstall
     // plugin failed and the window did not say where it came from or why).
     const auto source = QDir( temp.path() ).filePath( "source/" + pluginId );
     REQUIRE( QDir().mkpath( source ) );
+    // The package needs its program to install; the installed copy loses it below.
+    const auto executable = QFileInfo( QString::fromUtf8( PLUGIN_FIXTURE_PATH ) ).fileName();
+    REQUIRE( QFile::copy( QString::fromUtf8( PLUGIN_FIXTURE_PATH ),
+                          QDir( source ).filePath( executable ) ) );
     QFile manifest( QDir( source ).filePath( "plugin.json" ) );
     REQUIRE( manifest.open( QIODevice::WriteOnly ) );
     const QJsonObject description{
@@ -308,7 +312,7 @@ TEST_CASE( "Configure shows where a plugin came from, why it fails and reinstall
         { "name", "Local fixture" },
         { "version", "1.0.0" },
         { "protocol_version", 1 },
-        { "executable", "missing-program.exe" },
+        { "executable", executable },
         { "capabilities", QJsonArray{ "tool" } },
         { "actions", QJsonArray{ QJsonObject{ { "id", "summary" }, { "capability", "tool" } } } },
         { "configuration",
@@ -325,6 +329,7 @@ TEST_CASE( "Configure shows where a plugin came from, why it fails and reinstall
     REQUIRE( QTest::qWaitFor(
         [ & ] { return manager.job( installJob ).payload.value( "state" ) == "completed"; },
         10000 ) );
+    REQUIRE( QFile::remove( QDir( manager.pluginDirectory( pluginId ) ).filePath( executable ) ) );
     REQUIRE( manager.manage( "enable", pluginId, {} ).ok() );
     REQUIRE( manager.invoke( pluginId, "summary", {}, {} ).ok() );
     REQUIRE( QTest::qWaitFor(
@@ -371,7 +376,7 @@ TEST_CASE( "Configure shows where a plugin came from, why it fails and reinstall
     manage->findChild<QPushButton*>( "pluginManage_configure" )->click();
     CHECK( shownPath == QDir::toNativeSeparators( source ) );
     CHECK( shownProblem.contains( "Cannot start" ) );
-    CHECK( shownProblem.contains( "missing-program.exe" ) );
+    CHECK( shownProblem.contains( executable ) );
     REQUIRE_FALSE( requests.isEmpty() );
     CHECK( requests.back().pluginOperation == "install" );
     CHECK( requests.back().pluginId == pluginId );

@@ -441,7 +441,7 @@ use the same Commander implementation:
 | `pack_export` | item selectors by kind and name or ID, `id`, `name`, `version`, `description`, `output` (folder or `.zip`) | Writes the pack; returns its path and contents. |
 | `check_updates` | optional `repository` | A job listing `id`, `installed`, `available`, `repository`, `entry_id` (as built also `name`, `repositoryName`, `skipped`, `majorChange`, `automatic`), with the per-repository results. It fetches the repositories whatever their last check, announces new versions and starts automatic updates like the silent check. |
 | `skip_update` | plugin ID and `version` | Skip this version (added in E15c): hides that version, and older ones, from notices and auto-update until a newer one appears. Update still installs it. |
-| `set_source` | plugin ID and `path` (a folder or ZIP) | Repoints a plugin installed from a folder or ZIP: the path must hold a `plugin.json` with the same ID. |
+| `set_source` | plugin ID and `path` (the absolute path of a folder or ZIP) | Repoints a plugin installed from a folder or ZIP: the path must hold a `plugin.json` with the same ID. |
 | `reinstall` | plugin ID | Installs a plugin installed from a folder or ZIP again from the recorded path, with the checks of an install from that path. |
 
 `get_plugins` adds `kind`, `contents` (packs), `source` (`repository`, `local` or `shipped`, the
