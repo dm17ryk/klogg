@@ -307,6 +307,17 @@ bool usesFreeSpacing( const QString& regex )
     return setting.match( regex ).hasMatch();
 }
 
+// Whether `regex` refers to its groups by number or calls them: "\1", "\g2", "\g{-1}", "\k",
+// "(?1)", "(?R)", "(?&name)", "(?P>name)", "(?P=name)". Compiled alone, an alternative numbers its
+// groups from one again and matches what the whole pattern would not, so such a pattern is not
+// split. (An escaped backslash before a digit also counts; it is only left whole.)
+bool referencesGroups( const QString& regex )
+{
+    static const QRegularExpression reference(
+        QStringLiteral( "\\\\(?:[1-9]|g|k)|\\(\\?(?:[R+&]|-?[0-9]|P[>=])" ) );
+    return reference.match( regex ).hasMatch();
+}
+
 // How `alternatives` are shown. Short names that would be the same for two alternatives (they
 // differ only in what the short form leaves out, such as a lookahead) keep the longer form, so
 // the label still says which one matched.
@@ -374,6 +385,15 @@ MatchLabeler::scanTopLevelAlternatives( const QString& regex )
     for ( int i = 0; i < regexSize; ++i ) {
         auto& current = alternatives.back().text;
         const auto character = regex.at( i );
+        if ( character == QLatin1Char( '\\' ) && i + 1 < regexSize
+             && regex.at( i + 1 ) == QLatin1Char( 'Q' ) && !inClass ) {
+            // "\Q...\E" quotes everything up to "\E" (or the end): a '|' there is literal.
+            const auto quoteEnd = regex.indexOf( QLatin1String( "\\E" ), i + 2 );
+            const auto end = quoteEnd < 0 ? regexSize : static_cast<int>( quoteEnd ) + 2;
+            current.append( regex.mid( i, end - i ) );
+            i = end - 1;
+            continue;
+        }
         if ( character == QLatin1Char( '\\' ) && i + 1 < regexSize ) {
             current.append( character );
             current.append( regex.at( ++i ) );
@@ -516,8 +536,9 @@ MatchLabeler MatchLabeler::fromSearch( const RegularExpressionPattern& search,
     const auto splitIntoAlternatives = [ & ]( TermSpec& spec, const QString& regex,
                                               QString partOptions ) {
         // "(*...)" settings only apply at the start of a pattern: such a pattern stays whole, as
-        // does one in free-spacing syntax.
-        if ( regex.startsWith( QLatin1String( "(*" ) ) || usesFreeSpacing( partOptions + regex ) ) {
+        // does one in free-spacing syntax or one that refers to its groups.
+        if ( regex.startsWith( QLatin1String( "(*" ) ) || usesFreeSpacing( partOptions + regex )
+             || referencesGroups( regex ) ) {
             return;
         }
         QStringList texts;
@@ -581,7 +602,7 @@ MatchLabeler MatchLabeler::fromSearch( const RegularExpressionPattern& search,
         }
     }
     else if ( !search.isPlainText && !search.pattern.startsWith( QLatin1String( "(*" ) )
-              && !usesFreeSpacing( search.pattern ) ) {
+              && !usesFreeSpacing( search.pattern ) && !referencesGroups( search.pattern ) ) {
         // A pattern starting with "(*...)" settings is kept whole: they only apply at its start.
         // So is one in free-spacing syntax, whose comments may hold a '|'.
         QString inheritedOptions;

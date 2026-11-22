@@ -1335,6 +1335,17 @@ TEST_CASE( "matched_by_follows_renamed_and_deleted_filters", "[workbench][U14][u
     // Deleted: the search is a typed one again and shows what matched.
     visitor.offerPredefinedFilters( {} );
     REQUIRE( waitUiState( [ & ] { return view->matchedByText( 0_lnum ) == "WARN"; } ) );
+
+    // A search-history entry run through Commander has no filter ID: a filter change elsewhere
+    // keeps its name.
+    visitor.applyCommanderFilter( PredefinedFilter{ "", "Recent search", "battery", false } );
+    REQUIRE( waitUiState( [ & ] { return visitor.getLogFilteredNbLines() == 1_lcount; } ) );
+    auto* historyView = visitor.activeFilteredView();
+    REQUIRE(
+        waitUiState( [ & ] { return historyView->matchedByText( 0_lnum ) == "Recent search"; } ) );
+    visitor.offerPredefinedFilters( { PredefinedFilter{ "idle", "Idle", "idle", false } } );
+    REQUIRE(
+        waitUiState( [ & ] { return historyView->matchedByText( 0_lnum ) == "Recent search"; } ) );
 }
 
 TEST_CASE( "clear_results_of_a_kept_tab", "[workbench][U14][ui]" )

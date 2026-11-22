@@ -398,3 +398,21 @@ TEST_CASE( "labels_free_spacing_and_lookahead_alternatives", "[workbench][U14]" 
                                     { filter( "Foo", "foo(?=bar)|foo(?=baz)", true ) } );
     CHECK( named.label( "foobaz" ) == "Foo: foo(?=baz)" );
 }
+
+TEST_CASE( "labels_backreferences_and_quoted_literals", "[workbench][U14]" )
+{
+    // A term that refers to its groups by number stays whole: compiled alone, the second
+    // alternative would number its group 1 and match "bb", which the whole term does not.
+    const QString backreference = R"((?<x>a)|(?<y>b)\1)";
+    const auto whole
+        = MatchLabeler::fromSearch( booleanSearch( quotedOr( { backreference, "zzz" } ) ) );
+    CHECK( whole.label( "a bb" ) == backreference );
+
+    // "\Q...\E" quotes a '|': it is part of the literal, not an alternative boundary.
+    CHECK( MatchLabeler::splitTopLevelAlternatives( R"(\Qa|b\E|c)" )
+           == QStringList{ R"(\Qa|b\E)", "c" } );
+    const auto quoted
+        = MatchLabeler::fromSearch( booleanSearch( quotedOr( { R"(\Qa|b\E|c)", "zzz" } ) ) );
+    CHECK( quoted.label( "x a|b y" ) == R"(\Qa|b\E)" );
+    CHECK( quoted.label( "c" ) == "c" );
+}

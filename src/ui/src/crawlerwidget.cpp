@@ -540,6 +540,12 @@ void CrawlerWidget::refreshMatchLabelers()
     const auto refresh = [ &knownFilters ]( PredefinedFilterSelection& selection ) {
         QList<PredefinedFilter> current;
         for ( const auto& ticked : selection.filters ) {
+            // A search-history entry run through Commander has no ID: it is not a predefined
+            // filter, and changing the filters does not change it.
+            if ( ticked.id.isEmpty() ) {
+                current.append( ticked );
+                continue;
+            }
             const auto now = std::find_if(
                 knownFilters.cbegin(), knownFilters.cend(),
                 [ &ticked ]( const PredefinedFilter& filter ) { return filter.id == ticked.id; } );
