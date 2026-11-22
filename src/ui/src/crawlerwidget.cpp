@@ -515,9 +515,57 @@ bool CrawlerWidget::isKeepSearchResultsEnabled() const
     return keepSearchResultsButton_ != nullptr && keepSearchResultsButton_->isChecked();
 }
 
-void CrawlerWidget::reloadPredefinedFilters() const
+void CrawlerWidget::reloadPredefinedFilters()
 {
     predefinedFilters_->populatePredefinedFilters();
+    refreshMatchLabelers();
+}
+
+void CrawlerWidget::refreshMatchLabelers()
+{
+    const auto knownFilters = predefinedFilters_->filters();
+    // The ticked filters, by ID, with their current names. A filter that is gone, or whose
+    // pattern changed, no longer describes the search: the selection is dropped and the search's
+    // terms are matched to the filters by pattern instead.
+    const auto refresh = [ &knownFilters ]( PredefinedFilterSelection& selection ) {
+        QList<PredefinedFilter> current;
+        for ( const auto& ticked : selection.filters ) {
+            const auto now = std::find_if(
+                knownFilters.cbegin(), knownFilters.cend(),
+                [ &ticked ]( const PredefinedFilter& filter ) { return filter.id == ticked.id; } );
+            if ( now == knownFilters.cend() || now->pattern != ticked.pattern
+                 || now->useRegex != ticked.useRegex ) {
+                return false;
+            }
+            current.append( *now );
+        }
+        selection.filters = current;
+        return true;
+    };
+    if ( !refresh( pendingFilterSelection_ ) ) {
+        pendingFilterSelection_ = {};
+    }
+    int relabelled = 0;
+    for ( const auto& [ view, data ] : filteredViewsData_ ) {
+        if ( !data || !data->hasCurrentRegexp() ) {
+            continue;
+        }
+        QList<PredefinedFilter> filters;
+        const auto selection = viewFilterSelections_.find( view );
+        if ( selection != viewFilterSelections_.end() ) {
+            if ( refresh( selection->second ) ) {
+                filters = selection->second.filters;
+            }
+            else {
+                viewFilterSelections_.erase( selection );
+            }
+        }
+        view->setMatchLabeler( std::make_shared<const MatchLabeler>(
+            MatchLabeler::fromSearch( data->currentRegexp(), filters, knownFilters ) ) );
+        ++relabelled;
+    }
+    LOG_DEBUG << "Matched-by labels rebuilt after the predefined filters changed: views="
+              << relabelled << ", known filters=" << knownFilters.size();
 }
 
 QString CrawlerWidget::encodingText() const

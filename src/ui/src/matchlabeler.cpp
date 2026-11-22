@@ -310,10 +310,12 @@ bool hasOwnName( const PredefinedFilter& filter )
 
 // The predefined filter a quoted term of a boolean search was built from: the term is exactly
 // what the crawler quotes for it (CrawlerWidget::escapeSearchPattern), the pattern escaped first
-// when the filter is plain text and the search is not.
+// when the filter is plain text and the search is not. Null when no filter, or several filters
+// with different names, quote to the term: the text alone cannot tell which one was ticked.
 const PredefinedFilter* filterOfTerm( const QList<PredefinedFilter>& filters,
                                       const QString& termPattern, bool plainTextSearch )
 {
+    const PredefinedFilter* found = nullptr;
     for ( const auto& filter : filters ) {
         if ( filter.pattern.isEmpty() ) {
             continue;
@@ -321,11 +323,15 @@ const PredefinedFilter* filterOfTerm( const QList<PredefinedFilter>& filters,
         const auto quoted = !filter.useRegex && !plainTextSearch
                                 ? QRegularExpression::escape( filter.pattern )
                                 : filter.pattern;
-        if ( termPattern == quoted ) {
-            return &filter;
+        if ( termPattern != quoted ) {
+            continue;
         }
+        if ( found != nullptr && filterDisplayName( *found ) != filterDisplayName( filter ) ) {
+            return nullptr;
+        }
+        found = found != nullptr ? found : &filter;
     }
-    return nullptr;
+    return found;
 }
 } // namespace
 
@@ -581,7 +587,7 @@ int MatchLabeler::preferredColumnChars() const
     if ( terms_.empty() ) {
         return 0;
     }
-    if ( terms_.size() == 1 && !namesFilters_ ) {
+    if ( showsMatchedText() ) {
         return SingleTermChars;
     }
     int longest = 0;
@@ -616,9 +622,16 @@ QString MatchLabeler::termLabel( const Term& term, const QString& line ) const
     return term.namePrefix ? term.name + QStringLiteral( ": " ) + parts : parts;
 }
 
+bool MatchLabeler::showsMatchedText() const
+{
+    // One typed term that is not split: its matched text says more than its pattern. A term of
+    // several alternatives (one quoted regex) names the alternatives that matched instead.
+    return terms_.size() == 1 && !namesFilters_ && terms_.front().parts.empty();
+}
+
 QString MatchLabeler::label( const QString& line ) const
 {
-    if ( terms_.size() == 1 && !namesFilters_ ) {
+    if ( showsMatchedText() ) {
         const auto match = terms_.front().expression.match( line );
         if ( !match.hasMatch() ) {
             return {};

@@ -323,7 +323,7 @@ struct CrawlerWidget::access_by<CrawlerWidgetPrivate> {
     void offerPredefinedFilters( const QList<PredefinedFilter>& filters )
     {
         PredefinedFiltersCollection::getSynced().saveToStorage( filters );
-        crawler->predefinedFilters_->populatePredefinedFilters();
+        crawler->reloadPredefinedFilters();
     }
 
     // The search text as a session restore or the search history puts it in the box: no
@@ -1267,6 +1267,49 @@ TEST_CASE( "matched_by_names_filters_of_a_restored_boolean_search", "[workbench]
     auto* view = visitor.activeFilteredView();
     REQUIRE( waitUiState( [ & ] { return view->matchedByText( 0_lnum ) == "Modem: WiFi"; } ) );
     REQUIRE( waitUiState( [ & ] { return view->matchedByText( 1_lnum ) == "Errors: ERROR"; } ) );
+}
+
+TEST_CASE( "matched_by_follows_renamed_and_deleted_filters", "[workbench][U14][ui]" )
+{
+    QTemporaryFile file{ "crawler_matched_by_renamed_XXXXXX" };
+    REQUIRE( file.open() );
+    file.write( "boot\nWARN low battery\nidle\n" );
+    file.flush();
+
+    struct RestoreFilters {
+        QList<PredefinedFilter> previous = PredefinedFiltersCollection::getSynced().getFilters();
+        ~RestoreFilters()
+        {
+            PredefinedFiltersCollection::getSynced().saveToStorage( previous );
+        }
+    } restoreFilters;
+
+    Session session;
+    CrawlerWidgetVisitor visitor;
+    visitor.crawler.reset( static_cast<CrawlerWidget*>(
+        session.open( file.fileName(), [] { return new CrawlerWidget(); } ) ) );
+    REQUIRE( waitUiState( [ & ] { return visitor.isLoadingFinished(); } ) );
+    visitor.resizeAndShow( 800, 600 );
+    visitor.disableBooleanCombinationMode();
+    visitor.enableRegexSearch();
+    visitor.enableCaseSensitiveSearch();
+
+    const PredefinedFilter warnings{ "warnings", "Warnings", "WARN", false };
+    visitor.offerPredefinedFilters( { warnings } );
+    visitor.applyPredefinedFilters( { warnings } );
+    visitor.runSearch();
+    REQUIRE( waitUiState( [ & ] { return visitor.getLogFilteredNbLines() == 1_lcount; } ) );
+    auto* view = visitor.activeFilteredView();
+    REQUIRE( waitUiState( [ & ] { return view->matchedByText( 0_lnum ) == "Warnings"; } ) );
+
+    // Renamed while its results are shown: the labels follow without a new search.
+    visitor.offerPredefinedFilters(
+        { PredefinedFilter{ "warnings", "Low battery", "WARN", false } } );
+    REQUIRE( waitUiState( [ & ] { return view->matchedByText( 0_lnum ) == "Low battery"; } ) );
+
+    // Deleted: the search is a typed one again and shows what matched.
+    visitor.offerPredefinedFilters( {} );
+    REQUIRE( waitUiState( [ & ] { return view->matchedByText( 0_lnum ) == "WARN"; } ) );
 }
 
 TEST_CASE( "clear_results_of_a_kept_tab", "[workbench][U14][ui]" )

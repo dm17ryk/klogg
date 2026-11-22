@@ -339,3 +339,39 @@ TEST_CASE( "labels_typed_alternatives_without_group_parentheses", "[workbench][U
     CHECK( MatchLabeler::alternativeDisplayName( "([)])" ) == "[)]" );
     CHECK( MatchLabeler::alternativeDisplayName( "(a" ) == "(a" );
 }
+
+TEST_CASE( "labels_terms_of_filters_with_the_same_pattern", "[workbench][U14]" )
+{
+    // Two filters with one pattern: the search text cannot tell which was ticked, so the term
+    // keeps its pattern rather than naming the first filter.
+    const auto ambiguous = MatchLabeler::fromSearch(
+        booleanSearch( quotedOr( { "ERROR", "WARN" } ) ), {},
+        { filter( "Errors A", "ERROR", true ), filter( "Errors B", "ERROR", true ) } );
+    CHECK( ambiguous.label( "x ERROR y" ) == "ERROR" );
+    // The same name twice is not ambiguous.
+    const auto same = MatchLabeler::fromSearch(
+        booleanSearch( quotedOr( { "ERROR" } ) ), {},
+        { filter( "Errors", "ERROR", true ), filter( "Errors", "ERROR", true ) } );
+    CHECK( same.label( "x ERROR y" ) == "Errors" );
+    // A search built from one of them, with the selection known, names that one.
+    const auto selected = MatchLabeler::fromSearch( booleanSearch( quotedOr( { "ERROR" } ) ),
+                                                    { filter( "Errors B", "ERROR", true ) } );
+    CHECK( selected.label( "x ERROR y" ) == "Errors B" );
+}
+
+TEST_CASE( "labels_one_quoted_term_of_alternatives", "[workbench][U14]" )
+{
+    // One quoted term of several alternatives names the one that matched, like the same
+    // pattern typed as a regular expression.
+    const auto quoted
+        = MatchLabeler::fromSearch( booleanSearch( quotedOr( { R"(ERR\d+|WARN)" } ) ) );
+    const auto typed = MatchLabeler::fromSearch( regexSearch( R"(ERR\d+|WARN)" ) );
+    for ( const auto* labeler : { &quoted, &typed } ) {
+        CHECK( labeler->label( "x ERR42 y" ) == R"(ERR\d+)" );
+        CHECK( labeler->label( "WARN only" ) == "WARN" );
+        CHECK( labeler->preferredColumnChars() >= QString( R"(ERR\d+)" ).size() );
+    }
+    // One quoted term of one alternative still shows the matched text.
+    const auto single = MatchLabeler::fromSearch( booleanSearch( quotedOr( { R"(id=\d+)" } ) ) );
+    CHECK( single.label( "event id=4711 done" ) == "id=4711" );
+}

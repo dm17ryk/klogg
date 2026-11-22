@@ -45,9 +45,9 @@ class MatchLabeler {
     }
 
     // The names of the terms that match `line`, joined with ", ". A typed search with a single
-    // term reports the matched text instead. A predefined filter made of several top-level
-    // alternatives reports the alternatives that matched, after the filter name when the filter
-    // has one of its own. Empty when nothing matches.
+    // term of one alternative reports the matched text instead. A predefined filter or quoted
+    // term made of several top-level alternatives reports the alternatives that matched, after
+    // the filter name when the filter has one of its own. Empty when nothing matches.
     QString label( const QString& line ) const;
 
     // How an alternative is shown in a label: a lone capturing group "(x)" is shown as "x";
@@ -90,6 +90,8 @@ private:
     };
 
     QString termLabel( const Term& term, const QString& line ) const;
+    // label() reports the matched text rather than term names.
+    bool showsMatchedText() const;
 
     struct Alternative {
         QString text;
