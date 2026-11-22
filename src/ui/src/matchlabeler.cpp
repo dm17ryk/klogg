@@ -298,6 +298,33 @@ QString essentialPart( const QString& regex, int depth = 0 )
     return shown;
 }
 
+// Free-spacing syntax ("(?x)", "(?ix)", "(?x:"): '#' starts a comment that may hold a '|', so
+// such a pattern is not split into alternatives. "(?-x)" turns it off and does not count.
+bool usesFreeSpacing( const QString& regex )
+{
+    static const QRegularExpression setting(
+        QStringLiteral( "\\(\\?[A-Za-z^]*x[A-Za-z]*(-[A-Za-z]*)?[):]" ) );
+    return setting.match( regex ).hasMatch();
+}
+
+// How `alternatives` are shown. Short names that would be the same for two alternatives (they
+// differ only in what the short form leaves out, such as a lookahead) keep the longer form, so
+// the label still says which one matched.
+QStringList distinctDisplayNames( const QStringList& alternatives )
+{
+    QStringList shortNames;
+    for ( const auto& alternative : alternatives ) {
+        shortNames.append( MatchLabeler::alternativeDisplayName( alternative ) );
+    }
+    auto names = shortNames;
+    for ( int i = 0; i < names.size(); ++i ) {
+        if ( shortNames.count( shortNames.at( i ) ) > 1 ) {
+            names[ i ] = withoutOuterGroup( alternatives.at( i ) );
+        }
+    }
+    return names;
+}
+
 QString filterDisplayName( const PredefinedFilter& filter )
 {
     return filter.name.isEmpty() ? filter.pattern : filter.name;
@@ -488,17 +515,20 @@ MatchLabeler MatchLabeler::fromSearch( const RegularExpressionPattern& search,
     // settings in force before `regex`.
     const auto splitIntoAlternatives = [ & ]( TermSpec& spec, const QString& regex,
                                               QString partOptions ) {
-        // "(*...)" settings only apply at the start of a pattern: such a pattern stays whole.
-        if ( regex.startsWith( QLatin1String( "(*" ) ) ) {
+        // "(*...)" settings only apply at the start of a pattern: such a pattern stays whole, as
+        // does one in free-spacing syntax.
+        if ( regex.startsWith( QLatin1String( "(*" ) ) || usesFreeSpacing( partOptions + regex ) ) {
             return;
         }
+        QStringList texts;
         for ( const auto& alternative : scanTopLevelAlternatives( regex ) ) {
             if ( alternative.text != alternative.optionSettings ) {
                 spec.partPatterns.append( termPattern( partOptions + alternative.text, false ) );
-                spec.partNames.append( alternativeDisplayName( alternative.text ) );
+                texts.append( alternative.text );
             }
             partOptions += alternative.optionSettings;
         }
+        spec.partNames = distinctDisplayNames( texts );
         if ( spec.partPatterns.size() < 2 ) {
             spec.partPatterns.clear();
             spec.partNames.clear();
@@ -550,17 +580,25 @@ MatchLabeler MatchLabeler::fromSearch( const RegularExpressionPattern& search,
             return {};
         }
     }
-    else if ( !search.isPlainText && !search.pattern.startsWith( QLatin1String( "(*" ) ) ) {
+    else if ( !search.isPlainText && !search.pattern.startsWith( QLatin1String( "(*" ) )
+              && !usesFreeSpacing( search.pattern ) ) {
         // A pattern starting with "(*...)" settings is kept whole: they only apply at its start.
+        // So is one in free-spacing syntax, whose comments may hold a '|'.
         QString inheritedOptions;
+        QStringList texts;
+        QStringList expressions;
         for ( const auto& alternative : scanTopLevelAlternatives( search.pattern ) ) {
             // An empty alternative (or one of option settings only) matches every line and
             // names nothing.
             if ( alternative.text != alternative.optionSettings ) {
-                addTerm( alternativeDisplayName( alternative.text ),
-                         inheritedOptions + alternative.text, false );
+                texts.append( alternative.text );
+                expressions.append( inheritedOptions + alternative.text );
             }
             inheritedOptions += alternative.optionSettings;
+        }
+        const auto names = distinctDisplayNames( texts );
+        for ( int i = 0; i < names.size(); ++i ) {
+            addTerm( names.at( i ), expressions.at( i ), false );
         }
     }
     else {

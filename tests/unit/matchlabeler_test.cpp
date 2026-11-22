@@ -375,3 +375,26 @@ TEST_CASE( "labels_one_quoted_term_of_alternatives", "[workbench][U14]" )
     const auto single = MatchLabeler::fromSearch( booleanSearch( quotedOr( { R"(id=\d+)" } ) ) );
     CHECK( single.label( "event id=4711 done" ) == "id=4711" );
 }
+
+TEST_CASE( "labels_free_spacing_and_lookahead_alternatives", "[workbench][U14]" )
+{
+    // In free-spacing syntax a '|' inside a comment is no alternative: the term stays whole.
+    const QString extended = "(?x)foo # ignored | fake\n|bar";
+    const auto quoted
+        = MatchLabeler::fromSearch( booleanSearch( quotedOr( { extended, "zzz" } ) ) );
+    CHECK( quoted.label( "foo fake" ) == extended );
+    const auto typed = MatchLabeler::fromSearch( regexSearch( extended ) );
+    CHECK( typed.label( "x foo y" ) == "foo" );
+    // "(?-x)" turns it off: that pattern is split as usual.
+    const auto off = MatchLabeler::fromSearch( regexSearch( "(?-x)warn|error" ) );
+    CHECK( off.label( "error 5" ) == "error" );
+
+    // Alternatives that differ only by a lookahead keep it in their names.
+    const auto lookahead = MatchLabeler::fromSearch( regexSearch( "foo(?=bar)|foo(?=baz)" ) );
+    CHECK( lookahead.label( "foobar" ) == "foo(?=bar)" );
+    CHECK( lookahead.label( "foobaz" ) == "foo(?=baz)" );
+    const auto named
+        = MatchLabeler::fromSearch( booleanSearch( quotedOr( { "foo(?=bar)|foo(?=baz)" } ) ), {},
+                                    { filter( "Foo", "foo(?=bar)|foo(?=baz)", true ) } );
+    CHECK( named.label( "foobaz" ) == "Foo: foo(?=baz)" );
+}

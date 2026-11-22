@@ -2412,7 +2412,14 @@ void CrawlerWidget::closeFilteredView( int tabIndex )
 
 void CrawlerWidget::filteredViewDestroyed( QObject* view )
 {
-    filteredViewsData_.erase( qobject_cast<FilteredView*>( view ) );
+    // destroyed() comes after ~FilteredView, so qobject_cast no longer finds a FilteredView: the
+    // entry is found by the QObject address of its key (a static_cast only adjusts the pointer).
+    const auto entry = std::find_if(
+        filteredViewsData_.begin(), filteredViewsData_.end(),
+        [ view ]( const auto& item ) { return static_cast<QObject*>( item.first ) == view; } );
+    if ( entry != filteredViewsData_.end() ) {
+        filteredViewsData_.erase( entry );
+    }
     // Keyed by the QObject address, which destroyed() still reports.
     viewFilterSelections_.erase( view );
 }

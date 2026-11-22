@@ -326,6 +326,18 @@ struct CrawlerWidget::access_by<CrawlerWidgetPrivate> {
         crawler->reloadPredefinedFilters();
     }
 
+    // Closes a filtered-view tab and runs its deferred deletion.
+    void closeFilteredTab( int index )
+    {
+        crawler->closeFilteredView( index );
+        QCoreApplication::sendPostedEvents( nullptr, QEvent::DeferredDelete );
+    }
+
+    size_t filteredViewsDataCount() const
+    {
+        return crawler->filteredViewsData_.size();
+    }
+
     // The search text as a session restore or the search history puts it in the box: no
     // filter is ticked.
     void restoreSearchText( const QString& text )
@@ -1301,6 +1313,17 @@ TEST_CASE( "matched_by_follows_renamed_and_deleted_filters", "[workbench][U14][u
     REQUIRE( waitUiState( [ & ] { return visitor.getLogFilteredNbLines() == 1_lcount; } ) );
     auto* view = visitor.activeFilteredView();
     REQUIRE( waitUiState( [ & ] { return view->matchedByText( 0_lnum ) == "Warnings"; } ) );
+
+    // A kept tab that is closed leaves no view behind for the relabelling below.
+    visitor.keepNextSearchResults();
+    visitor.applyPredefinedFilters( { warnings } );
+    visitor.runSearch();
+    REQUIRE( visitor.filteredTabCount() == 2 );
+    REQUIRE( waitUiState( [ & ] { return visitor.getLogFilteredNbLines() == 1_lcount; } ) );
+    REQUIRE( visitor.filteredViewsDataCount() == 2 );
+    visitor.selectFilteredTab( 0 );
+    visitor.closeFilteredTab( 1 );
+    CHECK( visitor.filteredViewsDataCount() == 1 );
 
     // Renamed while its results are shown: the labels follow without a new search.
     visitor.offerPredefinedFilters(
