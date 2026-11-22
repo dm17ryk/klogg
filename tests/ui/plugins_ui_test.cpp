@@ -11,6 +11,7 @@
 #include <QJsonDocument>
 #include <QLineEdit>
 #include <QMenu>
+#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QTabWidget>
 #include <QTableWidget>
@@ -289,4 +290,131 @@ TEST_CASE( "Plugin actions and views honour toolbar, menu and icon manifest keys
     };
     CHECK( QTest::qWaitFor( [ & ] { return showsGreen( "pluginViewAction_org.test.e14_main" ); }, 5000 ) );
     CHECK( QTest::qWaitFor( [ & ] { return showsGreen( "pluginViewAction_org.test.e14_other" ); }, 5000 ) );
+}
+
+TEST_CASE( "Configure shows where a plugin came from, why it fails and reinstalls it",
+           "[ui][plugins][source]" )
+{
+    QTemporaryDir temp;
+    const QString pluginId = "org.test.local";
+    // A plugin installed from a local folder whose program cannot start (build 1374: the CPF
+    // plugin failed and the window did not say where it came from or why).
+    const auto source = QDir( temp.path() ).filePath( "source/" + pluginId );
+    REQUIRE( QDir().mkpath( source ) );
+    // The package needs its program to install; the installed copy loses it below.
+    const auto executable = QFileInfo( QString::fromUtf8( PLUGIN_FIXTURE_PATH ) ).fileName();
+    REQUIRE( QFile::copy( QString::fromUtf8( PLUGIN_FIXTURE_PATH ),
+                          QDir( source ).filePath( executable ) ) );
+    QFile manifest( QDir( source ).filePath( "plugin.json" ) );
+    REQUIRE( manifest.open( QIODevice::WriteOnly ) );
+    const QJsonObject description{
+        { "id", pluginId },
+        { "name", "Local fixture" },
+        { "version", "1.0.0" },
+        { "protocol_version", 1 },
+        { "executable", executable },
+        { "capabilities", QJsonArray{ "tool" } },
+        { "actions", QJsonArray{ QJsonObject{ { "id", "summary" }, { "capability", "tool" } } } },
+        { "configuration",
+          QJsonArray{ QJsonObject{ { "id", "count" }, { "type", "integer" }, { "default", 1 } } } }
+    };
+    REQUIRE( manifest.write( QJsonDocument( description ).toJson() ) > 0 );
+    manifest.close();
+    const auto shipped = QDir( temp.path() ).filePath( "shipped" );
+    REQUIRE( QDir().mkpath( shipped ) );
+    cilogg::plugins::PluginManager manager( QDir( temp.path() ).filePath( "data" ), shipped );
+    const auto install = manager.manage( "install", pluginId, { { "path", source } } );
+    REQUIRE( install.ok() );
+    const auto installJob = install.payload.value( "jobId" ).toString();
+    REQUIRE( QTest::qWaitFor(
+        [ & ] { return manager.job( installJob ).payload.value( "state" ) == "completed"; },
+        10000 ) );
+    REQUIRE( QFile::remove( QDir( manager.pluginDirectory( pluginId ) ).filePath( executable ) ) );
+    REQUIRE( manager.manage( "enable", pluginId, {} ).ok() );
+    REQUIRE( manager.invoke( pluginId, "summary", {}, {} ).ok() );
+    REQUIRE( QTest::qWaitFor(
+        [ & ] { return manager.plugins()[ 0 ].toMap().value( "state" ) == "failed"; }, 10000 ) );
+
+    auto session = std::make_shared<Session>();
+    MainWindow window( WindowSession{ session, "PluginSource", 0 } );
+    QList<CommanderRequest> requests;
+    window.setPluginManager( manager, [ &requests ]( const CommanderRequest& request ) {
+        requests.append( request );
+        return CommanderResult{};
+    } );
+    window.show();
+    window.findChild<QAction*>( "managePluginsAction" )->trigger();
+    auto* manage = window.findChild<QDialog*>( "pluginsAndPacksDialog" );
+    REQUIRE( manage );
+    auto* table = manage->findChild<QTableWidget*>( "pluginManagerTable" );
+    REQUIRE( table->rowCount() == 1 );
+    table->selectRow( 0 );
+    // The Installed tab names the folder, and Reinstall and Change Source apply to it.
+    CHECK( table->item( 0, 3 )->text().contains( QDir::toNativeSeparators( source ) ) );
+    CHECK( manage->findChild<QPushButton*>( "pluginManage_reinstall" )->isEnabled() );
+    CHECK( manage->findChild<QPushButton*>( "pluginManage_setSource" )->isEnabled() );
+
+    QString shownPath;
+    QString shownProblem;
+    QTimer::singleShot( 0, manage, [ & ] {
+        // No REQUIRE here: an exception must not cross the event loop.
+        auto* form = manage->findChild<QDialog*>( "pluginFormDialog" );
+        auto* path = form ? form->findChild<QLineEdit*>( "pluginSourcePath" ) : nullptr;
+        auto* problem
+            = form ? form->findChild<QPlainTextEdit*>( "pluginSourceDiagnostics" ) : nullptr;
+        auto* reinstall = form ? form->findChild<QPushButton*>( "pluginSourceReinstall" ) : nullptr;
+        if ( !path || !problem || !reinstall ) {
+            if ( form ) {
+                form->reject();
+            }
+            return;
+        }
+        shownPath = path->text();
+        shownProblem = problem->toPlainText();
+        reinstall->click();
+    } );
+    manage->findChild<QPushButton*>( "pluginManage_configure" )->click();
+    CHECK( shownPath == QDir::toNativeSeparators( source ) );
+    CHECK( shownProblem.contains( "Cannot start" ) );
+    CHECK( shownProblem.contains( executable ) );
+    REQUIRE_FALSE( requests.isEmpty() );
+    CHECK( requests.back().pluginOperation == "install" );
+    CHECK( requests.back().pluginId == pluginId );
+    CHECK( QDir::cleanPath( requests.back().pluginArguments.value( "path" ).toString() )
+           == QDir::cleanPath( source ) );
+
+    // A repointed folder is saved with OK, before the configuration.
+    const auto moved = QDir( temp.path() ).filePath( "moved" );
+    requests.clear();
+    bool reinstallWithoutPath = true;
+    QTimer::singleShot( 0, manage, [ & ] {
+        auto* form = manage->findChild<QDialog*>( "pluginFormDialog" );
+        auto* path = form ? form->findChild<QLineEdit*>( "pluginSourcePath" ) : nullptr;
+        auto* reinstall = form ? form->findChild<QPushButton*>( "pluginSourceReinstall" ) : nullptr;
+        if ( !path || !reinstall ) {
+            if ( form ) {
+                form->reject();
+            }
+            return;
+        }
+        // Without a folder or ZIP there is nothing to reinstall from.
+        path->clear();
+        reinstallWithoutPath = reinstall->isEnabled();
+        path->setText( moved );
+        form->findChild<QPushButton*>( "pluginFormAccept" )->click();
+    } );
+    manage->findChild<QPushButton*>( "pluginManage_configure" )->click();
+    CHECK_FALSE( reinstallWithoutPath );
+    REQUIRE( requests.size() == 2 );
+    CHECK( requests.at( 0 ).pluginOperation == "set_source" );
+    CHECK( QDir::cleanPath( requests.at( 0 ).pluginArguments.value( "path" ).toString() )
+           == QDir::cleanPath( moved ) );
+    CHECK( requests.at( 1 ).pluginOperation == "configure" );
+
+    // The details pane explains the failure in words before the raw fields.
+    auto* details = manage->findChild<QPlainTextEdit*>( "pluginDiagnostics" );
+    REQUIRE( details );
+    CHECK( QTest::qWaitFor(
+        [ & ] { return details->toPlainText().startsWith( "Error: Cannot start" ); }, 5000 ) );
+    manage->close();
 }

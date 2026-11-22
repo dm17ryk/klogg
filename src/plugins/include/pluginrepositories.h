@@ -87,8 +87,15 @@ public:
     void setCredentialSource( const QString& id, const QString& credentialSource );
 
     InstallSource source( const QString& pluginId ) const;
+    // A repository source replaces a recorded local source; clearSource() removes both.
     void setSource( const QString& pluginId, const InstallSource& source );
     void clearSource( const QString& pluginId );
+    // The folder or ZIP a plugin was installed from without a repository; empty when unknown
+    // (installed before CILogg recorded it).
+    QString localSource( const QString& pluginId ) const;
+    // "folder" or "zip", decided when the path was recorded; empty when unknown.
+    QString localSourceKind( const QString& pluginId ) const;
+    void setLocalSource( const QString& pluginId, const QString& path );
 
     // The form two addresses are compared in: scheme and host lower case, default port and
     // fragment removed, path segments normalized.
