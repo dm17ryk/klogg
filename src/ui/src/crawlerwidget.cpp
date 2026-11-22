@@ -517,8 +517,18 @@ bool CrawlerWidget::isKeepSearchResultsEnabled() const
 
 void CrawlerWidget::reloadPredefinedFilters()
 {
+    const auto before = predefinedFilters_->filters();
     predefinedFilters_->populatePredefinedFilters();
-    refreshMatchLabelers();
+    const auto after = predefinedFilters_->filters();
+    const auto same = []( const PredefinedFilter& left, const PredefinedFilter& right ) {
+        return left.id == right.id && left.name == right.name && left.pattern == right.pattern
+               && left.useRegex == right.useRegex;
+    };
+    // Any settings change reloads the list; labels are rebuilt only when a filter changed.
+    if ( before.size() != after.size()
+         || !std::equal( before.cbegin(), before.cend(), after.cbegin(), same ) ) {
+        refreshMatchLabelers();
+    }
 }
 
 void CrawlerWidget::refreshMatchLabelers()
