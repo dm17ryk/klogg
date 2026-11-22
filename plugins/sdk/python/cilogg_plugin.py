@@ -8,8 +8,10 @@ menu builders), choices, check boxes, radio buttons, new field kinds, validation
 completion (`choice`, `checkbox`, `radio_group`, `check_group`, `@plugin.complete`), rich tables
 and element context menus (`cell`, the new `table`, `table_column` and `table_row` keys,
 `select_rows`), trees and file trees (`tree`, `tree_node`, `file_tree`, the node patch helpers,
-`@plugin.tree_children`) and forward compatibility with newer hosts. See docs/plugin-sdk.md and
-docs/plugin-sdk-advanced.md.
+`@plugin.tree_children`), layout, content and dialogs (`tabs`, `tab`, `splitter`, `form`, `grid`,
+`separator`, `spacer`, `text_view`, `image`, `sparkline`, `chart`, the new button keys,
+`append_text`, `append_points`, `clear_chart`, `focus_element`) and forward compatibility with
+newer hosts. See docs/plugin-sdk.md and docs/plugin-sdk-advanced.md.
 """
 from __future__ import annotations
 
@@ -161,6 +163,49 @@ _TREE_TYPES = frozenset({"tree", "file_tree"})
 # them on a host with trees).
 _TREE_SHARED_KEYS = frozenset({"header", "toggle_selection", "copy", "export", "reorderable",
                                "context_menu"})
+
+# Layout, content and dialogs (docs/plugin-sdk-advanced.md, sections 12 and 29; host features
+# layout, text_view, images, charts and view_dialogs).
+TAB_POSITIONS = ("top", "bottom", "left", "right")
+ELEMENT_ALIGNMENTS = ("left", "center", "right", "top", "bottom", "fill")  # the `align` size hint
+TEXT_FORMATS = ("plain", "markdown")
+IMAGE_SCALES = ("fit", "fill", "none")
+SPARKLINE_KINDS = ("line", "bar")
+CHART_KINDS = ("line", "bar", "scatter", "area")
+X_KINDS = ("number", "time")
+BUTTON_STYLES = ("push", "tool", "link")
+DIALOG_BUTTONS = ("ok", "cancel", "apply", "close", "yes", "no")
+DIALOG_BUTTONS_ELEMENT = "#buttons"  # the element_id of a dialog button's `clicked` event
+MAX_TEXT_VIEW_CHARS = 1048576  # the whole text of a text_view
+MAX_TEXT_APPEND_CHARS = 65536  # one append patch
+MAX_TEXT_VIEW_LINES = 100000  # max_lines
+MAX_CHART_SERIES = 8
+MAX_CHART_POINTS = 10000  # points of one series, and a chart's largest window
+MAX_SPARKLINE_VALUES = 1024
+MAX_GRID_COLUMNS = 12
+MAX_BADGE_CHARS = 64
+MAX_IMAGE_SIZE = 4096  # an image's width and height
+MAX_SPACER_SIZE = 2000
+MAX_STRETCH = 100
+# What update() and patch() convert or remove on a host without the feature.
+_SIZE_HINT_KEYS = frozenset({"stretch", "min_width", "max_width", "min_height", "max_height",
+                             "align", "span", "row_span"})
+# The layout containers an older host gets as a column (a tab: a group), with their own keys.
+_LAYOUT_CONVERTED: Dict[str, FrozenSet[str]] = {
+    "tabs": frozenset({"current", "position"}), "tab": frozenset({"icon", "badge"}),
+    "splitter": frozenset({"orientation", "sizes"}), "form": frozenset(),
+    "grid": frozenset({"columns"})}
+_LAYOUT_ONLY_KEYS = frozenset({"current", "position", "sizes", "badge"})  # no other element has them
+_SPACING_TYPES = frozenset({"separator", "spacer"})  # left out on a host without layout
+_CONTENT_TYPES = frozenset({"text_view", "image", "sparkline", "chart"})  # never converted
+_CONTAINER_TYPES = frozenset({"column", "row", "group", "tabs", "tab", "splitter", "form", "grid"})
+_BUSY_KEYS = frozenset({"busy", "busy_text", "busy_cancel"})  # containers and the root
+_BUTTON_KEYS = frozenset({"icon", "style", "menu", "checkable", "checked", "shortcut", "default"})
+_BUTTON_ONLY_KEYS = frozenset({"menu", "checkable", "checked", "shortcut", "default"})
+_ROOT_KEYS = frozenset({"modified", "close_confirm"})  # keys of a view's root element
+_TEXT_PATCH_KEYS = frozenset({"append"})  # the text_view feature
+_CHART_PATCH_KEYS = frozenset({"append_points", "clear"})  # the charts feature
+_FOCUS_PATCH_KEYS = frozenset({"focus"})  # the view_dialogs feature
 
 
 # Message shapes (docs/plugin-sdk.md and docs/plugin-sdk-advanced.md). Keys of the
@@ -446,7 +491,10 @@ RequiresValid = Union[bool, List[str]]
 
 
 class ElementProperties(TypedDict, total=False):
-    """Properties every view element takes."""
+    """Properties every view element takes. The size hints (host feature layout; update() and
+    patch() remove them on an older host) are `stretch` (0..100, a share of the free space),
+    `min_width`, `max_width`, `min_height`, `max_height` (0..10000 pixels; a maximum of 0 is
+    none), `align` (ELEMENT_ALIGNMENTS) and, in a grid, `span` and `row_span`."""
     id: str
     enabled: bool
     visible: bool
@@ -455,6 +503,14 @@ class ElementProperties(TypedDict, total=False):
     tooltip_key: str
     accessible_name: str
     accessible_description: str
+    stretch: int
+    min_width: int
+    max_width: int
+    min_height: int
+    max_height: int
+    align: str  # ELEMENT_ALIGNMENTS
+    span: int
+    row_span: int
 
 
 class FieldElement(ElementProperties, total=False):
@@ -756,10 +812,181 @@ class FileActivatedValue(TypedDict):
     path: str
 
 
+class ContainerElement(ElementProperties, total=False):
+    """A `column`, `row` or `group` and the keys every container has. `busy`, `busy_text` and
+    `busy_cancel` (host feature view_dialogs) cover the container's contents with a busy
+    indicator, with Cancel (a `cancel` event) when busy_cancel is true; `modified` and
+    `close_confirm` are keys of the view's root element only."""
+    type: str
+    children: List[JsonObject]
+    busy: bool
+    busy_text: str
+    busy_cancel: bool
+    modified: bool
+    close_confirm: str
+
+
+class TabsElement(ContainerElement, total=False):
+    """A `tabs` element (host feature layout): its children are `tab` elements; `current` is a
+    tab id (or index) and `position` one of TAB_POSITIONS. On an older host update() sends a
+    column of groups."""
+    current: Union[str, int]
+    position: str
+
+
+class TabElement(ContainerElement, total=False):
+    """A `tab` of a `tabs` element (host feature layout): its children are laid out as a
+    column, `badge` (at most 64 characters) shows after the title. On an older host update()
+    sends a group titled like the tab."""
+    title: str
+    icon: IconRef
+    badge: str
+
+
+class SplitterElement(ContainerElement, total=False):
+    """A `splitter` (host feature layout): each child is a pane; `sizes` are pixels per pane,
+    and the host keeps the sizes the user drags. On an older host update() sends a column of
+    rows."""
+    orientation: str  # horizontal (default) or vertical
+    sizes: List[int]
+
+
+class FormElement(ContainerElement, total=False):
+    """A `form` (host feature layout): two aligned columns, the captions (a field's label, the
+    `label` of any other child but a button) and the controls."""
+
+
+class GridElement(ContainerElement, total=False):
+    """A `grid` (host feature layout): `columns` (1..12, default 2) filled from left to right;
+    children take `span` and `row_span`."""
+    columns: int
+
+
+class SeparatorElement(ElementProperties, total=False):
+    """A line (host feature layout; left out on an older host)."""
+    type: str  # separator
+    orientation: str  # horizontal or vertical; default: vertical in a row
+
+
+class SpacerElement(ElementProperties, total=False):
+    """Empty space (host feature layout; left out on an older host): `size` pixels (0..2000)
+    along the parent's direction or `stretch`; with neither it stretches."""
+    type: str  # spacer
+    size: int
+
+
+class TextViewElement(ElementProperties, total=False):
+    """A `text_view` (host feature text_view; an older host skips it): read-only text, plain or
+    Markdown (links send a `link` event with a LinkValue; images only from icon references),
+    with find on Ctrl+F. Add text with append_text()."""
+    type: str  # text_view
+    text: str
+    format: str  # TEXT_FORMATS
+    monospace: bool
+    wrap: bool
+    follow: bool
+    max_lines: int  # 0 (no limit) .. 100000, plain text only
+
+
+class ImageElement(ElementProperties, total=False):
+    """An `image` (host feature images; an older host skips it): an icon reference, a plugin
+    file or a registered picture (png_icon(..., picture=True))."""
+    type: str  # image
+    source: IconRef
+    width: int
+    height: int
+    scale: str  # IMAGE_SCALES
+    alt: str
+
+
+class SparklineElement(ElementProperties, total=False):
+    """A `sparkline` (host feature charts; an older host skips it): at most 1,024 values, None
+    being a gap."""
+    type: str  # sparkline
+    values: List[Optional[float]]
+    min: float
+    max: float
+    kind: str  # SPARKLINE_KINDS
+    tone: str  # CELL_TONES
+
+
+ChartPoint = Union[float, List[float]]  # y at its position in the list, or [x, y]
+
+
+class _ChartSeriesRequired(TypedDict):
+    id: str
+    points: List[ChartPoint]
+
+
+class ChartSeries(_ChartSeriesRequired, total=False):
+    """One series of a chart: at most 10,000 points; without `tone` it takes the next colour
+    of the host's palette."""
+    title: str
+    tone: str  # CELL_TONES
+
+
+class ChartElement(ElementProperties, total=False):
+    """A `chart` (host feature charts; an older host skips it): at most 8 series. Add points
+    with append_points() and remove them with clear_chart()."""
+    type: str  # chart
+    kind: str  # CHART_KINDS
+    series: List[ChartSeries]
+    x_title: str
+    y_title: str
+    x_kind: str  # X_KINDS; time: x in milliseconds since the epoch
+    legend: bool
+    window: int  # 1..10000: each series keeps its last points
+
+
+class ButtonElement(ElementProperties, total=False):
+    """A `button`. The keys after `requires_valid` need the host feature view_dialogs."""
+    type: str  # button
+    label: str
+    action: str
+    arguments: JsonObject
+    event: bool
+    tone: str
+    confirm: JsonObject
+    save_dialog: JsonObject
+    requires_valid: RequiresValid
+    icon: IconRef
+    style: str  # BUTTON_STYLES
+    menu: str  # an element menu shown as the button's drop-down
+    checkable: bool
+    checked: bool
+    shortcut: str
+    default: bool
+
+
+class LinkValue(TypedDict):
+    """The value of a text view's `link` event: the link the user clicked (never opened by the
+    host)."""
+    href: str
+
+
+class AppendPointsValue(TypedDict):
+    """The `append_points` of a chart patch entry."""
+    series: str
+    points: List[ChartPoint]
+
+
+class ContentPatch(_SelectionPatchRequired, total=False):
+    """Patch entries of E17f: `append` adds text to a text view (host feature text_view),
+    `append_points` adds points to a chart series and `clear` (True or series ids) empties a
+    chart (charts), and `focus` gives an element the keyboard focus while the view is active
+    (view_dialogs). On an older host patch() leaves them out."""
+    append: str
+    append_points: Union[AppendPointsValue, List[AppendPointsValue]]
+    clear: Union[bool, List[str]]
+    focus: bool
+
+
 class _ViewEventParamsRequired(TypedDict):
     view_id: str
     element_id: str
-    type: str  # changed, clicked, selected, edited, activated, checked, moved, expanded, collapsed
+    # changed, clicked, selected, edited, activated, checked, moved, expanded, collapsed, link,
+    # cancel
+    type: str
 
 
 class ViewEventParams(_ViewEventParamsRequired, total=False):
@@ -776,7 +1003,12 @@ class ViewEventParams(_ViewEventParamsRequired, total=False):
     `checked`, `moved`, `expanded` and `collapsed` carry TreeActivatedValue, TreeCheckedValue,
     TreeMovedValue and TreeExpandValue, and `edited` has `node_id`, `column_id` (None in a tree
     without columns) and `previous` (sent to every plugin). A file tree's `selected` event
-    carries the paths (forward slashes) and `activated` a FileActivatedValue."""
+    carries the paths (forward slashes) and `activated` a FileActivatedValue.
+
+    E17f: a `tabs` element sends `changed` with the tab's id (None for a tab without an id) and
+    `index`; a text view sends `link` with a LinkValue; a busy container's Cancel sends `cancel`
+    (value None); a checkable button sends `changed` with its new state; a dialog button sends
+    `clicked` with element_id DIALOG_BUTTONS_ELEMENT ("#buttons") and the button's name."""
     window_id: str
     value: Any
     inputs: JsonObject
@@ -788,6 +1020,20 @@ class ViewEventParams(_ViewEventParamsRequired, total=False):
     node_id: str
     column_id: Optional[str]
     previous: str
+    index: int
+
+
+class _ViewClosedParamsRequired(TypedDict):
+    view_id: str
+
+
+class ViewClosedParams(_ViewClosedParamsRequired, total=False):
+    """A view/closed. For a dialog that declares `buttons` (host feature view_dialogs) it also
+    carries `result`, the DIALOG_BUTTONS name of the button that closed it (None when it closed
+    otherwise), and `inputs`, the view's inputs at that moment."""
+    window_id: str
+    result: Optional[str]
+    inputs: JsonObject
 
 
 class _CompleteParamsRequired(TypedDict):
@@ -980,12 +1226,33 @@ def button(id: str, label: str, action: Optional[str] = None,
            tone: Optional[str] = None, confirm: Optional[JsonObject] = None,
            save_dialog: Optional[JsonObject] = None, *,
            requires_valid: Union[bool, Sequence[str], None] = None,
-           **props: Any) -> JsonObject:
-    """A button. `requires_valid` (host feature validation) keeps it disabled until every
-    field of the view (True) or the listed fields are valid."""
+           icon: Optional[IconRef] = None, style: Optional[str] = None,
+           menu: Optional[str] = None, checkable: Optional[bool] = None,
+           checked: Optional[bool] = None, shortcut: Optional[str] = None,
+           default: Optional[bool] = None, **props: Any) -> JsonObject:
+    """A button (ButtonElement). `requires_valid` (host feature validation) keeps it disabled
+    until every field of the view (True) or the listed fields are valid.
+
+    Keys of the host feature view_dialogs (update() and patch() remove them on an older host):
+    `icon`, `style` (BUTTON_STYLES: push, the default; tool: flat; link: link-coloured text),
+    `menu` (the id of a plugin.json menu with location "element": the button opens it as a
+    drop-down and does nothing else; its entries get the button as the element), `checkable`
+    and `checked` (a checkable button sends `changed` with its new state instead of `clicked`
+    or its action), `shortcut` (a key sequence that presses the button while the focus is in
+    the view) and `default` (Enter in the view presses it). Raises ValueError for a combination
+    the host refuses."""
+    _check_one_of("style", style, BUTTON_STYLES)
+    if menu is not None and (not isinstance(menu, str) or not menu or "/" in menu):
+        raise ValueError(f"menu is the id of a menu with location element: {menu!r}")
+    if checked is not None and not checkable:
+        raise ValueError("checked needs checkable=True")
+    if shortcut is not None and (not isinstance(shortcut, str) or not shortcut):
+        raise ValueError('A button shortcut is a key sequence such as "Ctrl+Alt+L"')
     return _element("button", id, label=label, action=action, arguments=arguments,
                     event=event, tone=tone, confirm=confirm, save_dialog=save_dialog,
-                    requires_valid=_requires_valid(requires_valid), **props)
+                    requires_valid=_requires_valid(requires_valid), icon=icon, style=style,
+                    menu=menu, checkable=checkable, checked=checked, shortcut=shortcut,
+                    default=default, **props)
 
 
 def checkbox(id: str, text: str, value: Optional[bool] = False, *,
@@ -1432,6 +1699,255 @@ def file_tree(id: str, roots: Sequence[str], *, filters: Optional[Sequence[str]]
                     context_menu=context_menu, copy=copy, **props)
 
 
+# Layout containers, content elements and their checks (host features layout, text_view,
+# images and charts; docs/plugin-sdk-advanced.md, sections 12 and 29). Every element also takes
+# the size hints of ElementProperties as keyword properties, and every container `busy`,
+# `busy_text` and `busy_cancel` (view_dialogs).
+def _check_whole(name: str, value: Any, low: int, high: int) -> None:
+    if value is not None and (not _is_number(value, True) or not low <= value <= high):
+        raise ValueError(f"{name} is a whole number from {low} to {high}, not {value!r}")
+
+
+def _children_list(name: str, children: Sequence[Any]) -> List[JsonObject]:
+    items = list(children)
+    for child in items:
+        if not isinstance(child, collections.abc.Mapping):
+            raise ValueError(f"A child of a {name} is an element (a dict), not "
+                             f"{type(child).__name__}")
+    return cast(List[JsonObject], items)
+
+
+def tab(title: str, *children: JsonObject, id: Optional[str] = None,
+        icon: Optional[IconRef] = None, badge: Any = None, **props: Any) -> JsonObject:
+    """A tab of tabs() (TabElement, host feature layout): its children are laid out as a
+    column. `icon` shows on the tab and `badge` (a short count or text, at most
+    MAX_BADGE_CHARS characters; other values are converted with str()) after the title. On an
+    older host update() sends a group titled like the tab, without the icon and the badge."""
+    if not isinstance(title, str):
+        raise ValueError("A tab title is a string")
+    if badge is not None and not isinstance(badge, str):
+        badge = str(badge)
+    if badge is not None and len(badge) > MAX_BADGE_CHARS:
+        raise ValueError(f"A tab badge has at most {MAX_BADGE_CHARS} characters")
+    return _element("tab", id, title=title, icon=icon, badge=badge,
+                    children=_children_list("tab", children), **props)
+
+
+def tabs(id: str, *tabs: JsonObject, current: Union[str, int, None] = None,
+         position: Optional[str] = None, **props: Any) -> JsonObject:
+    """Tabs (TabsElement, host feature layout) holding tab() elements. `current` is the id or
+    the index of the tab shown first and `position` one of TAB_POSITIONS (default top). When
+    the user changes the tab the plugin gets `changed` with the tab's id and `index`; a
+    `current` set by the plugin sends nothing. On an older host update() sends a column of
+    groups, one per tab."""
+    _check_id("A tabs id", id)
+    _check_one_of("position", position, TAB_POSITIONS)
+    items = _children_list("tabs", tabs)
+    if any(item.get("type") != "tab" for item in items):
+        raise ValueError("The children of tabs are tab() elements")
+    if isinstance(current, str):
+        if current not in [item.get("id") for item in items]:
+            raise ValueError(f"current is the id of one of the tabs, not {current!r}")
+    elif current is not None and (not _is_number(current, True) or not 0 <= current < len(items)):
+        raise ValueError(f"current is a tab id or the index of a tab, not {current!r}")
+    return _element("tabs", id, current=current, position=position, children=items, **props)
+
+
+def splitter(*children: JsonObject, id: Optional[str] = None, orientation: Optional[str] = None,
+             sizes: Optional[Sequence[int]] = None, **props: Any) -> JsonObject:
+    """A splitter (SplitterElement, host feature layout): each child is a pane, side by side
+    (`orientation` horizontal, the default) or stacked (vertical). `sizes` are pixels per pane;
+    the host keeps the sizes the user drags. On an older host update() sends a column of rows
+    (horizontal: one row of every pane; vertical: a row per pane)."""
+    _check_one_of("orientation", orientation, ("horizontal", "vertical"))
+    if sizes is not None:
+        if isinstance(sizes, (str, bytes)) or not isinstance(sizes, collections.abc.Iterable):
+            raise ValueError("sizes is a list of pixels per pane")
+        sizes = list(sizes)
+        for size in sizes:
+            if not _is_number(size, True) or size < 0:
+                raise ValueError(f"A splitter size is a whole number of pixels, not {size!r}")
+    return _element("splitter", id, orientation=orientation, sizes=sizes,
+                    children=_children_list("splitter", children), **props)
+
+
+def form(*children: JsonObject, id: Optional[str] = None, **props: Any) -> JsonObject:
+    """A form (FormElement, host feature layout): captions and controls in two aligned columns.
+    A field's caption is its `label`; any other child but a button may set `label` for its
+    caption; a child without a caption spans both columns. On an older host update() sends a
+    column with one row per child (a caption becomes a label before its element)."""
+    return _element("form", id, children=_children_list("form", children), **props)
+
+
+def grid(*children: JsonObject, columns: Optional[int] = None, id: Optional[str] = None,
+         **props: Any) -> JsonObject:
+    """A grid (GridElement, host feature layout) of `columns` columns (1..MAX_GRID_COLUMNS,
+    default 2) filled from left to right; a child takes `span` columns and `row_span` rows. On
+    an older host update() sends a column of rows of `columns` children each."""
+    _check_whole("columns", columns, 1, MAX_GRID_COLUMNS)
+    return _element("grid", id, columns=columns, children=_children_list("grid", children),
+                    **props)
+
+
+def separator(id: Optional[str] = None, orientation: Optional[str] = None,
+              **props: Any) -> JsonObject:
+    """A line (SeparatorElement, host feature layout): horizontal or vertical (default:
+    vertical in a row, horizontal elsewhere). An older host does not get it."""
+    _check_one_of("orientation", orientation, ("horizontal", "vertical"))
+    return _element("separator", id, orientation=orientation, **props)
+
+
+def spacer(id: Optional[str] = None, size: Optional[int] = None,
+           stretch: Optional[int] = None, **props: Any) -> JsonObject:
+    """Empty space (SpacerElement, host feature layout): `size` pixels (0..MAX_SPACER_SIZE)
+    along the parent's direction, or `stretch` (0..MAX_STRETCH); with neither it stretches. An
+    older host does not get it."""
+    _check_whole("size", size, 0, MAX_SPACER_SIZE)
+    _check_whole("stretch", stretch, 0, MAX_STRETCH)
+    return _element("spacer", id, size=size, stretch=stretch, **props)
+
+
+def text_view(id: str, text: str = "", *, format: Optional[str] = None,
+              monospace: Optional[bool] = None, wrap: Optional[bool] = None,
+              follow: Optional[bool] = None, max_lines: Optional[int] = None,
+              **props: Any) -> JsonObject:
+    """Read-only text (TextViewElement, host feature text_view; an older host skips it, so check
+    plugin.supports("text_view")). `format` is plain (default) or markdown (CommonMark without
+    HTML: images only from icon references, and a click on a link sends `link` {href} instead
+    of opening it). `monospace` (default False), `wrap` (default True), `follow` (scroll to new
+    text) and `max_lines` (0..MAX_TEXT_VIEW_LINES, plain text: the oldest lines go). The text is
+    at most MAX_TEXT_VIEW_CHARS characters; add to it with append_text()."""
+    _check_id("A text view id", id)
+    if not isinstance(text, str) or len(text) > MAX_TEXT_VIEW_CHARS:
+        raise ValueError(f"The text of a text view is a string of at most {MAX_TEXT_VIEW_CHARS} "
+                         "characters")
+    _check_one_of("format", format, TEXT_FORMATS)
+    _check_whole("max_lines", max_lines, 0, MAX_TEXT_VIEW_LINES)
+    return _element("text_view", id, text=text, format=format, monospace=monospace, wrap=wrap,
+                    follow=follow, max_lines=max_lines, **props)
+
+
+def _icon_source(value: Any) -> IconRef:
+    """An icon reference: a non-empty string, or {light, dark} (copied)."""
+    if isinstance(value, str) and value:
+        return value
+    if isinstance(value, collections.abc.Mapping) and ("light" in value or "dark" in value) \
+            and all(isinstance(item, str) and item for item in value.values()):
+        return {str(key): str(item) for key, item in value.items()}
+    raise ValueError(f"An image source is an icon reference (a string or {{light, dark}}), not "
+                     f"{value!r}")
+
+
+def image(id: str, source: IconRef, *, width: Optional[int] = None,
+          height: Optional[int] = None, scale: Optional[str] = None, alt: Optional[str] = None,
+          **props: Any) -> JsonObject:
+    """An image (ImageElement, host feature images; an older host skips it). `source` is an
+    icon reference: a plugin file, builtin_ref(), status_ref(), image_ref() of a picture
+    registered with png_icon(..., picture=True) or svg_icon(..., picture=True), or
+    themed_ref(). `width` and `height` are 1..MAX_IMAGE_SIZE pixels (default: the image's own
+    size), `scale` one of IMAGE_SCALES (fit, the default; fill; none) and `alt` the accessible
+    name, also shown when the source cannot be shown."""
+    _check_id("An image id", id)
+    _check_whole("width", width, 1, MAX_IMAGE_SIZE)
+    _check_whole("height", height, 1, MAX_IMAGE_SIZE)
+    _check_one_of("scale", scale, IMAGE_SCALES)
+    return _element("image", id, source=_icon_source(source), width=width, height=height,
+                    scale=scale, alt=alt, **props)
+
+
+def sparkline(id: str, values: Sequence[Optional[float]], *, min: Optional[float] = None,
+              max: Optional[float] = None, kind: Optional[str] = None,
+              tone: Optional[str] = None, **props: Any) -> JsonObject:
+    """A small line or bar chart (SparklineElement, host feature charts; an older host skips
+    it): at most MAX_SPARKLINE_VALUES `values` (numbers; None is a gap), `min` and `max`
+    (default: the range of the values), `kind` (SPARKLINE_KINDS) and `tone` (CELL_TONES)."""
+    _check_id("A sparkline id", id)
+    if isinstance(values, (str, bytes)) or not isinstance(values, collections.abc.Iterable):
+        raise ValueError("values is a list of numbers")
+    items = list(values)
+    if len(items) > MAX_SPARKLINE_VALUES:
+        raise ValueError(f"A sparkline has at most {MAX_SPARKLINE_VALUES} values")
+    for value in items:
+        if value is not None and not _is_number(value, False):
+            raise ValueError(f"A sparkline value is a finite number or None, not {value!r}")
+    for name, bound in (("min", min), ("max", max)):
+        if bound is not None and not _is_number(bound, False):
+            raise ValueError(f"{name} is a finite number")
+    _check_bounds(min, max, "")
+    _check_one_of("kind", kind, SPARKLINE_KINDS)
+    _check_one_of("tone", tone, CELL_TONES)
+    return _element("sparkline", id, values=items, min=min, max=max, kind=kind, tone=tone,
+                    **props)
+
+
+def _chart_points(points: Any) -> List[ChartPoint]:
+    """Chart points: numbers (y at their position) and [x, y] pairs (lists, copied), at most
+    MAX_CHART_POINTS."""
+    if isinstance(points, (str, bytes)) or not isinstance(points, collections.abc.Iterable):
+        raise ValueError("points is a list of numbers or [x, y] pairs")
+    result: List[ChartPoint] = []
+    for point in points:
+        if _is_number(point, False):
+            result.append(point)
+        elif isinstance(point, collections.abc.Sequence) and not isinstance(point, (str, bytes)) \
+                and len(point) == 2 and all(_is_number(item, False) for item in point):
+            result.append(list(point))
+        else:
+            raise ValueError(f"A chart point is a finite number or an [x, y] pair, not {point!r}")
+        if len(result) > MAX_CHART_POINTS:
+            raise ValueError(f"A chart series has at most {MAX_CHART_POINTS} points")
+    return result
+
+
+def _series_copy(series: Any) -> ChartSeries:
+    if not isinstance(series, collections.abc.Mapping):
+        raise ValueError(f"A chart series is a dict (see chart_series()), not "
+                         f"{type(series).__name__}")
+    copy = dict(series)
+    _check_id("A chart series id", copy.get("id"))
+    copy["points"] = _chart_points(copy.get("points", []))
+    _check_one_of("tone", copy.get("tone"), CELL_TONES)
+    return cast(ChartSeries, copy)
+
+
+def chart_series(id: str, points: Sequence[Any], *, title: Optional[str] = None,
+                 tone: Optional[str] = None) -> ChartSeries:
+    """One series of chart() (ChartSeries): `points` are numbers (y at their position in the
+    list) or [x, y] pairs, at most MAX_CHART_POINTS; `title` shows in the legend and `tone`
+    (CELL_TONES) is its colour (default: the next colour of the host's palette)."""
+    series: JsonObject = {"id": id, "points": points}
+    if title is not None:
+        series["title"] = title
+    if tone is not None:
+        series["tone"] = tone
+    return _series_copy(series)
+
+
+def chart(id: str, series: Sequence[Mapping[str, Any]], *, kind: Optional[str] = None,
+          x_title: Optional[str] = None, y_title: Optional[str] = None,
+          x_kind: Optional[str] = None, legend: Optional[bool] = None,
+          window: Optional[int] = None, **props: Any) -> JsonObject:
+    """A chart (ChartElement, host feature charts; an older host skips it) drawn by the host:
+    at most MAX_CHART_SERIES chart_series() with distinct ids, `kind` (CHART_KINDS: line, the
+    default, bar, scatter or area), axis titles, `x_kind` (X_KINDS: number, or time with x in
+    milliseconds since the epoch), `legend` (default: shown with more than one series) and
+    `window` (1..MAX_CHART_POINTS: each series keeps its last points). Add points with
+    append_points() and remove them with clear_chart()."""
+    _check_id("A chart id", id)
+    if isinstance(series, (str, bytes)) or not isinstance(series, collections.abc.Iterable):
+        raise ValueError("series is a list of chart_series()")
+    copies = [_series_copy(item) for item in series]
+    if len(copies) > MAX_CHART_SERIES:
+        raise ValueError(f"A chart has at most {MAX_CHART_SERIES} series")
+    if len({item["id"] for item in copies}) < len(copies):
+        raise ValueError("The series of a chart have distinct ids")
+    _check_one_of("kind", kind, CHART_KINDS)
+    _check_one_of("x_kind", x_kind, X_KINDS)
+    _check_whole("window", window, 1, MAX_CHART_POINTS)
+    return _element("chart", id, kind=kind, series=copies, x_title=x_title, y_title=y_title,
+                    x_kind=x_kind, legend=legend, window=window, **props)
+
+
 # Patch entries for Plugin.patch().
 def set_props(element_id: str, **props: Any) -> JsonObject:
     return {"id": element_id, "set": props}
@@ -1559,6 +2075,43 @@ def select_nodes(tree_id: str, node_ids: Optional[Sequence[str]] = None, *,
     if node_ids is None and current is None and scroll_to is None:
         raise ValueError("A selection patch needs node_ids, current or scroll_to")
     return select_rows(tree_id, node_ids, current=current, scroll_to=scroll_to)
+
+
+# Content and focus patch entries (ContentPatch). On a host without the feature patch() leaves
+# them out: append without text_view, append_points and clear without charts, focus without
+# view_dialogs.
+def append_text(text_view_id: str, text: str) -> JsonObject:
+    """Add text at the end of a text view (at most MAX_TEXT_APPEND_CHARS characters; send
+    longer text in several entries). The host drops the oldest lines beyond the view's
+    max_lines or MAX_TEXT_VIEW_CHARS."""
+    _check_id("A text view id", text_view_id)
+    if not isinstance(text, str) or len(text) > MAX_TEXT_APPEND_CHARS:
+        raise ValueError(f"An append is a string of at most {MAX_TEXT_APPEND_CHARS} characters")
+    return {"id": text_view_id, "append": text}
+
+
+def append_points(chart_id: str, series_id: str, points: Sequence[Any]) -> JsonObject:
+    """Add points (numbers or [x, y] pairs, at most MAX_CHART_POINTS) at the end of a chart
+    series; each series keeps at most its last MAX_CHART_POINTS points (or the chart's
+    window). One patch may hold an entry per series."""
+    _check_id("A chart id", chart_id)
+    _check_id("A chart series id", series_id)
+    return {"id": chart_id, "append_points": {"series": series_id,
+                                              "points": _chart_points(points)}}
+
+
+def clear_chart(chart_id: str, series_ids: Optional[Sequence[str]] = None) -> JsonObject:
+    """Remove the points of every series of a chart, or of the listed series."""
+    _check_id("A chart id", chart_id)
+    return {"id": chart_id,
+            "clear": True if series_ids is None else _id_list("series_ids", series_ids)}
+
+
+def focus_element(element_id: str) -> JsonObject:
+    """Give an element the keyboard focus. The host does so only while the view is active (its
+    window is the active one, or the focus already is in the view)."""
+    _check_id("An element id", element_id)
+    return {"id": element_id, "focus": True}
 
 
 # Advanced tooltips and icons (host features tooltips and icons).
@@ -2404,7 +2957,7 @@ class _QueryLane:
 
 class _StripRules(NamedTuple):
     """What update() and patch() change for the host: keys removed from every element, table
-    column and row, and whether the host has each E17c, E17d and E17e feature."""
+    column and row, and whether the host has each E17c, E17d, E17e and E17f feature."""
     element: FrozenSet[str]
     column: FrozenSet[str]
     row: FrozenSet[str]
@@ -2416,6 +2969,22 @@ class _StripRules(NamedTuple):
     element_menus: bool = True
     tree: bool = True
     file_tree: bool = True
+    layout: bool = True
+    text_view: bool = True
+    images: bool = True
+    charts: bool = True
+    view_dialogs: bool = True
+
+    def patch_keys(self) -> FrozenSet[str]:
+        """The patch entry keys the host does not know (append, append_points, clear, focus)."""
+        keys: FrozenSet[str] = frozenset()
+        if not self.text_view:
+            keys |= _TEXT_PATCH_KEYS
+        if not self.charts:
+            keys |= _CHART_PATCH_KEYS
+        if not self.view_dialogs:
+            keys |= _FOCUS_PATCH_KEYS
+        return keys
 
     def table_keys(self) -> FrozenSet[str]:
         """The table keys the host does not know."""
@@ -2536,6 +3105,12 @@ def _compatible_unknown(props: JsonObject, rules: _StripRules) -> JsonObject:
     if rules.tree or rules.file_tree:
         table_keys -= _TREE_SHARED_KEYS  # the element may be a tree or a file tree
     remove |= table_keys  # no other element type has them
+    if not rules.layout:
+        remove |= _LAYOUT_ONLY_KEYS
+    if not rules.view_dialogs:
+        remove |= (_BUSY_KEYS - {"busy"}) | _BUTTON_ONLY_KEYS  # a progress bar has busy
+    if rules.text_view:
+        remove -= {"monospace"}  # the element may be a text view
     result: JsonObject = _without(props, remove)
     return result if rules.choices else _with_compatible_choices(result)
 
@@ -2587,10 +3162,16 @@ def _compatible_props(props: Any, rules: _StripRules, element_type: Optional[str
     if not isinstance(props, dict):
         return props
     result = _without(props, rules.element)
-    if element_type in _TREE_TYPES:
-        # Trees are never converted: an older host skips them, and their columns, nodes and
-        # cells belong to the tree and file_tree features.
+    if element_type in _TREE_TYPES or element_type in _CONTENT_TYPES:
+        # Trees and content elements are never converted: an older host skips them, and their
+        # columns, nodes, cells, text, values and series belong to their features.
         return result
+    if not rules.view_dialogs and element_type is not None:
+        result = _without(result, _dialog_keys(element_type))
+    if not rules.layout and element_type in _LAYOUT_CONVERTED:
+        if whole:
+            return _layout_as_column(result, element_type, rules)
+        result = _without(result, _LAYOUT_CONVERTED[element_type])
     if element_type in _TOGGLE_FIELDS and not rules.toggles:
         result = _toggle_as_field(result, element_type, whole)
         element_type, kind = "field", _TOGGLE_FIELDS[element_type][0]
@@ -2605,11 +3186,13 @@ def _compatible_props(props: Any, rules: _StripRules, element_type: Optional[str
     elif element_type is None:
         result = _compatible_unknown(result, rules)
     changes: JsonObject = {}
-    for key, convert in (("children", lambda child: _compatible_element(child, rules)),
-                         ("columns", lambda item: _without(item, rules.column)),
-                         ("rows", lambda item: _compatible_row(item, rules))):
+    converters: Tuple[Tuple[str, Callable[[Any], Any]], ...] = (
+        ("children", lambda children: _compatible_children(children, rules)),
+        ("columns", lambda items: _map_list(items, lambda item: _without(item, rules.column))),
+        ("rows", lambda items: _map_list(items, lambda item: _compatible_row(item, rules))))
+    for key, convert in converters:
         if key in result:
-            value = _map_list(result[key], convert)
+            value = convert(result[key])
             if value is not result[key]:
                 changes[key] = value
     if changes:
@@ -2617,29 +3200,115 @@ def _compatible_props(props: Any, rules: _StripRules, element_type: Optional[str
     return result
 
 
+def _dialog_keys(element_type: str) -> FrozenSet[str]:
+    """The view_dialogs keys of an element type: the busy keys of a container, the new keys of
+    a button."""
+    if element_type in _CONTAINER_TYPES:
+        return _BUSY_KEYS
+    return _BUTTON_KEYS if element_type == "button" else frozenset()
+
+
+def _is_spacing(element: Any) -> bool:
+    return isinstance(element, dict) and element.get("type") in _SPACING_TYPES
+
+
+def _compatible_children(children: Any, rules: _StripRules) -> Any:
+    """Converted children (without separators and spacers on a host without layout); the
+    original list when nothing changed."""
+    if not isinstance(children, list):
+        return children
+    kept = children if rules.layout else [child for child in children if not _is_spacing(child)]
+    converted = [_compatible_element(child, rules) for child in kept]
+    unchanged = len(converted) == len(children) and all(
+        new is old for new, old in zip(converted, children))
+    return children if unchanged else converted
+
+
+def _plain_row(children: List[Any]) -> JsonObject:
+    return {"type": "row", "children": children}
+
+
+def _form_row(child: Any, rules: _StripRules) -> JsonObject:
+    """One child of a form as a row for a host without layout: a child that is neither a field
+    nor a button loses its `label`, which becomes an id-less label element before it."""
+    items: List[Any] = []
+    if isinstance(child, dict) and child.get("type") not in ("field", "button") \
+            and "label" in child:
+        caption = child["label"]
+        if isinstance(caption, str) and caption:
+            items.append({"type": "label", "text": caption})
+        child = _without(child, frozenset({"label"}))
+    items.append(_compatible_element(child, rules))
+    return _plain_row(items)
+
+
+def _layout_as_column(props: JsonObject, element_type: str, rules: _StripRules) -> JsonObject:
+    """A tabs, splitter, form or grid element as the column (a tab: the group) a host without
+    layout shows, with the same id: tabs hold a group per tab, a horizontal splitter one row of
+    every pane and a vertical one a row per pane, a form a row per child and a grid rows of
+    `columns` children. Separators and spacers are left out."""
+    own = _LAYOUT_CONVERTED[element_type]
+    result: JsonObject = {key: value for key, value in props.items() if key not in own}
+    result["type"] = "group" if element_type == "tab" else "column"
+    children = props.get("children")
+    if not isinstance(children, list):
+        return result
+    items = [child for child in children if not _is_spacing(child)]
+    if element_type == "form":
+        result["children"] = [_form_row(child, rules) for child in items]
+        return result
+    converted = [_compatible_element(child, rules) for child in items]
+    if element_type == "splitter":
+        rows = ([_plain_row([pane]) for pane in converted]
+                if props.get("orientation") == "vertical" else [_plain_row(converted)])
+        result["children"] = rows if converted else []
+    elif element_type == "grid":
+        columns: Any = props.get("columns")
+        width = (int(min(columns, MAX_GRID_COLUMNS)) if _is_number(columns, True) and columns >= 1
+                 else 2)
+        result["children"] = [_plain_row(converted[start:start + width])
+                              for start in range(0, len(converted), width)]
+    else:  # tabs (their tabs become groups) and a tab
+        result["children"] = converted
+    return result
+
+
 def _compatible_element(element: Any, rules: _StripRules) -> Any:
-    """Return the element without the properties the host does not know (and an E17c element
-    as the field an older host knows), copying only what changes."""
+    """Return the element without the properties the host does not know (an E17c element as
+    the field an older host knows, a layout container as a column), copying only what changes.
+    A separator or spacer root becomes an empty column on a host without layout (containers
+    leave them out)."""
     if not isinstance(element, dict):
         return element
     element_type = element.get("type")
+    if not rules.layout and element_type in _SPACING_TYPES:
+        root: JsonObject = {"type": "column"}
+        if "id" in element:
+            root["id"] = element["id"]
+        root["children"] = []
+        return root
     return _compatible_props(element, rules, element_type if isinstance(element_type, str) else "",
                              None, True)
 
 
 def _compatible_patch_entry(entry: Any, rules: _StripRules, kinds: _ElementKinds) -> Any:
-    """A patch entry the host knows, or _DROPPED for a selection patch it does not know. The
-    node operations, expand and collapse of trees are sent unchanged, and so is the selection
-    patch of a tree on a host with the tree feature (it belongs to that feature, not to
-    rich_tables)."""
+    """A patch entry the host knows, or _DROPPED for an entry left with nothing the host knows
+    (a selection, append, append_points, clear or focus patch it does not know, or a `set` of
+    a separator or spacer an older host never got). The node operations, expand and collapse
+    of trees are sent unchanged, and so is the selection patch of a tree on a host with the
+    tree feature (it belongs to that feature, not to rich_tables)."""
     if not isinstance(entry, dict):
         return entry
     identifier = entry.get("id")
     element_type, kind = (kinds.get(identifier, (None, None)) if isinstance(identifier, str)
                           else (None, None))
-    if not rules.rich_tables and not rules.shows(element_type) \
-            and not _SELECTION_PATCH_KEYS.isdisjoint(entry):
-        entry = _without(entry, _SELECTION_PATCH_KEYS)
+    unknown = rules.patch_keys()
+    if not rules.rich_tables and not rules.shows(element_type):
+        unknown |= _SELECTION_PATCH_KEYS
+    if not rules.layout and element_type in _SPACING_TYPES:
+        unknown |= {"set"}
+    if not unknown.isdisjoint(entry):
+        entry = _without(entry, unknown)
         if set(entry) <= {"id"}:
             return _DROPPED
     changes: JsonObject = {}
@@ -2940,7 +3609,8 @@ class Plugin:
         return callback
 
     def on_view_closed(self, callback: ViewCallback) -> ViewCallback:
-        """Register callback(params) for view/closed {view_id, window_id}."""
+        """Register callback(params) for view/closed {view_id, window_id} (ViewClosedParams;
+        a dialog with `buttons` adds `result` and `inputs`)."""
         self.view_callbacks["view/closed"].append(callback)
         return callback
 
@@ -2969,21 +3639,33 @@ class Plugin:
         if not rich_tables:
             column_keys |= _RICH_COLUMN_KEYS
             row_keys |= _RICH_ROW_KEYS
-        # Trees are never converted, so a host without tree or file_tree needs no rules of its
-        # own; they only decide what the other rules keep.
+        layout, text_view, images, charts, view_dialogs = (
+            self.supports(name) for name in ("layout", "text_view", "images", "charts",
+                                             "view_dialogs"))
+        if not layout:
+            element |= _SIZE_HINT_KEYS
+        if not view_dialogs:
+            element |= _ROOT_KEYS  # no other element has them
+        # Trees and content elements are never converted, so a host without tree, file_tree or
+        # images needs no rules of its own; they only decide what the other rules keep.
         if not (element or column_keys or row_keys) and choices and toggles and field_kinds \
-                and validation and rich_tables and element_menus:
+                and validation and rich_tables and element_menus and text_view and charts:
             return None
         return _StripRules(element, column_keys, row_keys, choices, toggles, field_kinds,
                            validation, rich_tables, element_menus, self.supports("tree"),
-                           self.supports("file_tree"))
+                           self.supports("file_tree"), layout, text_view, images, charts,
+                           view_dialogs)
 
     def update(self, view_id: str, root: JsonObject, window_id: Optional[str] = None) -> None:
         """Replace a view's element tree (in every window without window_id). On an older host
         the tree is sent without what the host does not know (see _strip_rules), E17c elements
         as the fields it knows and table cell objects as their text; `tree` and `file_tree`
         elements are sent as they are (a host without their feature skips them, so check
-        supports("tree") first). The caller's tree is not changed."""
+        supports("tree") first). Without `layout`, tabs, splitters, forms and grids are sent as
+        columns of groups or rows, separators and spacers are left out and the size hints
+        removed; without `view_dialogs`, the new button keys, the busy keys, `modified` and
+        `close_confirm` are removed; `text_view`, `image`, `sparkline` and `chart` elements are
+        sent as they are. The caller's tree is not changed."""
         rules = self._strip_rules()
         if rules is not None:
             elements = _element_kinds(root)  # patch() converts by the element's type
@@ -3014,11 +3696,15 @@ class Plugin:
 
     def patch(self, view_id: str, changes: Sequence[JsonObject],
               window_id: Optional[str] = None) -> None:
-        """Apply set_props(), row and node operation, select_rows() and select_nodes() entries
-        to existing elements. On an older host they are converted like update() converts the
-        elements of the view's last tree; a host without rich_tables gets no selection patch
-        of a table (and no frame when nothing else is left), while the node operations of a
-        tree go out unchanged, and so does its selection patch on a host with tree."""
+        """Apply set_props(), row and node operation, select_rows(), select_nodes(),
+        append_text(), append_points(), clear_chart() and focus_element() entries to existing
+        elements. On an older host they are converted like update() converts the elements of
+        the view's last tree; a host without rich_tables gets no selection patch of a table,
+        one without text_view no append, one without charts no append_points or clear, and one
+        without view_dialogs no focus (and no frame when nothing else is left), while the node
+        operations of a tree go out unchanged, and so does its selection patch on a host with
+        tree. A `set` of a converted element keeps the keys the converted element knows (a
+        tab's title, as the group's)."""
         rules = self._strip_rules()
         entries = list(changes)
         if rules is not None:

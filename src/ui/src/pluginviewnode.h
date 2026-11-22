@@ -9,6 +9,7 @@
 #include <QLabel>
 #include <QPointer>
 #include <QSortFilterProxyModel>
+#include <QStringList>
 #include <QTimer>
 #include <QWidget>
 
@@ -19,6 +20,19 @@ class PluginTreeModel;
 class PluginTableBehaviour;
 class PluginTreeBehaviour;
 class PluginFileTreeBehaviour;
+class PluginBusyOverlay;
+class QMenu;
+class QShortcut;
+
+// E17f (docs/plugin-sdk-advanced.md section 29), shared by pluginview.cpp and pluginviewlayout.cpp.
+namespace pluginlayout {
+// Containers: their children are part of a view's shape.
+const QStringList& containerTypes();
+// Elements that take the free space of a row or of the view's body.
+bool expands( const QString& type );
+// A form child's caption: a field's `label`, else the element's own `label` (never a button's).
+QString formCaption( const QJsonObject& element );
+} // namespace pluginlayout
 
 struct PluginView::Node {
     QString id;
@@ -41,4 +55,15 @@ struct PluginView::Node {
     pluginview::PluginTreeModel* treeModel = nullptr; // E17e
     PluginTreeBehaviour* tree = nullptr;
     PluginFileTreeBehaviour* fileTree = nullptr;
+    // E17f: where the element sits, and the state of layouts, buttons and the busy overlay.
+    // `lastRows` also holds a text_view's text, a chart's series and a sparkline's values last
+    // set as a whole.
+    QString parentId;   // empty for the root
+    QString parentType; // the containing element's type
+    bool root = false;
+    QPointer<QLabel> formCaption;           // the caption cell of a form row
+    QPointer<PluginBusyOverlay> busy;       // containers
+    QPointer<QMenu> menu;                   // a button's drop-down
+    QPointer<QShortcut> shortcut;           // a button's shortcut
+    QPointer<QTimer> saveTimer;             // a splitter's kept sizes
 };

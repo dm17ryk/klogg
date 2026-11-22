@@ -20,6 +20,12 @@
         host.move_nodes("main", "benches", ["board2"], parent="bench1", before="board1")
         host.send_node_command("nodes", "reset", "main", "benches", node_id="board2")
         host.select_files("main", "files", ["C:/fw/a.bin"])       # a file tree's selection
+        host.switch_tab("main", "tabs", "log", 1)                 # layout and dialogs (E17f)
+        host.click_link("main", "notes", "https://example.com/docs")
+        host.toggle_button("main", "pin", True)
+        host.cancel_busy("main", "body")
+        host.press_dialog_button("ask", "apply", inputs={"name": "x"})
+        host.close_view("ask", result="ok", inputs={"name": "x"})
 
 The host records every frame in both directions (`frames`), answers stream/open and
 stream/data like CILogg, and checks the plugin's JSON-RPC envelopes (`errors`). See
@@ -48,15 +54,26 @@ PathLike = Union[str, "os.PathLike[str]"]
 # What the current CILogg announces in initialize (docs/plugin-sdk-advanced.md, section 4.1).
 HOST_FEATURES = ("views", "view_edit", "queries", "tooltips", "icons", "menus", "shortcuts",
                  "choices", "toggles", "field_kinds", "validation", "rich_tables",
-                 "element_menus", "tree", "file_tree")
+                 "element_menus", "tree", "file_tree", "layout", "text_view", "images", "charts",
+                 "view_dialogs")
 HOST_FEATURE_VERSIONS: Mapping[str, int] = {
     "views": 2, "view_edit": 1, "queries": 1, "tooltips": 1, "icons": 1, "menus": 1,
     "shortcuts": 1, "choices": 1, "toggles": 1, "field_kinds": 1, "validation": 1,
-    "rich_tables": 1, "element_menus": 1, "tree": 1, "file_tree": 1}
+    "rich_tables": 1, "element_menus": 1, "tree": 1, "file_tree": 1, "layout": 1,
+    "text_view": 1, "images": 1, "charts": 1, "view_dialogs": 1}
 HOST_LIMITS: Mapping[str, int] = {
     "max_elements": 512, "max_table_cells": 50000, "max_text_chars": 4096,
     "max_message_bytes": 1048576}
 HOST_VERSION = "0.0.0-fakehost"
+# What CILogg announced with E17e: trees and file trees, no layout containers, text views,
+# images, charts or dialog buttons.
+E17E_HOST_FEATURES = ("views", "view_edit", "queries", "tooltips", "icons", "menus", "shortcuts",
+                      "choices", "toggles", "field_kinds", "validation", "rich_tables",
+                      "element_menus", "tree", "file_tree")
+E17E_HOST_FEATURE_VERSIONS: Mapping[str, int] = {
+    "views": 2, "view_edit": 1, "queries": 1, "tooltips": 1, "icons": 1, "menus": 1,
+    "shortcuts": 1, "choices": 1, "toggles": 1, "field_kinds": 1, "validation": 1,
+    "rich_tables": 1, "element_menus": 1, "tree": 1, "file_tree": 1}
 # What CILogg announced with E17d: rich tables and element menus, no trees or file trees.
 E17D_HOST_FEATURES = ("views", "view_edit", "queries", "tooltips", "icons", "menus", "shortcuts",
                       "choices", "toggles", "field_kinds", "validation", "rich_tables",
@@ -91,8 +108,11 @@ MAX_PENDING = 8 * MAX_MESSAGE
 MAX_TABLE_IDS = 1000  # selected and checked ids in one event or menu context
 MAX_TREE_IDS = 1000  # node ids or paths in one tree event or menu context
 MAX_ID_BYTES = 256 * 1024  # ... and the JSON of those ids, so a frame stays below MAX_MESSAGE
+DIALOG_BUTTONS = ("ok", "cancel", "apply", "close", "yes", "no")
+DIALOG_BUTTONS_ELEMENT = "#buttons"  # the element_id of a dialog button's clicked event
 TO_PLUGIN = "to_plugin"
 FROM_PLUGIN = "from_plugin"
+_NOT_GIVEN: Any = object()  # close_view(result=...) not given: no `result` key
 
 
 class RpcError(Exception):
@@ -553,8 +573,20 @@ class FakeHost:
         self.notify("view/opened", {"view_id": view_id, "window_id": window_id,
                                     "context": dict(context or {})})
 
-    def close_view(self, view_id: str, window_id: str = "w1") -> None:
-        self.notify("view/closed", {"view_id": view_id, "window_id": window_id})
+    def close_view(self, view_id: str, window_id: str = "w1", *,
+                   result: Optional[str] = _NOT_GIVEN,
+                   inputs: Optional[Mapping[str, Any]] = None) -> None:
+        """Send view/closed. For a dialog that declares `buttons`, CILogg adds `result` (the
+        DIALOG_BUTTONS name of the button that closed it, None when it closed otherwise) and
+        `inputs` (the view's inputs); each goes out only when given."""
+        params: JsonObject = {"view_id": view_id, "window_id": window_id}
+        if result is not _NOT_GIVEN:
+            if result is not None and result not in DIALOG_BUTTONS:
+                raise ValueError(f"A dialog result is None or one of {', '.join(DIALOG_BUTTONS)}")
+            params["result"] = result
+        if inputs is not None:
+            params["inputs"] = dict(inputs)
+        self.notify("view/closed", params)
 
     def view_event(self, view_id: str, element_id: str, event_type: str, value: Any = None, *,
                    window_id: str = "w1", inputs: Optional[Mapping[str, Any]] = None,
@@ -722,6 +754,45 @@ class FakeHost:
         """Send a file tree's `activated` event, as on a double-click or Enter on a file."""
         self.view_event(view_id, element_id, "activated", {"path": _paths(path)[0]},
                         window_id=window_id)
+
+    # Layout, content and dialogs (host features layout, text_view and view_dialogs).
+    def switch_tab(self, view_id: str, element_id: str, tab_id: Optional[str], index: int,
+                   window_id: str = "w1", inputs: Optional[Mapping[str, Any]] = None) -> None:
+        """Send a `tabs` element's `changed` event, as when the user picks a tab: the tab's id
+        (None for a tab without an id) and its `index`."""
+        self.view_event(view_id, element_id, "changed", tab_id, window_id=window_id,
+                        inputs=inputs, index=index)
+
+    def click_link(self, view_id: str, element_id: str, href: str, window_id: str = "w1",
+                   inputs: Optional[Mapping[str, Any]] = None) -> None:
+        """Send a text view's `link` event, as when the user clicks a link of its Markdown
+        (CILogg never opens it)."""
+        self.view_event(view_id, element_id, "link", {"href": href}, window_id=window_id,
+                        inputs=inputs)
+
+    def cancel_busy(self, view_id: str, element_id: str, window_id: str = "w1",
+                    inputs: Optional[Mapping[str, Any]] = None) -> None:
+        """Send the `cancel` event of a busy container's Cancel button (`busy_cancel`); element_id
+        is the container (or the root)."""
+        self.view_event(view_id, element_id, "cancel", None, window_id=window_id, inputs=inputs)
+
+    def toggle_button(self, view_id: str, element_id: str, checked: bool,
+                      window_id: str = "w1", inputs: Optional[Mapping[str, Any]] = None) -> None:
+        """Send a checkable button's `changed` event with its new state (instead of `clicked`
+        or its action)."""
+        self.view_event(view_id, element_id, "changed", bool(checked), window_id=window_id,
+                        inputs=inputs)
+
+    def press_dialog_button(self, view_id: str, name: str, window_id: str = "w1",
+                            inputs: Optional[Mapping[str, Any]] = None) -> None:
+        """Send the `clicked` event of a dialog button (element_id "#buttons", value the button's
+        name, with the view's inputs). It does not close the dialog: send close_view(...,
+        result=name, inputs=...) for the buttons that close it (ok, yes, cancel, no, close)."""
+        if name not in DIALOG_BUTTONS:
+            raise ValueError(f"A dialog button is one of {', '.join(DIALOG_BUTTONS)}, not "
+                             f"{name!r}")
+        self.view_event(view_id, DIALOG_BUTTONS_ELEMENT, "clicked", name, window_id=window_id,
+                        inputs=inputs)
 
     def message_result(self, message_id: str, button: str, timed_out: bool = False) -> None:
         self.notify("ui/message_result", {"message_id": message_id, "button": button,

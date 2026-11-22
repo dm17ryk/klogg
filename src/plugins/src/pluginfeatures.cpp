@@ -85,9 +85,19 @@ const std::vector<std::pair<QString, int>>& hostFeatures()
         { QStringLiteral( "toggles" ), 1 }, { QStringLiteral( "field_kinds" ), 1 },
         { QStringLiteral( "validation" ), 1 }, { QStringLiteral( "rich_tables" ), 1 },
         { QStringLiteral( "element_menus" ), 1 }, { QStringLiteral( "tree" ), 1 },
-        { QStringLiteral( "file_tree" ), 1 },
+        { QStringLiteral( "file_tree" ), 1 }, { QStringLiteral( "layout" ), 1 },
+        { QStringLiteral( "text_view" ), 1 }, { QStringLiteral( "images" ), 1 },
+        { QStringLiteral( "charts" ), 1 }, { QStringLiteral( "view_dialogs" ), 1 },
     };
     return features;
+}
+
+const QStringList& dialogButtonNames()
+{
+    static const QStringList names{ QStringLiteral( "ok" ),    QStringLiteral( "cancel" ),
+                                    QStringLiteral( "apply" ), QStringLiteral( "close" ),
+                                    QStringLiteral( "yes" ),   QStringLiteral( "no" ) };
+    return names;
 }
 
 QJsonArray hostFeatureNames()

@@ -4,22 +4,30 @@ entries in the log and tab context menus (E17b); choices with icons, separators 
 check boxes, radio buttons, the new field kinds, validation and completion (E17c); a rich table
 with cell objects, a check column, row dragging, Export CSV and a context menu (E17d); and the
 explorer view: a lazy tree with check boxes, dragging and a context menu, and a file tree of
-the gallery's own folder (E17e)."""
+the gallery's own folder (E17e); and the layout window: tabs, a form, a grid, a splitter, a
+text view, Markdown notes, a chart, a sparkline, a registered picture, button styles, a menu
+button, a checkable button, a busy overlay, unsaved changes, focus and a dialog with buttons
+(E17f)."""
 from __future__ import annotations
 
+import collections
 import json
+import math
 import os
+import struct
 import threading
-from typing import Dict, List, Optional, Set, Tuple
+import zlib
+from typing import Deque, Dict, List, Optional, Set, Tuple
 
 from cilogg_plugin import (
     CompleteQuery, CompletionItem, JsonObject, MenuPopulateResult, MenuQuery, Plugin, Tooltip,
-    TooltipQuery, TreeChildrenQuery, TreeNode, UiCommand, builtin_ref, button, cell,
-    check_group, checkbox, choice, choice_section, choice_separator, collapse_nodes, column,
-    completion_item, field, file_tree, group, image_ref, label, menu_item, menu_set,
-    radio_group, replace_nodes, replace_rows, row, select_nodes, select_rows, set_props,
-    status_ref, svg_icon, table, table_column, table_row, tooltip_content, tree, tree_node,
-    update_nodes, update_rows,
+    TooltipQuery, TreeChildrenQuery, TreeNode, UiCommand, append_points, append_text,
+    builtin_ref, button, cell, chart, chart_series, check_group, checkbox, choice,
+    choice_section, choice_separator, collapse_nodes, column, completion_item, field, file_tree,
+    focus_element, form, grid, group, image, image_ref, label, menu_item, menu_set, png_icon,
+    radio_group, replace_nodes, replace_rows, row, select_nodes, select_rows, separator,
+    set_props, spacer, sparkline, splitter, status_ref, svg_icon, tab, table, table_column,
+    table_row, tabs, text_view, tooltip_content, tree, tree_node, update_nodes, update_rows,
 )
 
 plugin = Plugin()
@@ -91,6 +99,74 @@ checked_nodes: Set[str] = set()
 selected_files: List[str] = []  # The file tree's last selection, shown again when it opens.
 last_explorer_event: Optional[str] = None  # The explorer's status label.
 explorer_windows: Set[str] = set()
+
+# The layout window (E17f) and its dialog. The plugin answers every event in the layout_status
+# label (the texts are listed in README.md).
+LAYOUT = "layout"
+ASK = "ask"  # A dialog with OK, Cancel and Apply (plugin.json "buttons").
+LAYOUT_MENU = "layout_menu"  # The drop-down of the Log actions button (location "element").
+LAYOUT_BODY = "layout_body"
+PICTURE_ICON = "gallery-picture"
+LAYOUT_HINT = "Switch tabs, use the buttons or Log actions: the result shows here."
+LAYOUT_FEATURES = ("layout", "text_view", "images", "charts", "view_dialogs")
+TAB_IDS = ("tab_form", "tab_log", "tab_notes", "tab_charts")
+WORK_SECONDS = 5.0  # How long "Simulate work" keeps the view busy.
+MAX_LOG_LINES = 1000  # The log's max_lines; the plugin keeps as many for a new window.
+CHART_WINDOW = 200
+SPARK_VALUES = 24
+NOTES = """# Layout notes
+
+The layout window shows:
+
+- tabs, a form, a grid and a splitter;
+- a text view, a chart, a sparkline and a picture;
+- button styles, a menu button, a busy overlay and a dialog.
+
+Read the [docs](https://example.com/docs): a click reaches the plugin, which never opens it.
+
+![info](builtin:info)
+"""
+layout_windows: Set[str] = set()
+last_layout_event: Optional[str] = None  # The layout_status label.
+current_tab: Optional[str] = None  # The tab the user picked last, shown first in a new window.
+log_lines: Deque[str] = collections.deque(maxlen=MAX_LOG_LINES)
+log_total = 0  # Lines added since the log was cleared ("line <n>").
+pinned = False
+modified = False
+picture_registered = False
+busy_run: Optional[threading.Event] = None  # Set while "Simulate work" runs; set() ends it.
+
+
+def rx_value(x: int) -> int:
+    return 50 + round(30 * math.sin(x / 2))
+
+
+def tx_value(x: int) -> int:
+    return 40 + round(20 * math.cos(x / 3))
+
+
+chart_next = 12  # The x of the next point "Add point" appends.
+chart_data: Dict[str, List[List[int]]] = {
+    "rx": [[x, rx_value(x)] for x in range(chart_next)],
+    "tx": [[x, tx_value(x)] for x in range(chart_next)]}
+
+
+def picture_png(width: int = 96, height: int = 64) -> bytes:
+    """The PNG of the registered picture: a gradient with a light band, made with zlib."""
+    raw = bytearray()
+    for y in range(height):
+        raw.append(0)  # PNG filter type 0 (none) for each row
+        for x in range(width):
+            band = abs(y - height // 2) < 4
+            raw += bytes((240, 240, 240) if band else (20 + 2 * x, 90 + 2 * y, 200 - x))
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return (struct.pack(">I", len(data)) + kind + data
+                + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF))
+
+    header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)  # 8-bit RGB
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header)
+            + chunk(b"IDAT", zlib.compress(bytes(raw))) + chunk(b"IEND", b""))
 
 
 # The helpers below read the shared state: call them with state_lock held.
@@ -333,8 +409,15 @@ def change_data() -> Tuple[List[JsonObject], str, int, bool]:
 def opened(params: JsonObject) -> None:
     global icons_registered
     window_id = params.get("window_id")
-    if params.get("view_id") == EXPLORER:
+    view_id = params.get("view_id")
+    if view_id == EXPLORER:
         explorer_opened(window_id if isinstance(window_id, str) else None)
+        return
+    if view_id == LAYOUT:
+        layout_opened(window_id if isinstance(window_id, str) else None)
+        return
+    if view_id == ASK:
+        plugin.update(ASK, ask_view(), window_id if isinstance(window_id, str) else None)
         return
     with state_lock:
         if isinstance(window_id, str):
@@ -346,7 +429,11 @@ def opened(params: JsonObject) -> None:
 
 @plugin.on_view_closed
 def closed(params: JsonObject) -> None:
-    windows = explorer_windows if params.get("view_id") == EXPLORER else open_windows
+    view_id = params.get("view_id")
+    if view_id == ASK:
+        ask_closed(params)
+        return
+    windows = {EXPLORER: explorer_windows, LAYOUT: layout_windows}.get(str(view_id), open_windows)
     with state_lock:
         windows.discard(str(params.get("window_id")))
 
@@ -400,6 +487,9 @@ def fleet_changed(offline: int) -> None:
 def event(params: JsonObject) -> None:
     if params.get("view_id") == EXPLORER:
         explorer_event(params)
+        return
+    if params.get("view_id") in (LAYOUT, ASK):
+        layout_event(params)
         return
     if params.get("element_id") == TABLE:
         table_event(params)
@@ -921,6 +1011,260 @@ def file_action(command: UiCommand) -> None:
     """The file tree's context menu: Show Path shows the clicked path (node_id) and the number
     of selected paths."""
     show_explorer_event(f"path {command.node_id or 'none'} ({command.selected_count} selected)")
+
+
+# The layout window (E17f). The helpers below read the shared state: call them with state_lock
+# held.
+def spark_values() -> List[int]:
+    return [y for _x, y in chart_data["rx"][-SPARK_VALUES:]]
+
+
+def form_tab() -> JsonObject:
+    """A form: two fields (their labels are the captions), a check box whose `label` is its
+    caption, and a grid of four buttons captioned "Buttons"."""
+    return tab("Form", form(
+        field("form_name", "text", label="Name", placeholder="Board 7"),
+        field("form_port", "choice", label="Port", value="COM3", choices=["COM1", "COM3", "COM5"]),
+        checkbox("form_check", "Add a line ending", label="Option"),
+        grid(*[button(f"grid_{name}", name.upper(), event=True, tooltip=f"Grid button {name}")
+               for name in "abcd"], columns=2, id="form_grid", label="Buttons"),
+        id="layout_form"), id="tab_form", icon=builtin_ref("edit"))
+
+
+def charts_tab(picture: str) -> JsonObject:
+    """A splitter: the chart on the left, a sparkline and the registered picture on the
+    right."""
+    series = [chart_series("rx", [list(point) for point in chart_data["rx"]], title="Received",
+                           tone="accent"),
+              chart_series("tx", [list(point) for point in chart_data["tx"]], title="Sent",
+                           tone="ok")]
+    side = column(sparkline("spark", spark_values(), kind="bar", tone="accent",
+                            accessible_name="Received bytes"),
+                  image("picture", picture, width=96, height=64, alt="Gallery picture"),
+                  spacer(), id="charts_side")
+    return tab("Charts", splitter(
+        chart("chart", series, kind="line", x_title="Sample", y_title="Bytes",
+              window=CHART_WINDOW, stretch=3, min_height=200),
+        side, id="charts_split", sizes=[560, 260]), id="tab_charts", icon=builtin_ref("star"))
+
+
+def layout_buttons() -> JsonObject:
+    return row(
+        button("tool_button", "Add point", event=True, style="tool", icon=builtin_ref("refresh"),
+               tooltip="Appends a point to each chart series."),
+        button("link_button", "Focus name", event=True, style="link",
+               tooltip="Moves the keyboard focus to the Name field."),
+        button("menu_button", "Log actions", menu=LAYOUT_MENU, icon=builtin_ref("file")),
+        button("pin_button", "Pin", checkable=True, checked=pinned, icon=builtin_ref("bookmark")),
+        separator(),
+        button("busy_button", "Simulate work", event=True,
+               tooltip=f"Keeps the window busy for {WORK_SECONDS:g} seconds; Cancel ends it."),
+        button("edit_button", "Toggle modified", event=True,
+               tooltip="Marks the window as changed: closing it then asks first."),
+        button("ask_button", "Ask...", event=True, tooltip="Opens a dialog with buttons."),
+        spacer(),
+        button("apply_button", "Apply", event=True, tone="primary", default=True,
+               shortcut="Ctrl+Alt+Shift+L", tooltip="Enter or Ctrl+Alt+Shift+L presses it."),
+        id="layout_buttons")
+
+
+def layout_view() -> JsonObject:
+    """Tabs (a form, a log, Markdown notes, charts), a row of buttons and the status label. On
+    an older CILogg the SDK sends the tabs as groups, the splitter, form and grid as rows,
+    leaves out the separator and spacers and the button keys it does not know; the text views,
+    chart, sparkline and image go as they are and an older host skips them."""
+    with state_lock:
+        picture = image_ref(PICTURE_ICON) if picture_registered else builtin_ref("info")
+        status = last_layout_event if last_layout_event is not None else LAYOUT_HINT
+        log_text, log_count, first_tab = "".join(log_lines), len(log_lines), current_tab
+        busy, changed = busy_run is not None, modified
+        charts = charts_tab(picture)
+        buttons = layout_buttons()
+    if all(plugin.supports(feature) for feature in LAYOUT_FEATURES):
+        note = "Tabs, a splitter, a form, a grid, text, a chart and a dialog with buttons."
+    else:
+        note = ("This CILogg shows the tabs as groups; the log, the notes, the charts and the "
+                "button styles need a newer CILogg.")
+    log_tab = tab("Log", text_view("log", log_text, format="plain", monospace=True, follow=True,
+                                   max_lines=MAX_LOG_LINES, stretch=1),
+                  id="tab_log", icon=builtin_ref("file"), badge=str(log_count))
+    notes_tab = tab("Notes", text_view("notes", NOTES, format="markdown", stretch=1),
+                    id="tab_notes", icon=builtin_ref("info"))
+    return column(
+        label("layout_note", note),
+        tabs("layout_tabs", form_tab(), log_tab, notes_tab, charts, current=first_tab,
+             stretch=1),
+        buttons,
+        label("layout_status", status),
+        id=LAYOUT_BODY, modified=changed,
+        close_confirm="The layout window has unsaved changes. Discard them?",
+        **({"busy": True, "busy_text": "Simulating work...", "busy_cancel": True} if busy else {}))
+
+
+def ask_view() -> JsonObject:
+    return column(label("ask_hint", "Type a name, then press OK, Cancel or Apply."),
+                  field("ask_name", "text", label="Name", placeholder="Board 7"),
+                  id="ask_body")
+
+
+def layout_opened(window_id: Optional[str]) -> None:
+    global picture_registered
+    with state_lock:
+        if window_id:
+            layout_windows.add(window_id)
+        register = not picture_registered
+    if register:  # Registered pictures live until the plugin stops.
+        done = plugin.register_icons({PICTURE_ICON: png_icon(picture_png(), picture=True)})
+        with state_lock:
+            picture_registered = done
+    plugin.update(LAYOUT, layout_view(), window_id)
+
+
+def show_layout(text: str, changes: Optional[List[JsonObject]] = None) -> None:
+    """Show a result in the layout_status label, after the changes. A closed layout window
+    shows the text when it opens, built from the same state."""
+    global last_layout_event
+    with state_lock:
+        last_layout_event = text
+        if not layout_windows:
+            return
+    plugin.patch(LAYOUT, [*(changes or []), set_props("layout_status", text=text)])
+
+
+def start_work() -> None:
+    """Simulate work: the root is busy for WORK_SECONDS on a worker thread, with Cancel."""
+    global busy_run
+    with state_lock:
+        if busy_run is not None:
+            return
+        run = busy_run = threading.Event()
+    show_layout("working", [set_props(LAYOUT_BODY, busy=True, busy_text="Simulating work...",
+                                      busy_cancel=True)])
+    threading.Thread(target=finish_work, args=(run,), daemon=True, name="gallery-work").start()
+
+
+def finish_work(run: threading.Event) -> None:
+    if not run.wait(WORK_SECONDS):
+        end_work("work done", run)
+
+
+def end_work(text: str, run: Optional[threading.Event] = None) -> None:
+    """End the simulated work (only `run`, when given) and show `text`."""
+    global busy_run
+    with state_lock:
+        current = busy_run
+        if run is not None and current is not run:
+            return
+        busy_run = None
+    if current is not None:
+        current.set()
+    show_layout(text, [set_props(LAYOUT_BODY, busy=False)])
+
+
+def add_point() -> Tuple[str, List[JsonObject]]:
+    """Append a point to each chart series (and show the newest values in the sparkline)."""
+    global chart_next
+    with state_lock:
+        x = chart_next
+        chart_next += 1
+        points = {"rx": [x, rx_value(x)], "tx": [x, tx_value(x)]}
+        for series_id, point in points.items():
+            chart_data[series_id] = [*chart_data[series_id], point][-CHART_WINDOW:]
+        values = spark_values()
+    changes = [append_points("chart", series_id, [point]) for series_id, point in points.items()]
+    if plugin.supports("charts"):  # An older host has no sparkline to change.
+        changes.append(set_props("spark", values=values))
+    return f"point {x}", changes
+
+
+def toggle_modified() -> Tuple[str, List[JsonObject]]:
+    global modified
+    with state_lock:
+        modified = not modified
+        value = modified
+    return f"modified {'true' if value else 'false'}", [set_props(LAYOUT_BODY, modified=value)]
+
+
+def layout_clicked(element_id: object, window_id: Optional[str]) -> None:
+    """The buttons of the layout window."""
+    if element_id == "tool_button":
+        show_layout(*add_point())
+    elif element_id == "link_button":
+        show_layout("focus form_name", [focus_element("form_name")])
+    elif element_id == "busy_button":
+        start_work()
+    elif element_id == "edit_button":
+        show_layout(*toggle_modified())
+    elif element_id == "ask_button":
+        plugin.show_view(ASK, window_id)
+        show_layout("dialog opened")
+    elif element_id == "apply_button":
+        show_layout("applied")
+    elif isinstance(element_id, str) and element_id.startswith("grid_"):
+        show_layout(f"clicked {element_id}")
+
+
+def layout_event(params: JsonObject) -> None:
+    """The events of the layout window and of its dialog. A checkable button sends `changed`
+    (an older CILogg, without checkable buttons, sends `clicked`)."""
+    global current_tab, pinned
+    element_id, event_type, value = (params.get("element_id"), params.get("type"),
+                                     params.get("value"))
+    window_id = params.get("window_id")
+    if params.get("view_id") == ASK:
+        if element_id == "#buttons" and event_type == "clicked":
+            show_layout(f"dialog clicked {value}")
+        return
+    if element_id == "layout_tabs" and event_type == "changed":
+        tab_id = value if isinstance(value, str) else None
+        if tab_id in TAB_IDS:
+            with state_lock:
+                current_tab = tab_id
+        show_layout(f"tab {tab_id or 'none'} {params.get('index')}")
+    elif element_id == "pin_button" and event_type in ("changed", "clicked"):
+        with state_lock:
+            pinned = value is True if event_type == "changed" else not pinned
+            state = pinned
+        show_layout(f"pinned {'true' if state else 'false'}")
+    elif event_type == "link":
+        href = value.get("href") if isinstance(value, dict) else None
+        show_layout(f"link {href}")
+    elif element_id == LAYOUT_BODY and event_type == "cancel":
+        end_work("cancelled")
+    elif event_type == "clicked":
+        layout_clicked(element_id, window_id if isinstance(window_id, str) else None)
+
+
+def ask_closed(params: JsonObject) -> None:
+    """The dialog closed: the button that closed it (none: closed otherwise, or a CILogg
+    without dialog buttons) and the Name typed in it."""
+    result, inputs = params.get("result"), params.get("inputs")
+    name = inputs.get("ask_name") if isinstance(inputs, dict) else None
+    show_layout(f"dialog closed {result if isinstance(result, str) else 'none'} "
+                f"{name if isinstance(name, str) else 'none'}")
+
+
+@plugin.on_command(LAYOUT_MENU)
+def layout_menu_command(command: UiCommand) -> None:
+    """The drop-down of the Log actions button (plugin.json menu "layout_menu", location
+    "element"): the command's element_id is the button. Add Line appends "line <n>" to the log,
+    Clear Log empties it; the Log tab's badge shows the line count."""
+    global log_total
+    changes: List[JsonObject] = []
+    with state_lock:
+        if command.item_id == "add_line":
+            log_total += 1
+            line = f"line {log_total}\n"
+            log_lines.append(line)
+            changes.append(append_text("log", line))  # left out on a CILogg without text_view
+        elif command.item_id == "clear_log":
+            log_lines.clear()
+            log_total = 0
+            if plugin.supports("text_view"):
+                changes.append(set_props("log", text=""))
+        count = len(log_lines)
+    changes.append(set_props("tab_log", badge=str(count)))
+    show_layout(f"menu {command.item_id} {command.element_id or 'none'}", changes)
 
 
 if __name__ == "__main__":

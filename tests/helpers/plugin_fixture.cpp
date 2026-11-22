@@ -394,7 +394,55 @@ int main( int argc, char** argv )
                                                    { "text", "ready trees" } },
                                       tree } } };
     };
-    const auto rootFor = [ tipsRoot, tablesRoot, treesRoot ]( const QString& viewId ) {
+    // E17f: tabs with a text view, a menu button and a modified root; dialogs with buttons.
+    const auto layoutsRoot = [] {
+        const QJsonObject tabs{
+            { "type", "tabs" },
+            { "id", "pages" },
+            { "children",
+              QJsonArray{ QJsonObject{ { "type", "tab" },
+                                       { "id", "first" },
+                                       { "title", "First" },
+                                       { "children", QJsonArray{ QJsonObject{
+                                                         { "type", "text_view" },
+                                                         { "id", "log" },
+                                                         { "text", "line 1\n" } } } } },
+                          QJsonObject{ { "type", "tab" },
+                                       { "id", "second" },
+                                       { "title", "Second" },
+                                       { "badge", "2" },
+                                       { "children", QJsonArray{} } } } } };
+        return QJsonObject{
+            { "type", "column" },
+            { "id", "body" },
+            { "modified", true },
+            { "close_confirm", "Unsaved fixture" },
+            { "children",
+              QJsonArray{ QJsonObject{ { "type", "label" },
+                                       { "id", "status" },
+                                       { "text", "ready layouts" } },
+                          tabs,
+                          QJsonObject{ { "type", "button" },
+                                       { "id", "more" },
+                                       { "label", "More" },
+                                       { "menu", "more_menu" } } } } };
+    };
+    const auto dialogRoot = []( const QString& viewId ) {
+        return QJsonObject{
+            { "type", "column" },
+            { "id", "body" },
+            { "children",
+              QJsonArray{ QJsonObject{ { "type", "label" },
+                                       { "id", "status" },
+                                       { "text", "ready " + viewId } },
+                          QJsonObject{ { "type", "field" },
+                                       { "id", "name" },
+                                       { "kind", "text" },
+                                       { "label", "Name" },
+                                       { "value", "Ann" } } } } };
+    };
+    const auto rootFor = [ tipsRoot, tablesRoot, treesRoot, layoutsRoot,
+                           dialogRoot ]( const QString& viewId ) {
         if ( viewId == "tips" ) {
             return tipsRoot();
         }
@@ -403,6 +451,12 @@ int main( int argc, char** argv )
         }
         if ( viewId == "trees" ) {
             return treesRoot();
+        }
+        if ( viewId == "layouts" ) {
+            return layoutsRoot();
+        }
+        if ( viewId == "ask" || viewId == "confirm" || viewId == "plain" ) {
+            return dialogRoot( viewId );
         }
         return QJsonObject{
             { "type", "column" },
@@ -482,7 +536,12 @@ int main( int argc, char** argv )
                                    { "icon", "question" },
                                    { "buttons", QJsonArray{ "yes", "no" } },
                                    { "default", "no" } };
-            if ( element == "ping" ) {
+            if ( element == "#buttons" && view == "confirm"
+                 && params.value( "value" ).toString() == "ok" ) {
+                // E17f confirm_by_plugin: the plugin accepts and closes the dialog itself.
+                plugin.hideView( "confirm" );
+            }
+            else if ( element == "ping" ) {
                 status( view, window,
                         "pong:" + params.value( "inputs" ).toObject().value( "name" ).toString() );
             }

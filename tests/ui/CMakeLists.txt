@@ -28,6 +28,7 @@ set(UI_TEST_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/workbench_e17c_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/workbench_e17d_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/workbench_e17e_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/workbench_e17f_test.cpp
 )
 
 if(NOT APPLE)
@@ -41,6 +42,8 @@ endif()
 # the klogg target below generates it first.
 add_executable(cilogg_itests ${UI_TEST_SOURCES} ${BACKWARD_ENABLE}
     ${PROJECT_SOURCE_DIR}/src/app/klogg.qrc ${DOCUMENTATION_RESOURCE})
+# E17f: sparkline gaps are NaN.
+set_exact_floating_point("${CMAKE_CURRENT_SOURCE_DIR}/workbench_e17f_test.cpp")
 add_executable(analysis_worker_fixture ../analysis_worker_fixture.cpp)
 target_link_libraries(analysis_worker_fixture PRIVATE Qt${QT_VERSION_MAJOR}::Core)
 target_compile_definitions(cilogg_itests PRIVATE

@@ -1935,6 +1935,12 @@ Result PluginManager::openView( const QString& pluginId, const QString& viewId,
 void PluginManager::closeView( const QString& pluginId, const QString& viewId,
                                const QString& windowId )
 {
+    closeView( pluginId, viewId, windowId, {} );
+}
+
+void PluginManager::closeView( const QString& pluginId, const QString& viewId,
+                               const QString& windowId, const QJsonObject& extra )
+{
     const auto open = std::find_if(
         openViews_.begin(), openViews_.end(), [ & ]( const OpenView& view ) {
             return view.pluginId == pluginId && view.viewId == viewId && view.windowId == windowId;
@@ -1949,8 +1955,17 @@ void PluginManager::closeView( const QString& pluginId, const QString& viewId,
     const auto entry = entries_.find( pluginId );
     if ( entry != entries_.end() && entry->second->process
          && entry->second->process->state() == "ready" ) {
-        entry->second->process->notify( "view/closed",
-                                        { { "view_id", viewId }, { "window_id", windowId } } );
+        QJsonObject params{ { "view_id", viewId }, { "window_id", windowId } };
+        for ( auto it = extra.begin(); it != extra.end(); ++it ) {
+            params.insert( it.key(), it.value() );
+        }
+        // The inputs are bounded by the view; still never pass the transport limit.
+        if ( QJsonDocument( params ).toJson( QJsonDocument::Compact ).size() + 128
+             > MaxEventBytes ) {
+            params.insert( "inputs", QJsonObject{} );
+            params.insert( "truncated", true );
+        }
+        entry->second->process->notify( "view/closed", params );
     }
 }
 

@@ -4,8 +4,8 @@
 [docs/workbench/decisions.md](workbench/decisions.md), task
 [E17](../plans/cilogg-workbench-2026-10-21/tasks/E17.md)). The user accepted every recommended
 answer of section 23, including a separate yes to question 13 (E17i, built last), and asked for the
-slices in order, one branch and pull request each (section 21). **E17a to E17e are
-implemented** (sections 24 to 28); E17f to E17i are planned.
+slices in order, one branch and pull request each (section 21). **E17a to E17f are
+implemented** (sections 24 to 29); E17g to E17i are planned.
 
 **Request (Dmitry, 2026-11-19), verbatim:**
 
@@ -1728,3 +1728,160 @@ reordering inside a tree. Where the design left a choice open, E17e decided as f
   `select_nodes()`, `@plugin.tree_children(view, element)` with `TreeChildrenQuery`, `node_id` in
   menu and command contexts, TypedDicts for the elements, events and answers, and `FakeHost`
   helpers. The C++ SDK needs nothing new: `onQuery("tree/children", ...)` answers the query.
+
+## 29. E17f as built
+
+E17f implements section 12: layout containers and size hints, `text_view`, `image`, `sparkline`
+and `chart`, the new button keys, the busy overlay, `modified` with a close confirmation, dialog
+buttons with a result, and focus patches. Where the design left a choice open, E17f decided as
+follows.
+
+- **Feature versions.** `layout`, `text_view`, `images`, `charts` and `view_dialogs` are version 1.
+  `layout` covers the containers of section 12.1 and the size hints; `images` the `image` element;
+  `charts` `sparkline` and `chart`; `view_dialogs` the button keys, the busy overlay, `modified`,
+  dialog buttons and focus patches.
+- **Where the code is.** `src/ui/src/pluginlayout.cpp` (the busy overlay and the container
+  helpers), `src/ui/src/plugintextview.cpp`, `src/ui/src/pluginchart.cpp` (the image, sparkline and
+  chart widgets), `src/ui/src/pluginviewlayout.cpp` (the view's part: building, properties,
+  patches, buttons, focus) and `src/ui/src/pluginviewhost.cpp` (dialog buttons, the title mark and
+  the close confirmation, `result` in `view/closed`).
+- **Old plugins (principle 11).** Every key, patch and event here is new, so a plugin that uses
+  none of them gets the same frames as before; `view/closed` gains `result` and `inputs` only for
+  a dialog that declares `buttons`.
+
+### 29.1 Layout
+
+- **Containers.** Every container (`column`, `row`, `group` and the new ones) holds its children in
+  an inner widget, so the busy overlay can cover them; object names are unchanged.
+- **`tabs`.** Children are `tab` elements; any other child is skipped with a warning, and so is a
+  `tab` outside `tabs`. `current` is a tab id (a number is an index), `position` is `top` (the
+  default), `bottom`, `left` or `right`. When the user changes the tab (also through `set_ui`
+  `currentIndex` on the `tabs` element), the plugin gets `changed` with `value` the tab's id (null
+  for a tab without an id) and `index`. A `current` set by the plugin sends nothing.
+- **`tab`.** `title`, `icon`, `badge` (at most 64 characters, shown after the title in
+  parentheses) and `children`, laid out as a column.
+- **`splitter`.** `orientation` is `horizontal` (children side by side, the default) or
+  `vertical`; each child is a pane. `sizes` are pixels per pane. When the user drags a handle, the
+  sizes are kept per plugin, view and element (half a second later, in the store of section 27's
+  kept columns) and win over the plugin's `sizes` when the view is built again with the same number
+  of panes; a later `set: {sizes}` of the plugin applies.
+- **`form`.** Two aligned columns. A field's caption is its `label` (the field then shows no
+  caption of its own); any other element inside a form may set `label` for its caption, except a
+  button, whose `label` is its text. An element without a caption spans both columns.
+- **`grid`.** `columns` (1 to 12, default 2); children fill the rows from left to right, each
+  taking `span` columns (at most `columns`) and `row_span` rows (at most 64).
+- **`separator`.** `orientation` `horizontal` or `vertical`; the default is vertical inside a
+  `row` and horizontal elsewhere.
+- **`spacer`.** `size` (0 to 2,000 pixels along the parent's direction: a width in a row, a height
+  elsewhere) or `stretch`; with neither it stretches (factor 1).
+- **Size hints.** Every element takes `stretch` (0 to 100: its share of the free space in a
+  `column`, `row`, `tab`, `group` or `splitter`), `min_width`, `max_width`, `min_height`,
+  `max_height` (0 to 10,000 pixels; a maximum of 0 means none) and `align` (`left`, `center`,
+  `right`, `top`, `bottom`, or `fill`, the default). A row whose children include one with
+  `stretch` adds no stretch of its own at its end. A value out of range is clamped; a value of the
+  wrong type is ignored with a warning.
+- **Same-shaped roots.** The new containers are part of a view's shape, as `column` and `row` are:
+  a root that changes their children rebuilds the view; one with the same shape applies in place.
+  So are whether a form row has a caption cell, a grid's `columns` and its cells' `span` and
+  `row_span`: patches cannot change them (a warning is logged). A chart's or sparkline's `kind`
+  and a button's `style` are looks that patches change in place; only a field's `kind` and
+  `style` stay structural, as before.
+
+### 29.2 Content
+
+- **`text_view`.** `text`, `format` (`plain`, the default, or `markdown`), `monospace` (default
+  false), `wrap` (default true), `follow` (default false: scroll to the end after new text) and
+  `max_lines` (0, the default, is no limit; at most 100,000; plain text only: the oldest lines go).
+  The whole text is at most 1 MiB (1,048,576 characters): when more arrives, the oldest lines go.
+  The patch entry `{"id", "append": "..."}` adds text at the end (at most 65,536 characters; a
+  longer append is refused with a warning). A same-shaped root replaces the text only when it
+  differs from the text the plugin last set, so appended text stays; `set: {text}` always replaces
+  it. Ctrl+F opens a find bar (`<element>_find`): Enter finds the next match, Shift+Enter the
+  previous one, Esc closes it. `get_ui` reads the text as `plainText` (read-only).
+- **Markdown** is CommonMark through Qt's reader with HTML off (`MarkdownNoHTML`). An image shows
+  only when its source is an icon reference (section 6); other sources show nothing and are never
+  fetched. Links are never opened by the host: a click sends `link` with `value` `{href}`. On Qt
+  older than 5.14 the text shows as plain text.
+- **`image`.** `source` (an icon reference: a plugin file, `builtin:`, `status:`, `image:<id>` of a
+  registered picture, or the light/dark form), `width` and `height` (1 to 4,096 pixels), `scale`
+  (`fit`, the default: inside the box with its aspect ratio; `fill`: stretched to the box; `none`:
+  its own size, cut by the box) and `alt` (its accessible name, also shown when the source cannot be
+  shown). Without `width` and `height` the image takes its own size (at most 4,096 pixels). When
+  the plugin's registered images change, every `image` element shows the new picture.
+- **`sparkline`.** `values` (numbers; at most 1,024, the last ones kept; `null` is a gap), `min` and
+  `max` (default: the range of the values), `kind` (`line`, the default, or `bar`) and `tone`. Its
+  default size is 120 by 24 pixels; its accessible description names the count and the last value.
+- **`chart`.** `kind` (`line`, the default, `bar`, `scatter` or `area`), `series` (at most 8:
+  `{id, title, points, tone}`, each with an id of its own, else skipped with a warning; `points`
+  are `[x, y]` pairs, a number alone being `y` at its position in the list, which in an
+  `append_points` counts on from one after the series' last whole `x`; anything else is skipped with
+  a warning; at most 10,000 per series, the last ones kept), `x_title`, `y_title`, `x_kind`
+  (`number`, the default, or `time`: `x` in milliseconds since the epoch, shown as local time),
+  `legend` (default: shown with more than one series) and `window` (1 to 10,000: each series keeps
+  its last points). Patch entries: `append_points` (`{series, points}` or a list of them; an
+  unknown series is skipped with a warning) and `clear` (`true` for every series, or a list of
+  series ids). A series without `tone` takes the next colour of a fixed palette. Drawn by a host
+  widget, without Qt Charts; its minimum height is 160 pixels.
+- **Streaming content and roots.** As for `text_view`, a same-shaped root replaces a chart's
+  `series` or a sparkline's `values` only when they differ from what the plugin last set, so
+  appended points stay.
+
+### 29.3 Buttons, busy overlay, unsaved changes, dialogs and focus
+
+- **Buttons.** `icon` (an icon reference), `style` (`push`, the default; `tool`: flat; `link`:
+  flat with link-coloured, underlined text), `menu` (the id of an `element` menu: the button opens
+  it as a drop-down, rebuilt each time it opens, and does nothing else when clicked; its entries
+  get the view and the button as the element, without a row or node), `checkable` and `checked`
+  (a checkable button sends `changed` with the new state instead of `clicked` or its action;
+  `set: {checked}` sends nothing), `shortcut` (a key sequence that presses the button while the
+  focus is in the view; refused with a warning when it is a reserved key of section 7.6, a
+  shortcut of the CILogg window, or the shortcut of another button of the view) and `default`
+  (Enter in the view presses it, unless the focused control uses Enter itself: multi-line text,
+  tables, trees, lists, buttons and open drop-downs).
+- **Busy overlay.** `busy`, `busy_text` and `busy_cancel` apply to the root and to every container
+  (`column`, `row`, `group`, `tabs`, `tab`, `splitter`, `form`, `grid`). While `busy` is true the
+  container's contents are disabled (the keyboard focus leaves them) and covered by a busy
+  indicator with the text (`<element>_busy`); `busy_cancel` adds Cancel (`<element>_busy_cancel`),
+  which sends `cancel` (value null) and then shows "Cancelling…", disabled, until `busy` is set
+  again. The container's own `enabled` is unaffected.
+- **Unsaved changes.** `modified` and `close_confirm` are keys of the root element (elsewhere they
+  are unknown properties). `modified: true` adds " *" to the title of the dock, window or dialog;
+  the user closing it (the title bar's button, Esc, or a dialog's `cancel`, `no` or `close`) then
+  asks "Discard changes?" with the `close_confirm` text (default "This view has unsaved changes.
+  Discard them?"), Discard and Cancel (object name `pluginView_<plugin>_<view>_discard`). Closing
+  by the plugin (`view/hide`), by the plugin stopping or with the CILogg window does not ask; the
+  `ok` and `yes` buttons never ask.
+- **Dialog buttons.** A view of `kind: dialog` may declare `buttons` (from `ok`, `cancel`, `apply`,
+  `close`, `yes`, `no`, each once), `default` (one of them) and `confirm_by_plugin` in
+  `plugin.json`; other kinds refuse them as a manifest error, and an older CILogg ignores them. The
+  buttons sit in a button box below the view (`pluginView_<plugin>_<view>_button_<name>`). A click
+  sends `view/event` `clicked` with `element_id` `"#buttons"` (a reserved id, never an element) and
+  `value` the button's name, with the inputs. `ok`, `yes`, `cancel`, `no` and `close` then close the
+  dialog; with `confirm_by_plugin`, `ok` and `yes` only send the event and the plugin closes the
+  dialog with `view/hide`. Esc and the title bar's close button press `cancel` when the dialog has
+  it, else `close`, else just close the dialog. The `view/closed` of a dialog with `buttons`
+  carries `result` (the button that closed it; null when it closed otherwise) and `inputs` (the
+  view's inputs at that moment). The buttons are disabled while the view is (before the plugin's
+  first root and while it is stopped). `default` is the button Enter presses when no element button
+  of the view is the default.
+- **Focus.** The patch entry `{"id", "focus": true}` gives the element the keyboard focus only while
+  the view is active: its own window (a window, a dialog or a floating dock) is the active window,
+  or the focus already is inside the view. Otherwise it is ignored.
+
+### 29.4 Automation and SDKs
+
+- `get_ui` reports the `tabs` element's `currentIndex` (and `set_ui` changes it, sending
+  `changed`), a `text_view`'s `plainText`, and a checkable button's `checked` (`set_ui` toggles it,
+  sending `changed`); dialog buttons are buttons for `activate_ui`. `get_plugin_menus --location
+  element` and `trigger_plugin_menu` take `--element-id` of a button with `menu` (without
+  `--row-id` or `--node-id`).
+- The Python SDK gains `tabs()`, `tab()`, `splitter()`, `form()`, `grid()`, `separator()`,
+  `spacer()`, `text_view()`, `image()`, `sparkline()`, `chart()` and `chart_series()`, the button
+  keywords, the patch helpers `append_text()`, `append_points()`, `clear_chart()` and
+  `focus_element()`, TypedDicts for the elements, events and `view/closed`, and `FakeHost` helpers.
+  Its `update()` and `patch()` convert for an older host: without `layout`, `tabs` become a
+  `column` of `group`s titled like the tabs, `splitter`, `form` and `grid` a `column` of `row`s, and
+  `separator` and `spacer` are left out, with the size hints removed; without `view_dialogs` the
+  button keys, the busy keys, `modified`, `close_confirm` and focus patches are removed; `text_view`,
+  `image`, `sparkline` and `chart` go as they are (an older host skips them with a warning), and
+  their `append`, `append_points` and `clear` patches are left out. The C++ SDK needs nothing new.

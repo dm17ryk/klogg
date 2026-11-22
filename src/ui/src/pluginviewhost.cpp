@@ -11,6 +11,7 @@
 #include <QAbstractButton>
 #include <QDateTime>
 #include <QDialog>
+#include <QDialogButtonBox>
 #include <QDockWidget>
 #include <QElapsedTimer>
 #include <QEvent>
@@ -66,6 +67,35 @@ QString safeName( QString text )
     static const QRegularExpression unsafe( "[^A-Za-z0-9._-]" );
     return text.replace( unsafe, "_" );
 }
+
+// E17f: a dialog view whose Esc and title bar close button go through the host, which presses
+// `cancel` or `close` and may ask "Discard changes?" (docs/plugin-sdk-advanced.md section 29.3).
+class PluginViewDialog final : public QDialog {
+public:
+    using QDialog::QDialog;
+    std::function<void()> onReject;
+    void reject() override
+    {
+        if ( onReject ) {
+            onReject();
+        }
+        else {
+            QDialog::reject();
+        }
+    }
+};
+
+QDialogButtonBox::StandardButton dialogBoxButton( const QString& name )
+{
+    static const QMap<QString, QDialogButtonBox::StandardButton> buttons{
+        { "ok", QDialogButtonBox::Ok },       { "cancel", QDialogButtonBox::Cancel },
+        { "apply", QDialogButtonBox::Apply }, { "close", QDialogButtonBox::Close },
+        { "yes", QDialogButtonBox::Yes },     { "no", QDialogButtonBox::No }
+    };
+    return buttons.value( name, QDialogButtonBox::NoButton );
+}
+
+constexpr char DialogButtonProperty[] = "pluginDialogButton";
 } // namespace
 
 struct PluginViewHost::Open {
@@ -86,6 +116,14 @@ struct PluginViewHost::Open {
     // Disabled until the plugin sends a root, after opening and after every restart.
     bool awaitingRoot = true;
     bool editDropLogged = false; // an undelivered edit is logged once per open view
+    // E17f: the title without the " *" mark, a dialog's declared buttons and its result.
+    QString title;
+    QStringList dialogButtons;
+    bool confirmByPlugin = false;
+    QPointer<QDialogButtonBox> buttonBox;
+    QJsonValue result = QJsonValue( QJsonValue::Null );
+    bool closeConfirmed = false; // the user chose Discard: the next close goes through
+    bool confirming = false;     // the question is open
 };
 
 struct PluginViewHost::Message {
@@ -128,6 +166,16 @@ PluginViewHost::PluginViewHost( QMainWindow* window, QString windowId, ContextPr
              } );
     // ui/icons and the end of a plugin's images, once for every window.
     PluginIconRegistry::instance().attach( manager_ );
+    // E17f: image elements show a plugin's new pictures.
+    connect( &PluginIconRegistry::instance(), &PluginIconRegistry::changed, this,
+             [ this ]( const QString& pluginId ) {
+                 for ( auto& [ key, open ] : open_ ) {
+                     Q_UNUSED( key );
+                     if ( open->pluginId == pluginId && open->view ) {
+                         open->view->refreshImages();
+                     }
+                 }
+             } );
     connect( manager_, &cilogg::plugins::PluginManager::pluginReady, this,
              [ this ]( const QString& pluginId ) { setStopped( pluginId, false ); } );
     connect( manager_, &cilogg::plugins::PluginManager::viewsRevoked, this,
@@ -226,6 +274,7 @@ PluginMenuContext PluginViewHost::elementMenuContext( const QString& viewId,
     // E17e: trees name the clicked node or path instead of a row and column.
     context.tree = target.contains( "node_id" );
     context.nodeId = target.value( "node_id" ).toString();
+    context.button = target.value( "button" ).toBool(); // E17f
     for ( const auto& id : target.value( "selected_ids" ).toArray() ) {
         context.selectedIds.append( id.toString() );
     }
@@ -268,8 +317,8 @@ bool PluginViewHost::openView( const QString& pluginId, const QString& viewId,
         }
         auto& open = *existing->second;
         if ( overrides.contains( "title" ) ) {
-            open.container->setWindowTitle(
-                PluginView::limitText( overrides.value( "title" ).toString() ) );
+            open.title = PluginView::limitText( overrides.value( "title" ).toString() );
+            updateTitle( open );
         }
         if ( auto* dock = qobject_cast<QDockWidget*>( open.container.data() ) ) {
             if ( overrides.contains( "area" ) && window_ ) {
@@ -445,6 +494,23 @@ bool PluginViewHost::openView( const QString& pluginId, const QString& viewId,
     queries.icon = [ pluginId, directory ]( const QJsonValue& reference ) {
         return PluginIconRegistry::instance().icon( pluginId, directory, reference );
     };
+    // E17f: `image` elements and Markdown images. A registered picture shows at its own size.
+    queries.picture = [ pluginId, directory ]( const QJsonValue& reference, const QSize& size ) {
+        auto& registry = PluginIconRegistry::instance();
+        auto value = reference;
+        if ( value.isObject() ) {
+            value = value.toObject().value( PluginIconRegistry::darkTheme() ? "dark" : "light" );
+        }
+        const auto text = value.toString();
+        if ( text.startsWith( QLatin1String( "image:" ) ) ) {
+            const auto picture = registry.picture( pluginId, text.mid( 6 ) );
+            if ( !picture.isNull() ) {
+                return picture;
+            }
+        }
+        const auto icon = registry.icon( pluginId, directory, value );
+        return icon.isNull() ? QImage{} : icon.pixmap( size ).toImage();
+    };
     // E17c completion (design 8.2): one query per view; a newer one replaces it.
     queries.complete = [ host = QPointer<PluginViewHost>( this ), pluginId, viewId,
                          key ]( const QJsonObject& params, int timeoutMs,
@@ -586,13 +652,45 @@ bool PluginViewHost::openView( const QString& pluginId, const QString& viewId,
         frame->addWidget( body );
     }
     else if ( open->kind == "dialog" ) {
-        auto* dialog = new QDialog( window_ );
+        auto* dialog = new PluginViewDialog( window_ );
         // Modal to its CILogg window only; shown with show(), never a blocking exec().
         dialog->setWindowModality( def.value( "modal" ).toBool( false ) ? Qt::WindowModal
                                                                         : Qt::NonModal );
         auto* frame = new QVBoxLayout( dialog );
         frame->setContentsMargins( 0, 0, 0, 0 );
         frame->addWidget( body );
+        // E17f: the declared buttons in a button box below the view (section 29.3).
+        for ( const auto& value : def.value( "buttons" ).toArray() ) {
+            open->dialogButtons.append( value.toString() );
+        }
+        open->confirmByPlugin = def.value( "confirm_by_plugin" ).toBool();
+        if ( !open->dialogButtons.isEmpty() ) {
+            auto* box = new QDialogButtonBox( dialog );
+            box->setObjectName( name + "_buttons" );
+            box->setContentsMargins( 6, 0, 6, 6 );
+            for ( const auto& buttonName : std::as_const( open->dialogButtons ) ) {
+                auto* button = box->addButton( dialogBoxButton( buttonName ) );
+                if ( !button ) {
+                    continue;
+                }
+                button->setObjectName( name + "_button_" + buttonName );
+                button->setProperty( DialogButtonProperty, buttonName );
+                button->setAutoDefault( false );
+                button->setDefault( buttonName == def.value( "default" ).toString() );
+            }
+            connect( box, &QDialogButtonBox::clicked, this,
+                     [ this, key ]( QAbstractButton* button ) {
+                         dialogButton( key, button->property( DialogButtonProperty ).toString() );
+                     } );
+            box->setEnabled( false ); // as the view: until the plugin's first root
+            frame->addWidget( box );
+            open->buttonBox = box;
+        }
+        dialog->onReject = [ host = QPointer<PluginViewHost>( this ), key ] {
+            if ( host ) {
+                host->dialogRejected( key );
+            }
+        };
         connect( dialog, &QDialog::finished, this, [ this, key ] { containerClosed( key ); } );
         container = dialog;
     }
@@ -608,6 +706,14 @@ bool PluginViewHost::openView( const QString& pluginId, const QString& viewId,
     container->setAccessibleName( title );
     container->installEventFilter( this );
     open->container = container;
+    open->title = title;
+    // E17f: `modified` marks the title (section 29.3).
+    connect( view, &PluginView::modifiedChanged, this, [ this, key ] {
+        const auto it = open_.find( key );
+        if ( it != open_.end() ) {
+            updateTitle( *it->second );
+        }
+    } );
 
     connect( view, &PluginView::eventRaised, this,
              [ this, pluginId, viewId, key, view ]( const QJsonObject& event ) {
@@ -807,11 +913,115 @@ void PluginViewHost::containerClosed( const QString& key )
     }
     saveState( *open );
     if ( manager_ ) {
-        manager_->closeView( open->pluginId, open->viewId, windowId_ );
+        manager_->closeView( open->pluginId, open->viewId, windowId_, closedExtra( *open ) );
     }
     if ( open->container ) {
         open->container->hide();
         open->container->deleteLater();
+    }
+}
+
+QJsonObject PluginViewHost::closedExtra( const Open& open ) const
+{
+    // E17f: only a dialog with `buttons` adds its result and inputs (principle 11).
+    if ( open.dialogButtons.isEmpty() ) {
+        return {};
+    }
+    return { { "result", open.result },
+             { "inputs", open.view ? open.view->inputs() : QJsonObject{} } };
+}
+
+void PluginViewHost::updateTitle( Open& open )
+{
+    if ( open.container ) {
+        const bool modified = open.view && open.view->modified();
+        open.container->setWindowTitle( modified ? open.title + QStringLiteral( " *" ) : open.title );
+    }
+}
+
+void PluginViewHost::syncButtons( Open& open )
+{
+    if ( open.buttonBox ) {
+        open.buttonBox->setEnabled( open.view && open.view->isEnabled() );
+    }
+}
+
+bool PluginViewHost::confirmDiscard( const QString& key )
+{
+    const auto it = open_.find( key );
+    if ( it == open_.end() || !it->second->view || it->second->confirming ) {
+        return false;
+    }
+    if ( !it->second->view->modified() ) {
+        return true;
+    }
+    auto& open = *it->second;
+    auto text = open.view->closeConfirmText();
+    if ( text.isEmpty() ) {
+        text = tr( "This view has unsaved changes. Discard them?" );
+    }
+    const auto dialogName = PluginView::objectNameFor( open.pluginId, open.viewId ) + "_discard";
+    open.confirming = true;
+    const QPointer<PluginViewHost> guard( this );
+    const bool discard = dialogs_.confirm
+                         && dialogs_.confirm( window_ ? window_.data() : nullptr, dialogName,
+                                              tr( "Discard changes?" ), text, tr( "Discard" ) );
+    if ( !guard ) {
+        return false;
+    }
+    // The question's event loop may have closed the view.
+    const auto after = open_.find( key );
+    if ( after == open_.end() ) {
+        return false;
+    }
+    after->second->confirming = false;
+    return discard;
+}
+
+void PluginViewHost::dialogButton( const QString& key, const QString& name )
+{
+    auto it = open_.find( key );
+    if ( it == open_.end() || !it->second->view || !it->second->view->isEnabled() ) {
+        return;
+    }
+    static const QStringList Closing{ "ok", "yes", "cancel", "no", "close" };
+    const bool accepts = name == QLatin1String( "ok" ) || name == QLatin1String( "yes" );
+    const bool closes = Closing.contains( name ) && !( accepts && it->second->confirmByPlugin );
+    // Leaving without saving asks first; `ok` and `yes` never ask.
+    if ( closes && !accepts && !confirmDiscard( key ) ) {
+        return;
+    }
+    it = open_.find( key );
+    if ( it == open_.end() || !it->second->view || !it->second->view->isEnabled() ) {
+        return;
+    }
+    LOG_DEBUG << "Plugin dialog button plugin=" << it->second->pluginId.toStdString()
+              << " view=" << it->second->viewId.toStdString() << " button=" << name.toStdString();
+    it->second->view->emitDialogButton( name );
+    it = open_.find( key );
+    if ( closes && it != open_.end() ) {
+        it->second->result = name;
+        containerClosed( key );
+    }
+}
+
+void PluginViewHost::dialogRejected( const QString& key )
+{
+    // Esc and the title bar's close button press `cancel`, else `close`, else close the dialog.
+    const auto it = open_.find( key );
+    if ( it == open_.end() ) {
+        return;
+    }
+    const auto& buttons = it->second->dialogButtons;
+    const auto name = buttons.contains( "cancel" )  ? QStringLiteral( "cancel" )
+                      : buttons.contains( "close" ) ? QStringLiteral( "close" )
+                                                    : QString{};
+    if ( !name.isEmpty() && it->second->view && it->second->view->isEnabled() ) {
+        dialogButton( key, name );
+        return;
+    }
+    if ( confirmDiscard( key ) ) {
+        containerClosed( key );
     }
 }
 
@@ -922,6 +1132,7 @@ void PluginViewHost::render( Open& open )
         if ( open.awaitingRoot && !open.stopped ) {
             open.awaitingRoot = false;
             open.view->setEnabled( true );
+            syncButtons( open );
             open.note->clear();
             open.note->hide();
         }
@@ -964,6 +1175,7 @@ void PluginViewHost::setStopped( const QString& pluginId, bool stopped )
             open->view->failTreeLoads();
         }
         open->view->setEnabled( false );
+        syncButtons( *open );
         open->pendingRoot.reset();
         open->pendingPatch = {};
         if ( stopped ) {
@@ -1182,6 +1394,22 @@ bool PluginViewHost::eventFilter( QObject* watched, QEvent* event )
         for ( const auto& [ key, open ] : open_ ) {
             if ( open->container == watched && open->kind != "dialog" ) {
                 const auto closedKey = key;
+                // E17f: a modified view asks "Discard changes?" first (section 29.3), after the
+                // close event, since the question runs its own event loop.
+                if ( open->view && open->view->modified() && !open->closeConfirmed && !closing_ ) {
+                    event->ignore();
+                    QTimer::singleShot( 0, this, [ this, closedKey ] {
+                        if ( !confirmDiscard( closedKey ) ) {
+                            return;
+                        }
+                        const auto it = open_.find( closedKey );
+                        if ( it != open_.end() && it->second->container ) {
+                            it->second->closeConfirmed = true;
+                            it->second->container->close();
+                        }
+                    } );
+                    return true;
+                }
                 QTimer::singleShot( 0, this,
                                     [ this, closedKey ] { containerClosed( closedKey ); } );
                 break;
@@ -1221,7 +1449,7 @@ void PluginViewHost::windowClosing()
         }
         saveState( *open );
         if ( manager_ ) {
-            manager_->closeView( open->pluginId, open->viewId, windowId_ );
+            manager_->closeView( open->pluginId, open->viewId, windowId_, closedExtra( *open ) );
         }
         if ( open->container ) {
             open->container->hide();

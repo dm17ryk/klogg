@@ -6,13 +6,16 @@
   "capabilities": ["tool"],
   "executable": "python",
   "arguments": ["main.py"],
-  "description": "A gallery of plugin SDK features: static and advanced tooltips, registered icons, accessible names, menus, context menus, a dynamic submenu, a shortcut, choices, check boxes, radio buttons, field kinds, validation, completion, a rich table with check boxes, row dragging, Export CSV and its own context menu, and an explorer view with a lazy tree (check boxes, dragging, node tooltips, a context menu) and a file tree.",
+  "description": "A gallery of plugin SDK features: static and advanced tooltips, registered icons, accessible names, menus, context menus, a dynamic submenu, a shortcut, choices, check boxes, radio buttons, field kinds, validation, completion, a rich table with check boxes, row dragging, Export CSV and its own context menu, an explorer view with a lazy tree (check boxes, dragging, node tooltips, a context menu) and a file tree, and a layout window with tabs, a form, a grid, a splitter, a text view, Markdown notes, a chart, a sparkline, a picture, button styles, a menu button, a busy overlay, unsaved changes and a dialog with buttons.",
   "handles": ["tooltip/resolve", "menu/populate", "field/complete", "tree/children", "ui/command",
               "query/cancel"],
   "views": [
     {"id": "gallery", "title": "UI Gallery", "kind": "dock", "area": "right", "width": 520},
     {"id": "explorer", "title": "UI Gallery Explorer", "kind": "dock", "area": "left",
-     "width": 420}
+     "width": 420},
+    {"id": "layout", "title": "UI Gallery Layout", "kind": "window", "width": 900, "height": 640},
+    {"id": "ask", "title": "Ask", "kind": "dialog", "modal": true, "menu": false,
+     "buttons": ["ok", "cancel", "apply"], "default": "ok"}
   ],
   "menus": [
     {
@@ -26,6 +29,8 @@
         {"id": "open_explorer", "title": "Open explorer", "view": "explorer",
          "icon": "builtin:folder",
          "tooltip": "Opens the UI Gallery Explorer view: a tree of benches and a file tree."},
+        {"id": "open_layout", "title": "Open layout", "view": "layout", "icon": "builtin:edit",
+         "tooltip": "Opens the UI Gallery Layout window: tabs, a chart and a dialog."},
         {"type": "separator"},
         {"id": "highlight_offline", "title": "Highlight offline boards", "event": true,
          "checkable": true, "checked": false,
@@ -87,6 +92,14 @@
       "items": [
         {"id": "show_path", "title": "Show Path", "icon": "builtin:info", "event": true,
          "tooltip": "Shows the clicked path in the explorer's status label."}
+      ]
+    },
+    {
+      "id": "layout_menu",
+      "location": "element",
+      "items": [
+        {"id": "add_line", "title": "Add Line", "event": true},
+        {"id": "clear_log", "title": "Clear Log", "event": true}
       ]
     }
   ]

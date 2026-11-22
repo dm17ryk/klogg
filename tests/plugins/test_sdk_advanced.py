@@ -96,7 +96,9 @@ class Negotiation(SdkCase):
         self.assertFalse(plugin.supports("menus", 2))
         self.assertFalse(plugin.supports("choices", 2))
         self.assertTrue(plugin.supports("tree") and plugin.supports("file_tree"))
-        self.assertFalse(plugin.supports("layout"))  # an E17f feature
+        for feature in ("layout", "text_view", "images", "charts", "view_dialogs"):
+            self.assertTrue(plugin.supports(feature), feature)
+        self.assertFalse(plugin.supports("toolbars"))  # an E17g feature
         self.assertEqual(plugin.host_limits, dict(self.testing.HOST_LIMITS))
         self.assertEqual(plugin.host_version, self.testing.HOST_VERSION)
         self.assertEqual(plugin.host_feature_versions, dict(self.testing.HOST_FEATURE_VERSIONS))

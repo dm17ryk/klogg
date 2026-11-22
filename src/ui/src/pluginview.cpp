@@ -2,9 +2,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "pluginview.h"
 #include "checkcombobox.h"
+#include "pluginchart.h"
 #include "pluginchoicewidgets.h"
 #include "pluginfeatures.h"
 #include "pluginfiletree.h"
+#include "pluginlayout.h"
+#include "plugintextview.h"
 #include "plugintablebehaviour.h"
 #include "plugintablemodel.h"
 #include "plugintree.h"
@@ -61,11 +64,17 @@ static_assert( PluginView::MaxTableCells == cilogg::plugins::MaxViewTableCells )
 static_assert( PluginView::MaxTextChars == cilogg::plugins::MaxViewTextChars );
 
 namespace {
-const QStringList ContainerTypes{ "column", "row", "group" };
-const QStringList ElementTypes{ "column",   "row",      "group",       "label",
-                                "badge",    "field",    "button",      "progress",
-                                "table",    "checkbox", "radio_group", "check_group",
-                                "tree",     "file_tree" };
+// E17f adds the elements after file_tree (docs/plugin-sdk-advanced.md section 29).
+const QStringList ElementTypes{ "column",    "row",       "group",       "label",
+                                "badge",     "field",     "button",      "progress",
+                                "table",     "checkbox",  "radio_group", "check_group",
+                                "tree",      "file_tree", "tabs",        "tab",
+                                "splitter",  "form",      "grid",        "separator",
+                                "spacer",    "text_view", "image",       "sparkline",
+                                "chart" };
+const QStringList ContentTypes{ "separator", "spacer", "text_view", "image", "sparkline", "chart" };
+const QStringList BusyKeys{ "busy", "busy_text", "busy_cancel" };
+const QStringList RootKeys{ "modified", "close_confirm" };
 // E17c adds the kinds after multichoice (docs/plugin-sdk-advanced.md section 8.5).
 const QStringList FieldKinds{ "text",      "number",   "choice",  "boolean", "file_open",
                               "file_save", "directory", "multichoice", "multiline", "secret",
@@ -90,7 +99,17 @@ const QStringList CommonKeys{ "id",
                               "tooltip_key",
                               "tooltip_timeout_ms",
                               "accessible_name",
-                              "accessible_description" };
+                              "accessible_description",
+                              // E17f size hints (section 29.1); span and row_span place an
+                              // element in a grid.
+                              "stretch",
+                              "min_width",
+                              "max_width",
+                              "min_height",
+                              "max_height",
+                              "align",
+                              "span",
+                              "row_span" };
 // Properties that keep their state when a same-shaped root omits them. `rows` and `columns` are
 // a table's content; on a field (multiline rows, inline choice columns) they are looks, which a
 // root that omits them returns to their defaults. E17e: a tree's `nodes` and `columns` and a
@@ -99,14 +118,59 @@ const QStringList KeptWhenAbsent{ "value", "kind", "children" };
 const QStringList TableKeptWhenAbsent{ "rows", "columns" };
 const QStringList TreeKeptWhenAbsent{ "nodes", "columns" };
 const QStringList FileTreeKeptWhenAbsent{ "roots", "columns" };
+// E17f streaming content: a same-shaped root that omits it keeps it (section 29.2).
+bool keptWhenAbsent( const QString& type, const QString& key )
+{
+    // A chart's or sparkline's `kind` is a look: it returns to its default.
+    if ( key == QLatin1String( "kind" ) && ( type == "chart" || type == "sparkline" ) ) {
+        return false;
+    }
+    return KeptWhenAbsent.contains( key )
+           || ( type == "table" && TableKeptWhenAbsent.contains( key ) )
+           || ( type == "tree" && TreeKeptWhenAbsent.contains( key ) )
+           || ( type == "file_tree" && FileTreeKeptWhenAbsent.contains( key ) )
+           || ( type == "text_view" && key == "text" ) || ( type == "chart" && key == "series" )
+           || ( type == "sparkline" && key == "values" );
+}
 
 QStringList knownKeys( const QString& type )
 {
-    if ( type == "column" || type == "row" ) {
-        return { "children" };
+    // E17f: every container takes the busy overlay keys (section 29.3).
+    if ( type == "column" || type == "row" || type == "form" ) {
+        return QStringList{ "children" } + BusyKeys;
     }
     if ( type == "group" ) {
-        return { "children", "title", "collapsible", "collapsed" };
+        return QStringList{ "children", "title", "collapsible", "collapsed" } + BusyKeys;
+    }
+    if ( type == "tabs" ) {
+        return QStringList{ "children", "current", "position" } + BusyKeys;
+    }
+    if ( type == "tab" ) {
+        return QStringList{ "children", "title", "icon", "badge" } + BusyKeys;
+    }
+    if ( type == "splitter" ) {
+        return QStringList{ "children", "orientation", "sizes" } + BusyKeys;
+    }
+    if ( type == "grid" ) {
+        return QStringList{ "children", "columns" } + BusyKeys;
+    }
+    if ( type == "separator" ) {
+        return { "orientation" };
+    }
+    if ( type == "spacer" ) {
+        return { "size" };
+    }
+    if ( type == "text_view" ) {
+        return { "text", "format", "monospace", "wrap", "follow", "max_lines" };
+    }
+    if ( type == "image" ) {
+        return { "source", "width", "height", "scale", "alt" };
+    }
+    if ( type == "sparkline" ) {
+        return { "values", "min", "max", "kind", "tone" };
+    }
+    if ( type == "chart" ) {
+        return { "kind", "series", "x_title", "y_title", "x_kind", "legend", "window" };
     }
     if ( type == "label" ) {
         return { "text", "tone", "bold" };
@@ -123,8 +187,10 @@ QStringList knownKeys( const QString& type )
                  "min_length", "max_length", "error",     "completion_timeout_ms" };
     }
     if ( type == "button" ) {
-        return { "label", "tone",        "action",        "arguments",
-                 "event", "confirm",     "save_dialog",   "requires_valid" };
+        // E17f: icon, style, menu, checkable, checked, shortcut and default (section 29.3).
+        return { "label",     "tone",    "action",   "arguments", "event",
+                 "confirm",   "save_dialog", "requires_valid", "icon", "style",
+                 "menu",      "checkable", "checked", "shortcut", "default" };
     }
     if ( type == "progress" ) {
         return { "value", "busy", "text" };
@@ -159,11 +225,66 @@ QJsonObject defaultsFor( const QString& type )
     QJsonObject defaults{ { "enabled", true },        { "visible", true },
                           { "tooltip", "" },          { "tooltip_provider", false },
                           { "tooltip_key", "" },      { "accessible_name", "" },
-                          { "accessible_description", "" } };
+                          { "accessible_description", "" },
+                          // E17f size hints and the root's keys (section 29).
+                          { "stretch", 0 },           { "min_width", 0 },
+                          { "max_width", 0 },         { "min_height", 0 },
+                          { "max_height", 0 },        { "align", "fill" },
+                          { "modified", false },      { "close_confirm", "" } };
+    if ( pluginlayout::containerTypes().contains( type ) ) {
+        defaults.insert( "busy", false );
+        defaults.insert( "busy_text", "" );
+        defaults.insert( "busy_cancel", false );
+    }
     if ( type == "group" ) {
         defaults.insert( "title", "" );
         defaults.insert( "collapsible", false );
         defaults.insert( "collapsed", false );
+    }
+    else if ( type == "tabs" ) {
+        defaults.insert( "position", "top" );
+    }
+    else if ( type == "tab" ) {
+        defaults.insert( "title", "" );
+        defaults.insert( "icon", "" );
+        defaults.insert( "badge", "" );
+    }
+    else if ( type == "splitter" ) {
+        defaults.insert( "orientation", "horizontal" );
+    }
+    else if ( type == "separator" ) {
+        defaults.insert( "orientation", "" );
+    }
+    else if ( type == "spacer" ) {
+        defaults.insert( "size", -1 );
+    }
+    else if ( type == "text_view" ) {
+        defaults.insert( "format", "plain" );
+        defaults.insert( "monospace", false );
+        defaults.insert( "wrap", true );
+        defaults.insert( "follow", false );
+        defaults.insert( "max_lines", 0 );
+    }
+    else if ( type == "image" ) {
+        defaults.insert( "source", "" );
+        defaults.insert( "width", 0 );
+        defaults.insert( "height", 0 );
+        defaults.insert( "scale", "fit" );
+        defaults.insert( "alt", "" );
+    }
+    else if ( type == "sparkline" ) {
+        defaults.insert( "min", QJsonValue::Null );
+        defaults.insert( "max", QJsonValue::Null );
+        defaults.insert( "kind", "line" );
+        defaults.insert( "tone", "normal" );
+    }
+    else if ( type == "chart" ) {
+        defaults.insert( "kind", "line" );
+        defaults.insert( "x_title", "" );
+        defaults.insert( "y_title", "" );
+        defaults.insert( "x_kind", "number" );
+        defaults.insert( "legend", QJsonValue::Null );
+        defaults.insert( "window", 0 );
     }
     else if ( type == "label" || type == "badge" ) {
         defaults.insert( "text", "" );
@@ -196,6 +317,13 @@ QJsonObject defaultsFor( const QString& type )
     else if ( type == "button" ) {
         defaults.insert( "label", "" );
         defaults.insert( "tone", "normal" );
+        defaults.insert( "icon", "" );
+        defaults.insert( "style", "push" );
+        defaults.insert( "menu", "" );
+        defaults.insert( "checkable", false );
+        defaults.insert( "checked", false );
+        defaults.insert( "shortcut", "" );
+        defaults.insert( "default", false );
     }
     else if ( type == "progress" ) {
         defaults.insert( "value", 0.0 );
@@ -542,6 +670,11 @@ void PluginView::flushKeptColumns()
         if ( node && node->behaviour ) {
             node->behaviour->flushPendingSave();
         }
+        // E17f: a splitter's dragged sizes still waiting for their save.
+        if ( node && node->saveTimer && node->saveTimer->isActive() ) {
+            node->saveTimer->stop();
+            saveSplitter( node->id );
+        }
     }
 }
 
@@ -656,13 +789,32 @@ QString shapeOf( const QJsonObject& element )
 {
     QString shape = element.value( "type" ).toString().left( 64 ) + ':'
                     + element.value( "id" ).toString().left( 128 );
+    const auto type = element.value( "type" ).toString();
+    // Only a field's kind and style build its widgets (E17f charts and buttons have looks of the
+    // same names).
     for ( const auto& key : FieldStructureKeys ) {
-        shape += ':' + element.value( key ).toVariant().toString().left( 64 );
+        shape += ':' + ( type == QLatin1String( "field" )
+                             ? element.value( key ).toVariant().toString().left( 64 )
+                             : QString{} );
     }
-    if ( ContainerTypes.contains( element.value( "type" ).toString() ) ) {
+    if ( type == QLatin1String( "grid" ) ) {
+        shape += ":c" + element.value( "columns" ).toVariant().toString().left( 8 );
+    }
+    if ( pluginlayout::containerTypes().contains( type ) ) {
         shape += '[';
         for ( const auto& child : element.value( "children" ).toArray() ) {
-            shape += shapeOf( child.toObject() ) + ',';
+            const auto object = child.toObject();
+            shape += shapeOf( object );
+            // E17f: a form row with or without a caption cell, a grid cell's place.
+            if ( type == QLatin1String( "form" )
+                 && object.value( "type" ).toString() != QLatin1String( "field" ) ) {
+                shape += pluginlayout::formCaption( object ).isEmpty() ? ":-" : ":c";
+            }
+            else if ( type == QLatin1String( "grid" ) ) {
+                shape += ':' + object.value( "span" ).toVariant().toString().left( 8 ) + 'x'
+                         + object.value( "row_span" ).toVariant().toString().left( 8 );
+            }
+            shape += ',';
         }
         shape += ']';
     }
@@ -690,6 +842,10 @@ void PluginView::clear()
     limitReached_ = false;
     root_.clear();
     ++generation_;
+    closeConfirm_.clear();
+    if ( std::exchange( modified_, false ) ) {
+        Q_EMIT modifiedChanged( false ); // a new tree starts unmodified
+    }
 }
 
 void PluginView::setRoot( const QJsonObject& root )
@@ -712,12 +868,11 @@ void PluginView::setRoot( const QJsonObject& root )
         if ( root_ ) {
             layout->addWidget( root_ );
         }
-        bool hasTable = false;
+        bool expanding = false;
         for ( const auto& node : nodes_ ) {
-            hasTable = hasTable || node->type == "table" || node->type == "tree"
-                       || node->type == "file_tree";
+            expanding = expanding || pluginlayout::expands( node->type );
         }
-        if ( !hasTable ) {
+        if ( !expanding ) {
             layout->addStretch( 1 );
         }
         scroll_->setWidget( body );
@@ -750,6 +905,10 @@ QWidget* PluginView::build( const QJsonObject& element, QWidget* parent, const Q
         warnOnce( "type:" + type.left( 64 ), "unknown element type ignored: " + type.left( 64 ) );
         return nullptr;
     }
+    if ( type == "tab" && currentParentType_ != "tabs" ) {
+        warnOnce( "tab-outside", "a tab element outside tabs is skipped" );
+        return nullptr;
+    }
     if ( nodes_.size() >= MaxElements ) {
         if ( !limitReached_ ) {
             limitReached_ = true;
@@ -776,47 +935,20 @@ QWidget* PluginView::build( const QJsonObject& element, QWidget* parent, const Q
     node->id = id;
     node->type = type;
     node->automatic = automatic;
+    // E17f: where the element sits (section 29.1).
+    node->parentId = currentParentId_;
+    node->parentType = currentParentType_;
+    node->root = path == QLatin1String( "0" );
     nodes_.insert( id, node );
     paths_.insert( path, id );
     order_.append( id );
 
     QWidget* outer = nullptr;
-    if ( type == "column" || type == "row" || type == "group" ) {
-        QWidget* box = nullptr;
-        QWidget* content = nullptr;
-        if ( type == "group" ) {
-            auto* group = new QGroupBox( parent );
-            auto* groupLayout = new QVBoxLayout( group );
-            content = new QWidget( group );
-            groupLayout->addWidget( content );
-            connect( group, &QGroupBox::toggled, content, &QWidget::setVisible );
-            box = group;
-        }
-        else {
-            box = new QWidget( parent );
-            content = box;
-        }
-        QBoxLayout* layout = type == "row" ? static_cast<QBoxLayout*>( new QHBoxLayout( content ) )
-                                           : new QVBoxLayout( content );
-        layout->setContentsMargins( 0, 0, 0, 0 );
-        bool expanding = false;
-        const auto children = element.value( "children" ).toArray();
-        for ( int index = 0; index < children.size(); ++index ) {
-            const auto childObject = children.at( index ).toObject();
-            if ( auto* childWidget
-                 = build( childObject, content, path + '/' + QString::number( index ) ) ) {
-                layout->addWidget( childWidget );
-                const auto childType = childObject.value( "type" ).toString();
-                expanding
-                    = expanding || !QStringList{ "button", "label", "badge" }.contains( childType );
-            }
-        }
-        if ( type == "row" && !expanding ) {
-            layout->addStretch( 1 );
-        }
-        node->widget = box;
-        node->content = content;
-        outer = box;
+    if ( pluginlayout::containerTypes().contains( type ) ) {
+        outer = buildContainer( *node, element, parent, path );
+    }
+    else if ( ContentTypes.contains( type ) ) {
+        outer = buildContent( *node, parent );
     }
     else if ( type == "label" || type == "badge" ) {
         auto* label = new QLabel( parent );
@@ -840,6 +972,14 @@ QWidget* PluginView::build( const QJsonObject& element, QWidget* parent, const Q
     else if ( type == "button" ) {
         auto* button = new QPushButton( parent );
         connect( button, &QPushButton::clicked, this, [ this, id ] { pressButton( id ); } );
+        // E17f: a checkable button reports its state (also set through set_ui), never the
+        // plugin's own `checked`.
+        connect( button, &QPushButton::toggled, this, [ this, id ]( bool checked ) {
+            const auto found = nodes_.value( id );
+            if ( !applying_ && found && found->props.value( "checkable" ).toBool() ) {
+                emitEvent( id, "changed", checked );
+            }
+        } );
         node->widget = button;
         outer = button;
     }
@@ -864,6 +1004,7 @@ QWidget* PluginView::build( const QJsonObject& element, QWidget* parent, const Q
         node->widget->setObjectName( nameFor( id ) );
     }
     apply( *node, element, false );
+    afterBuild( *node );
     if ( !automatic ) {
         watchTooltips( *node );
     }
@@ -1459,10 +1600,7 @@ void PluginView::apply( Node& node, const QJsonObject& incoming, bool fromRoot )
         // keep state.
         const auto defaults = defaultsFor( node.type );
         for ( auto it = previous.begin(); it != previous.end(); ++it ) {
-            if ( props.contains( it.key() ) || KeptWhenAbsent.contains( it.key() )
-                 || ( node.type == "table" && TableKeptWhenAbsent.contains( it.key() ) )
-                 || ( node.type == "tree" && TreeKeptWhenAbsent.contains( it.key() ) )
-                 || ( node.type == "file_tree" && FileTreeKeptWhenAbsent.contains( it.key() ) ) ) {
+            if ( props.contains( it.key() ) || keptWhenAbsent( node.type, it.key() ) ) {
                 continue;
             }
             if ( defaults.contains( it.key() ) ) {
@@ -1479,7 +1617,11 @@ void PluginView::apply( Node& node, const QJsonObject& incoming, bool fromRoot )
                && previous.value( QLatin1String( key ) ) == props.value( QLatin1String( key ) );
     };
     for ( auto it = props.begin(); it != props.end(); ++it ) {
-        if ( !CommonKeys.contains( it.key() ) && !known.contains( it.key() ) ) {
+        // E17f: `label` is the caption of any element in a form, `modified` and `close_confirm`
+        // belong to the root (section 29).
+        const bool extra = ( it.key() == QLatin1String( "label" ) && node.parentType == "form" )
+                           || ( node.root && RootKeys.contains( it.key() ) );
+        if ( !CommonKeys.contains( it.key() ) && !known.contains( it.key() ) && !extra ) {
             warnOnce( "prop:" + node.type + ':' + it.key().left( 64 ),
                       "unknown " + node.type + " property ignored: " + it.key().left( 64 ) );
         }
@@ -1536,8 +1678,12 @@ void PluginView::apply( Node& node, const QJsonObject& incoming, bool fromRoot )
             }
             else {
                 caption->setText( label );
-                caption->setVisible( !label.isEmpty() );
+                // E17f: in a form the caption cell shows the label instead.
+                caption->setVisible( !label.isEmpty() && !node.formCaption );
                 caption->setBuddy( node.widget );
+            }
+            if ( node.formCaption ) {
+                node.formCaption->setText( label );
             }
         }
         if ( auto* box = qobject_cast<QCheckBox*>( node.widget.data() );
@@ -1661,15 +1807,7 @@ void PluginView::apply( Node& node, const QJsonObject& incoming, bool fromRoot )
         if ( props.contains( "label" ) ) {
             button->setText( text( props, "label" ) );
         }
-        if ( props.contains( "tone" ) ) {
-            const auto tone = props.value( "tone" ).toString( "normal" ).left( 16 );
-            button->setProperty( "tone", tone );
-            auto font = button->font();
-            font.setBold( tone == "primary" );
-            button->setFont( font );
-            button->setStyleSheet( tone == "danger" ? QStringLiteral( "color: #c62828;" )
-                                                    : QString{} );
-        }
+        applyButton( node, props ); // tone, and the E17f keys (section 29.3)
     }
     else if ( type == "progress" ) {
         auto* bar = qobject_cast<QProgressBar*>( node.widget.data() );
@@ -1765,6 +1903,27 @@ void PluginView::apply( Node& node, const QJsonObject& incoming, bool fromRoot )
     else if ( type == "file_tree" ) {
         applyFileTree( node, props, previous, fromRoot );
     }
+    // E17f (section 29): containers, content, size hints, form captions and the root's keys.
+    applyLayout( node, props, previous, fromRoot );
+    applyContent( node, props, fromRoot );
+    applySizeHints( node, props );
+    if ( props.contains( "label" ) && node.parentType == "form" && type != "field"
+         && type != "button" ) {
+        if ( node.formCaption ) {
+            node.formCaption->setText( text( props, "label" ) );
+        }
+        else if ( !text( props, "label" ).isEmpty() ) {
+            warnOnce( "caption:" + node.id,
+                      "a form row gets its caption cell from a root: " + node.id );
+        }
+    }
+    if ( node.root && ( props.contains( "modified" ) || props.contains( "close_confirm" ) ) ) {
+        closeConfirm_ = text( node.props, "close_confirm" );
+        const bool modified = node.props.value( "modified" ).toBool();
+        if ( modified != std::exchange( modified_, modified ) ) {
+            Q_EMIT modifiedChanged( modified );
+        }
+    }
     updateAccessibility( node );
 }
 
@@ -1789,18 +1948,40 @@ void PluginView::updateAccessibility( Node& node )
     else if ( node.type == "button" ) {
         caption = text( node.props, "label" );
     }
-    else if ( node.type == "group" ) {
+    else if ( node.type == "group" || node.type == "tab" ) {
         caption = text( node.props, "title" );
     }
     else if ( node.type == "label" || node.type == "badge" || node.type == "progress" ) {
         caption = text( node.props, "text" );
+    }
+    else if ( node.type == "image" ) {
+        caption = text( node.props, "alt" ); // E17f
+    }
+    else if ( node.type == "chart" ) {
+        const auto x = text( node.props, "x_title" );
+        const auto y = text( node.props, "y_title" );
+        caption = x.isEmpty() || y.isEmpty() ? x + y : tr( "%1 over %2" ).arg( y, x );
+    }
+    else if ( node.parentType == "form" ) {
+        caption = text( node.props, "label" ); // a form row's caption
     }
     const auto name = text( node.props, "accessible_name" );
     node.widget->setAccessibleName( !name.isEmpty()      ? name
                                      : !caption.isEmpty() ? caption.left( 256 )
                                                           : node.id );
     // The validation message describes an invalid field (section 8.6).
-    const auto description = text( node.props, "accessible_description" );
+    auto description = text( node.props, "accessible_description" );
+    if ( description.isEmpty() && node.type == "sparkline" && text( node.props, "tooltip" ).isEmpty() ) {
+        // E17f: the count and the last value (section 29.2).
+        if ( const auto* spark = qobject_cast<PluginSparkline*>( node.widget.data() ) ) {
+            const auto& values = spark->values();
+            description = values.isEmpty() ? tr( "No values" )
+                                           : tr( "%n value(s), last %1", "", static_cast<int>( values.size() ) )
+                                                 .arg( std::isfinite( values.back() )
+                                                           ? QString::number( values.back(), 'g', 6 )
+                                                           : tr( "none" ) );
+        }
+    }
     node.widget->setAccessibleDescription( !description.isEmpty() ? description
                                            : !node.invalid.isEmpty() ? node.invalid
                                                                      : text( node.props, "tooltip" ) );
@@ -1928,18 +2109,41 @@ void PluginView::applyPatch( const QJsonArray& patch )
             auto set = entry.value( "set" ).toObject();
             bool structural = set.contains( "children" );
             set.remove( "children" );
+            // A field's kind and style build its widgets; a chart's `kind` or a button's `style`
+            // (E17f) are looks a patch may change.
             for ( const auto& key : FieldStructureKeys ) {
-                structural = structural || set.contains( key );
-                set.remove( key );
+                if ( node->type == "field" ) {
+                    structural = structural || set.contains( key );
+                    set.remove( key );
+                }
+            }
+            // E17f: a grid's columns and its cells' places are part of the shape too.
+            if ( node->type == "grid" && set.contains( "columns" ) ) {
+                structural = true;
+                set.remove( "columns" );
+            }
+            if ( node->parentType == "grid" && ( set.contains( "span" ) || set.contains( "row_span" ) ) ) {
+                structural = true;
+                set.remove( "span" );
+                set.remove( "row_span" );
             }
             if ( structural ) {
                 warnOnce( "structure:" + id,
-                          "patches cannot change children, field kinds or field styles" );
+                          "patches cannot change children, field kinds, field styles or grid "
+                          "places" );
             }
             apply( *node, set, false );
         }
         if ( node->type == "tree" || node->type == "file_tree" ) {
             applyTreeOperation( *node, entry ); // E17e (section 28)
+        }
+        // E17f (section 29): appended text and points, and the keyboard focus.
+        if ( entry.contains( "append" ) || entry.contains( "append_points" )
+             || entry.contains( "clear" ) ) {
+            applyContentOperation( *node, entry );
+        }
+        if ( entry.value( "focus" ).toBool() ) {
+            focusElement( *node );
         }
         if ( node->type == "table" ) {
             applyTableOperation( *node, entry );
@@ -2001,8 +2205,22 @@ bool PluginView::elementMenu( const QString& elementId, const QString& rowId,
         *error = tr( "Only trees and file trees take --node-id." );
         return false;
     }
+    // E17f: a button's drop-down menu; its entries get the button, without a row (section 29.3).
+    if ( node && !node->automatic && node->type == "button" ) {
+        *menuId = text( node->props, "menu", 128 );
+        if ( menuId->isEmpty() ) {
+            *error = tr( "The button has no menu." );
+            return false;
+        }
+        if ( !rowId.isEmpty() ) {
+            *error = tr( "A button menu has no rows." );
+            return false;
+        }
+        *target = QJsonObject{ { "button", true } };
+        return true;
+    }
     if ( !node || node->automatic || !node->behaviour ) {
-        *error = tr( "The view has no table or tree with this id." );
+        *error = tr( "The view has no table, tree or menu button with this id." );
         return false;
     }
     *menuId = node->behaviour->options().contextMenu;
@@ -2026,6 +2244,11 @@ QMenu* PluginView::buildElementMenu( const QString& elementId, const QPoint& pos
     }
     if ( node && node->fileTree ) {
         return node->fileTree->buildMenu( position );
+    }
+    if ( node && node->type == "button" && !text( node->props, "menu", 128 ).isEmpty() ) {
+        auto* menu = new QMenu; // E17f: the drop-down as it opens
+        fillButtonMenu( elementId, menu );
+        return menu;
     }
     return node && node->behaviour ? node->behaviour->buildMenu( position ) : nullptr;
 }
@@ -2338,6 +2561,12 @@ void PluginView::pressButton( const QString& id )
 {
     const auto node = nodes_.value( id );
     if ( !node || !isEnabled() ) {
+        return;
+    }
+    // E17f: a checkable button reports `changed` (its toggled signal), a menu button opens its
+    // menu; neither sends `clicked` nor runs an action.
+    if ( node->props.value( "checkable" ).toBool()
+         || !node->props.value( "menu" ).toString().isEmpty() ) {
         return;
     }
     refreshValidity(); // a typed change may still be waiting for its debounce

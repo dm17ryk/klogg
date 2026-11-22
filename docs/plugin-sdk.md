@@ -384,8 +384,11 @@ label, a button, a field, table headers and every table cell, a registered icon,
 dynamic submenu and a shortcut, log and tab context menu entries, every choice style, check
 boxes, radio buttons, the new field kinds, validation and completion, a table with cell
 objects, a check column, row dragging, Export CSV and its own context menu, an explorer view
-with a lazy tree (check boxes, dragging, node tooltips, a context menu) and a file tree, and
-degrades on an older CILogg.
+with a lazy tree (check boxes, dragging, node tooltips, a context menu) and a file tree, a
+layout window with tabs, a form, a grid, a splitter, a text view, Markdown notes, a chart, a
+sparkline, a registered picture, button styles, a menu button, a checkable button, a busy
+overlay, unsaved changes, focus and a dialog with OK, Cancel and Apply, and degrades on an older
+CILogg.
 
 ### Menus and commands (E17b)
 
@@ -768,6 +771,122 @@ def reset(command: UiCommand) -> None:
     print(command.node_id, command.selected_ids, command.selected_count)
 ```
 
+### Layout, content and dialogs (E17f)
+
+A host that announces `layout`, `text_view`, `images`, `charts` and `view_dialogs` (version 1
+each) shows new layout containers, content elements, button keys, a busy overlay, unsaved
+changes and dialog buttons (design sections 12 and 29).
+
+- **Layout** (`layout`). `tabs(id, *tabs, current=None, position=None)` (`TabsElement`) holds
+  `tab(title, *children, id=None, icon=None, badge=None)` (`TabElement`) elements; `current` is
+  a tab id or index, `position` one of `TAB_POSITIONS` (`top`, `bottom`, `left`, `right`), and
+  `badge` a short count or text (at most 64 characters) shown after the title.
+  `splitter(*children, id=None, orientation=None, sizes=None)` (`SplitterElement`) makes each
+  child a pane, side by side (`horizontal`, the default) or stacked (`vertical`), with `sizes`
+  in pixels per pane; CILogg keeps the sizes the user drags. `form(*children, id=None)`
+  (`FormElement`) aligns captions and controls: a field's caption is its `label`, any other
+  child but a button may set `label` for its caption. `grid(*children, columns=None, id=None)`
+  (`GridElement`) fills `columns` (1 to 12, default 2) from left to right; children take `span`
+  and `row_span`. `separator(id=None, orientation=None)` draws a line and `spacer(id=None,
+  size=None, stretch=None)` adds space (0 to 2,000 pixels) or stretches.
+- **Size hints.** Every element takes `stretch` (0 to 100), `min_width`, `max_width`,
+  `min_height`, `max_height` (0 to 10,000 pixels) and `align` (`ELEMENT_ALIGNMENTS`) as keyword
+  properties. CILogg clamps a value out of range.
+- **Content.** `text_view(id, text="", *, format=None, monospace=None, wrap=None, follow=None,
+  max_lines=None)` (`TextViewElement`, `text_view`) shows read-only text: `plain` or
+  `markdown` (CommonMark without HTML; images only from icon references; a click on a link
+  sends `link` and CILogg never opens it), at most 1,048,576 characters, `max_lines` (0 to
+  100,000) for plain text, and find on Ctrl+F. `image(id, source, *, width=None, height=None,
+  scale=None, alt=None)` (`ImageElement`, `images`) shows an icon reference: a plugin file,
+  `builtin_ref()`, `status_ref()`, `themed_ref()` or `image_ref()` of a picture registered
+  with `png_icon(..., picture=True)`; `width` and `height` are 1 to 4,096 pixels and `scale`
+  one of `IMAGE_SCALES` (`fit`, `fill`, `none`). `sparkline(id, values, *, min=None, max=None,
+  kind=None, tone=None)` (`SparklineElement`, `charts`) draws at most 1,024 values (None is a
+  gap) as a `line` or `bar`. `chart(id, series, *, kind=None, x_title=None, y_title=None,
+  x_kind=None, legend=None, window=None)` (`ChartElement`, `charts`) draws at most 8
+  `chart_series(id, points, *, title=None, tone=None)` (`ChartSeries`): points are numbers
+  (`y` at their position) or `[x, y]` pairs, at most 10,000 per series; `kind` is one of
+  `CHART_KINDS` (`line`, `bar`, `scatter`, `area`), `x_kind` `number` or `time` (milliseconds
+  since the epoch), and `window` (1 to 10,000) keeps the last points of each series.
+- **Buttons** (`view_dialogs`). `button()` gains `icon`, `style` (`BUTTON_STYLES`: `push`,
+  `tool`, `link`), `menu` (the id of an `element` menu: the button opens it as a drop-down and
+  its entries reach `@plugin.on_command` with the button as `element_id`), `checkable` and
+  `checked` (a checkable button sends `changed` with its new state instead of `clicked` or its
+  action), `shortcut` (a key sequence while the focus is in the view) and `default` (pressed
+  by Enter).
+- **Busy overlay, unsaved changes and dialogs** (`view_dialogs`). `busy`, `busy_text` and
+  `busy_cancel` on the root or any container disable and cover its contents; Cancel sends
+  `cancel` (value None) with the container as `element_id`. `modified=True` on the root marks
+  the title with ` *`, and closing the view by the user then asks "Discard changes?" (or the
+  root's `close_confirm` text). A `dialog` view may declare `buttons` (from `DIALOG_BUTTONS`:
+  `ok`, `cancel`, `apply`, `close`, `yes`, `no`), `default` and `confirm_by_plugin` in
+  `plugin.json`; a button sends `clicked` with `element_id` `DIALOG_BUTTONS_ELEMENT`
+  (`"#buttons"`) and the button's name, and the `view/closed` of such a dialog carries `result`
+  (the button that closed it, None otherwise) and `inputs` (`ViewClosedParams`).
+
+  The builders raise ValueError for what CILogg refuses or would cut: an unknown enumeration
+  value, a `tabs` child that is not a `tab`, a `current` that names no tab, a badge over 64
+  characters, grid `columns` outside 1 to 12, a negative splitter size, a spacer size, image
+  size, `max_lines` or chart `window` out of range, text over `MAX_TEXT_VIEW_CHARS`, more than
+  `MAX_SPARKLINE_VALUES` values, `MAX_CHART_SERIES` series (or two with one id) or
+  `MAX_CHART_POINTS` points, a point that is neither a number nor an `[x, y]` pair, a button
+  `menu` that is not a menu id, `checked` without `checkable=True`, or an empty shortcut.
+- **Patches.** Each helper returns one entry for `plugin.patch()` (`ContentPatch`):
+  `append_text(text_view_id, text)` (at most `MAX_TEXT_APPEND_CHARS`, 65,536 characters; the
+  oldest lines go beyond `max_lines`), `append_points(chart_id, series_id, points)`,
+  `clear_chart(chart_id, series_ids=None)` (every series, or the listed ones) and
+  `focus_element(element_id)` (CILogg moves the focus only while the view is active).
+  `set_props(id, text=...)` replaces a text view's text; a root of the same shape replaces it
+  only when it differs from the text the plugin last set, so appended text stays (likewise for
+  a chart's `series` and a sparkline's `values`).
+- **Events** (`ViewEventParams`). `tabs` send `changed` with the tab's id (None for a tab
+  without an id) and `index` (a `current` set by the plugin sends nothing); a text view sends
+  `link` (`LinkValue` `{href}`); a busy container sends `cancel`; a checkable button sends
+  `changed` with True or False; a dialog button sends `clicked` from `"#buttons"`.
+- **Older hosts.** `update()` and `patch()` convert centrally, copying only what changes.
+  Without `layout`, `tabs` become a `column` (same id) of `group`s titled like the tabs (the
+  tab's `icon` and `badge` and the tabs' `current` and `position` go), a `splitter` a `column`
+  of `row`s (horizontal: one row of every pane; vertical: a row per pane), a `form` a `column`
+  with a `row` per child (a caption of a child that is not a field becomes a label before it),
+  a `grid` a `column` of `row`s of `columns` children; `separator` and `spacer` are left out,
+  and the size hints are removed from every element. A `set` of a converted element keeps the
+  keys the converted element knows (a tab's `title`, as the group's). Without `view_dialogs`,
+  the new button keys, the busy keys of containers, `modified`, `close_confirm` and `focus`
+  patches go. `text_view`, `image`, `sparkline` and `chart` elements are sent as they are (an
+  older host skips them, so check `plugin.supports(...)`); without `text_view` the `append`
+  patches go, and without `charts` the `append_points` and `clear` patches. A patch left with
+  no entry sends no frame.
+
+```python
+from cilogg_plugin import (
+    JsonObject, Plugin, UiCommand, append_text, button, chart, chart_series, column, field,
+    form, set_props, tab, tabs, text_view,
+)
+
+plugin = Plugin()
+lines = 0
+
+
+def view() -> JsonObject:
+    return column(
+        tabs("pages",
+             tab("Setup", form(field("port", label="Port"), id="setup"), id="setup_tab"),
+             tab("Log", text_view("log", monospace=True, follow=True, max_lines=1000),
+                 id="log_tab", badge="0"),
+             tab("Rate", chart("rate", [chart_series("rx", [1, 3, 2], title="Received")]),
+                 id="rate_tab")),
+        button("actions", "Log actions", menu="log_menu"),  # an element menu in plugin.json
+        id="body", close_confirm="Discard the unsaved setup?")
+
+
+@plugin.on_command("log_menu", "add_line")
+def add_line(command: UiCommand) -> None:  # command.element_id == "actions"
+    global lines
+    lines += 1
+    plugin.patch("main", [append_text("log", f"line {lines}\n"),
+                          set_props("log_tab", badge=str(lines))])
+```
+
 ### Testing plugins without CILogg
 
 `plugins/sdk/python/cilogg_plugin_testing.py` (standard library only) has a `FakeHost` that
@@ -789,8 +908,11 @@ with FakeHost.start_package("path/to/my-plugin") as host:   # its plugin.json, e
 - `initialize(configuration, host_features=…, host_feature_versions=…, host_version=…,
   host_limits=…)` sends the current host's keys by default (`HOST_FEATURES`, with `menus`,
   `shortcuts`, `choices`, `toggles`, `field_kinds`, `validation`, `rich_tables`,
-  `element_menus`, `tree` and `file_tree`); pass None to leave one out, `E17D_HOST_FEATURES`
-  and `E17D_HOST_FEATURE_VERSIONS` to play a CILogg without trees, `E17C_HOST_FEATURES` and
+  `element_menus`, `tree`, `file_tree`, `layout`, `text_view`, `images`, `charts` and
+  `view_dialogs`); pass None to leave one out, `E17E_HOST_FEATURES` and
+  `E17E_HOST_FEATURE_VERSIONS` to play a CILogg without the E17f layout, content and dialog
+  features, `E17D_HOST_FEATURES` and `E17D_HOST_FEATURE_VERSIONS` to play one without trees,
+  `E17C_HOST_FEATURES` and
   `E17C_HOST_FEATURE_VERSIONS` to play one without rich tables and element menus,
   `E17B_HOST_FEATURES` and `E17B_HOST_FEATURE_VERSIONS` to play one without the E17c form
   controls, or `E17A_HOST_FEATURES` and `E17A_HOST_FEATURE_VERSIONS` to play one without
@@ -842,6 +964,16 @@ with FakeHost.start_package("path/to/my-plugin") as host:   # its plugin.json, e
   element_id, node_id=None, selected_ids=(), selected_count=None)` picks an `event` entry of the
   element menu of a tree or file tree; `node_context(...)` builds the same `context` (with
   `node_id` instead of `row_id` and `column_id`) for `populate_menu`.
+- Layout and dialogs: `switch_tab(view_id, element_id, tab_id, index, window_id="w1")` sends a
+  `tabs` element's `changed` (value the tab id, with `index`), `click_link(view_id,
+  element_id, href)` a text view's `link` (value `{href}`), `cancel_busy(view_id, element_id)`
+  the `cancel` of a busy container's Cancel button, `toggle_button(view_id, element_id,
+  checked)` a checkable button's `changed`, and `press_dialog_button(view_id, name,
+  window_id="w1", inputs=None)` a dialog button's `clicked` from `"#buttons"` (a name from
+  `DIALOG_BUTTONS`; it does not close the dialog). `close_view(view_id, window_id="w1", *,
+  result=…, inputs=None)` adds `result` (a `DIALOG_BUTTONS` name or None) and `inputs` to
+  `view/closed`, each only when given, as CILogg does for a dialog with `buttons`. Every event
+  carries `inputs` (pass `inputs=` to fill it).
 - `frames` (`Frame`: `direction`, `message`, `raw`, `time`) holds the whole session; `errors`
   lists frames that CILogg would refuse (malformed envelopes, requests from the plugin);
   `stderr` holds a subprocess plugin's diagnostics; `shutdown()` returns its exit code.

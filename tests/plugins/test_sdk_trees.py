@@ -685,13 +685,16 @@ class NodeMenus(TreeCase):
 class FakeHostHelpers(TreeCase):
     def test_feature_sets(self):
         testing = self.testing
-        self.assertEqual(testing.HOST_FEATURES[-2:], E17E_FEATURES)
-        self.assertEqual(testing.E17D_HOST_FEATURES, testing.HOST_FEATURES[:-2])
+        self.assertEqual(testing.E17E_HOST_FEATURES[-2:], E17E_FEATURES)
+        self.assertEqual(testing.E17D_HOST_FEATURES, testing.E17E_HOST_FEATURES[:-2])
+        self.assertEqual(testing.E17E_HOST_FEATURES,
+                         testing.HOST_FEATURES[:len(testing.E17E_HOST_FEATURES)])
         self.assertEqual(dict(testing.E17D_HOST_FEATURE_VERSIONS),
-                         {name: version for name, version in testing.HOST_FEATURE_VERSIONS.items()
+                         {name: version for name, version in testing.E17E_HOST_FEATURE_VERSIONS.items()
                           if name not in E17E_FEATURES})
         for feature in E17E_FEATURES:
             self.assertEqual(testing.HOST_FEATURE_VERSIONS[feature], 1)
+            self.assertEqual(testing.E17E_HOST_FEATURE_VERSIONS[feature], 1)
             self.assertNotIn(feature, testing.E17D_HOST_FEATURES)
         self.assertEqual(testing.MAX_TREE_IDS, 1000)
         self.assertEqual(testing.QUERY_DEFAULT_TIMEOUT_MS["tree/children"], 10000)

@@ -14,8 +14,11 @@
 #include <functional>
 #include <memory>
 
+class QKeyEvent;
+class QKeySequence;
 class QLineEdit;
 class QMenu;
+class QPushButton;
 class QScrollArea;
 class QVBoxLayout;
 
@@ -144,10 +147,30 @@ public:
     // The plugin stopped: its tree/children queries end and loading nodes show "Could not load".
     void failTreeLoads();
     // E17d: the context menu a right-click at `position` (the table's viewport) would show;
-    // the caller owns it (tests and automation).
+    // the caller owns it (tests and automation). E17f: a button's drop-down menu too.
     QMenu* buildElementMenu( const QString& elementId, const QPoint& position );
 
+    // E17f (docs/plugin-sdk-advanced.md section 29.3): the root's `modified` and `close_confirm`.
+    bool modified() const
+    {
+        return modified_;
+    }
+    QString closeConfirmText() const
+    {
+        return closeConfirm_;
+    }
+    // A dialog button was pressed: `clicked` from "#buttons" with the button's name. False when it
+    // did not reach the plugin.
+    bool emitDialogButton( const QString& name );
+    // The plugin's registered images changed: every `image` element resolves its source again.
+    void refreshImages();
+    // The element id dialog button events come from (never an element: ids starting with # are
+    // reserved).
+    static constexpr char DialogButtonsId[] = "#buttons";
+
 Q_SIGNALS:
+    // E17f: the root's `modified` changed (the host marks the title).
+    void modifiedChanged( bool modified );
     // `element_id`, `type` (changed|clicked|selected|edited), `value`, `inputs`, and `truncated`
     // when a value or the inputs were shortened. `edited` also carries `row_id`, `column_id` and
     // `previous` (the cell's text before the edit).
@@ -155,8 +178,51 @@ Q_SIGNALS:
     // A button with `action`: arguments carry `inputs` and, after a save dialog, `save_path`.
     void actionRequested( const QString& action, const QVariantMap& arguments );
 
+protected:
+    // E17f: Enter presses the view's `default` button.
+    void keyPressEvent( QKeyEvent* event ) override;
+
 private:
     struct Node;
+    // E17f layout and content (docs/plugin-sdk-advanced.md section 29), in pluginviewlayout.cpp.
+    struct GridCursor {
+        int row = 0;
+        int column = 0;
+        int columns = 2;
+        QSet<quint64> taken; // row << 32 | column
+    };
+    QWidget* buildContainer( Node& node, const QJsonObject& element, QWidget* parent,
+                             const QString& path );
+    void placeChild( Node& container, Node& child, const QJsonObject& element, QWidget* widget,
+                     GridCursor& cursor );
+    QWidget* buildContent( Node& node, QWidget* parent );
+    void applyLayout( Node& node, const QJsonObject& props, const QJsonObject& previous,
+                      bool fromRoot );
+    void applyContent( Node& node, const QJsonObject& props, bool fromRoot );
+    void applySizeHints( Node& node, const QJsonObject& props );
+    void applyPlacement( Node& node );
+    void applyBusy( Node& node, const QJsonObject& props );
+    void applyButton( Node& node, const QJsonObject& props );
+    void applyButtonLook( Node& node );
+    void applyButtonShortcut( Node& node );
+    void applyImageSource( Node& node );
+    void applyContentOperation( Node& node, const QJsonObject& entry );
+    void afterBuild( Node& node );
+    void updateTabHeader( Node& tab );
+    QString tabIdOf( const QString& tabsId, int index ) const;
+    void fillButtonMenu( const QString& id, QMenu* menu );
+    void clickButton( const QString& id );
+    QString shortcutRefusal( const QString& id, const QKeySequence& keys ) const;
+    void focusElement( Node& node );
+    bool focusAllowed() const;
+    QPushButton* defaultButton() const;
+    bool enterPressesDefault() const;
+    void saveSplitter( const QString& id );
+    QImage pictureFor( const QJsonValue& reference, const QSize& size ) const;
+    QString currentParentId_;   // the container whose children build() is creating
+    QString currentParentType_;
+    bool modified_ = false;
+    QString closeConfirm_;
     QWidget* build( const QJsonObject& element, QWidget* parent, const QString& path );
     QWidget* buildField( Node& node, const QJsonObject& element, QWidget* parent );
     QWidget* buildTable( Node& node, const QJsonObject& element, QWidget* parent );

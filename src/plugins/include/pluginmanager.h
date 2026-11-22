@@ -94,6 +94,10 @@ public:
     QJsonArray viewDefinitions( const QString& pluginId ) const;
     Result openView( const QString& pluginId, const QString& viewId, const QVariantMap& context );
     void closeView( const QString& pluginId, const QString& viewId, const QString& windowId );
+    // E17f: `extra` keys join `view/closed` (a dialog with `buttons`: `result` and `inputs`). The
+    // inputs are dropped when the message would pass the event limit.
+    void closeView( const QString& pluginId, const QString& viewId, const QString& windowId,
+                    const QJsonObject& extra );
     bool sendViewEvent( const QString& pluginId, const QString& viewId, const QString& windowId,
                         const QJsonObject& event );
     void finishMessage( const QString& pluginId, const QString& messageId, const QString& button,

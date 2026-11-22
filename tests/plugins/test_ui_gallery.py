@@ -1,4 +1,5 @@
 """The ui-gallery example under the fake host (plugins/examples/ui-gallery/README.md)."""
+import base64
 import importlib.util
 import json
 import os
@@ -62,7 +63,14 @@ class UiGallery(unittest.TestCase):
                           "ui/command", "query/cancel"])
         self.assertEqual(manifest["version"], "1.0.0")
         self.assertEqual([(view["id"], view["kind"]) for view in manifest["views"]],
-                         [("gallery", "dock"), ("explorer", "dock")])
+                         [("gallery", "dock"), ("explorer", "dock"), ("layout", "window"),
+                          ("ask", "dialog")])
+        views = {view["id"]: view for view in manifest["views"]}
+        self.assertEqual(views["layout"], {"id": "layout", "title": "UI Gallery Layout",
+                                           "kind": "window", "width": 900, "height": 640})
+        self.assertEqual(views["ask"], {"id": "ask", "title": "Ask", "kind": "dialog",
+                                        "modal": True, "menu": False,
+                                        "buttons": ["ok", "cancel", "apply"], "default": "ok"})
 
     def test_manifest_declares_its_menus(self):
         manifest = json.loads((EXAMPLE / "plugin.json").read_text(encoding="utf-8"))
@@ -70,7 +78,11 @@ class UiGallery(unittest.TestCase):
         self.assertEqual({menu_id: menu["location"] for menu_id, menu in menus.items()},
                          {"main": "plugins", "lines": "log", "tabs": "tab",
                           "board_actions": "element", "node_actions": "element",
-                          "file_actions": "element"})
+                          "file_actions": "element", "layout_menu": "element"})
+        # E17f: the drop-down of the layout window's Log actions button.
+        self.assertEqual(menus["layout_menu"]["items"],
+                         [{"id": "add_line", "title": "Add Line", "event": True},
+                          {"id": "clear_log", "title": "Clear Log", "event": True}])
         # E17e: the context menus of the explorer's tree and file tree.
         self.assertEqual([(entry.get("id", entry.get("type")), entry.get("title"), entry.get("event"))
                           for entry in menus["node_actions"]["items"]],
@@ -91,11 +103,13 @@ class UiGallery(unittest.TestCase):
         self.assertEqual(menus["main"]["title"], "UI Gallery")
         entries = {entry["id"]: entry for entry in menus["main"]["items"] if "id" in entry}
         self.assertEqual([entry.get("type", "item") for entry in menus["main"]["items"]],
-                         ["item", "item", "separator", "item", "section", "item", "item",
+                         ["item", "item", "item", "separator", "item", "section", "item", "item",
                           "separator", "item"])
         self.assertEqual((entries["open_gallery"]["view"], entries["open_gallery"]["shortcut"]),
                          ("gallery", "Ctrl+Alt+Shift+G"))
         self.assertEqual(entries["open_explorer"]["view"], "explorer")
+        self.assertEqual(entries["open_layout"]["view"], "layout")
+        self.assertNotIn("shortcut", entries["open_layout"])  # Ctrl+Alt+Shift+L is the Apply button's
         self.assertTrue(entries["highlight_offline"]["event"] and entries["highlight_offline"]["checkable"])
         self.assertNotIn("group", entries["highlight_offline"])
         self.assertEqual([(entries[item]["group"], entries[item]["checkable"], entries[item].get("checked", False))
@@ -769,6 +783,217 @@ class UiGallery(unittest.TestCase):
     def test_explorer_on_an_e14_host(self):
         self.host.initialize_older_host()
         self.check_explorer_on_an_older_host()
+
+    # The layout window and its dialog (E17f).
+    def open_layout(self, window_id="w1"):
+        self.host.open_view("layout", window_id=window_id)
+        return elements(self.host.wait_for("view/update", lambda params: "root" in params
+                                           and params["view_id"] == "layout")["root"])
+
+    def layout_status(self, patch):
+        """The text a patch sets on the layout status label (always its last entry)."""
+        self.assertEqual(patch[-1]["id"], "layout_status")
+        return patch[-1]["set"]["text"]
+
+    def layout_command(self, item_id):
+        """Pick an entry of the Log actions drop-down: the element is the button."""
+        self.host.send_command("layout_menu", item_id, "element", context={
+            "window_id": "w1", "view_id": "layout", "element_id": "menu_button"})
+
+    def check_layout_answers(self, sends):
+        for send, text in sends:
+            send()
+            self.assertEqual(self.next_patch(), [{"id": "layout_status", "set": {"text": text}}],
+                             text)
+
+    def test_layout_window_on_a_current_host(self):
+        host = self.host
+        host.initialize()
+        tree = self.open_layout()
+        picture = host.wait_for("ui/icons")["icons"]["gallery-picture"]
+        self.assertTrue(picture["picture"])
+        self.assertTrue(base64.b64decode(picture["png"]).startswith(b"\x89PNG\r\n\x1a\n"))
+        body = tree["layout_body"]
+        self.assertEqual((body["type"], body["modified"], body["close_confirm"]),
+                         ("column", False, "The layout window has unsaved changes. Discard them?"))
+        self.assertEqual([child.get("id") for child in body["children"]],
+                         ["layout_note", "layout_tabs", "layout_buttons", "layout_status"])
+        self.assertEqual(tree["layout_status"]["text"],
+                         "Switch tabs, use the buttons or Log actions: the result shows here.")
+        tabs = tree["layout_tabs"]
+        self.assertEqual(tabs["type"], "tabs")
+        self.assertNotIn("current", tabs)
+        self.assertEqual([(item["type"], item["id"], item["title"], item.get("badge"))
+                          for item in tabs["children"]],
+                         [("tab", "tab_form", "Form", None), ("tab", "tab_log", "Log", "0"),
+                          ("tab", "tab_notes", "Notes", None), ("tab", "tab_charts", "Charts", None)])
+        form = tree["layout_form"]
+        self.assertEqual((form["type"], [child["id"] for child in form["children"]]),
+                         ("form", ["form_name", "form_port", "form_check", "form_grid"]))
+        self.assertEqual((tree["form_name"]["kind"], tree["form_name"]["label"],
+                          tree["form_port"]["kind"], tree["form_port"]["label"]),
+                         ("text", "Name", "choice", "Port"))
+        self.assertEqual((tree["form_check"]["type"], tree["form_check"]["label"]),
+                         ("checkbox", "Option"))
+        self.assertEqual((tree["form_grid"]["type"], tree["form_grid"]["columns"],
+                          [child["id"] for child in tree["form_grid"]["children"]]),
+                         ("grid", 2, ["grid_a", "grid_b", "grid_c", "grid_d"]))
+        self.assertEqual({key: tree["log"][key] for key in ("type", "text", "format", "monospace",
+                                                            "follow", "max_lines")},
+                         {"type": "text_view", "text": "", "format": "plain", "monospace": True,
+                          "follow": True, "max_lines": 1000})
+        self.assertEqual(tree["notes"]["format"], "markdown")
+        for part in ("# Layout notes", "\n- tabs", "[docs](https://example.com/docs)",
+                     "![info](builtin:info)"):
+            self.assertIn(part, tree["notes"]["text"])
+        self.assertEqual((tree["charts_split"]["type"],
+                          [child["id"] for child in tree["charts_split"]["children"]]),
+                         ("splitter", ["chart", "charts_side"]))
+        chart = tree["chart"]
+        self.assertEqual((chart["kind"], [(series["id"], len(series["points"]))
+                                          for series in chart["series"]]),
+                         ("line", [("rx", 12), ("tx", 12)]))
+        self.assertEqual(chart["series"][0]["points"][:3], [[0, 50], [1, 64], [2, 75]])
+        self.assertEqual(tree["spark"]["values"], [50, 64, 75, 80, 77, 68, 54, 39, 27, 21, 21, 29])
+        self.assertEqual(tree["picture"]["source"], "image:gallery-picture")
+        self.assertEqual([child.get("id", child["type"]) for child in tree["layout_buttons"]["children"]],
+                         ["tool_button", "link_button", "menu_button", "pin_button", "separator",
+                          "busy_button", "edit_button", "ask_button", "spacer", "apply_button"])
+        self.assertEqual((tree["tool_button"]["style"], tree["tool_button"]["icon"]),
+                         ("tool", "builtin:refresh"))
+        self.assertEqual(tree["link_button"]["style"], "link")
+        self.assertEqual((tree["menu_button"]["label"], tree["menu_button"]["menu"]),
+                         ("Log actions", "layout_menu"))
+        self.assertEqual((tree["pin_button"]["checkable"], tree["pin_button"]["checked"]),
+                         (True, False))
+        self.assertEqual((tree["apply_button"]["default"], tree["apply_button"]["shortcut"]),
+                         (True, "Ctrl+Alt+Shift+L"))
+
+        # Every answer shows in layout_status.
+        self.check_layout_answers((
+            (lambda: host.switch_tab("layout", "layout_tabs", "tab_log", 1), "tab tab_log 1"),
+            (lambda: host.toggle_button("layout", "pin_button", True), "pinned true"),
+            (lambda: host.click_link("layout", "notes", "https://example.com/docs"),
+             "link https://example.com/docs"),
+            (lambda: host.view_event("layout", "apply_button", "clicked"), "applied"),
+            (lambda: host.view_event("layout", "grid_c", "clicked"), "clicked grid_c")))
+        self.layout_command("add_line")
+        self.assertEqual(self.next_patch(), [
+            {"id": "log", "append": "line 1\n"}, {"id": "tab_log", "set": {"badge": "1"}},
+            {"id": "layout_status", "set": {"text": "menu add_line menu_button"}}])
+        self.layout_command("add_line")
+        self.assertEqual(self.next_patch()[:2], [{"id": "log", "append": "line 2\n"},
+                                                 {"id": "tab_log", "set": {"badge": "2"}}])
+        self.layout_command("clear_log")
+        self.assertEqual(self.next_patch(), [
+            {"id": "log", "set": {"text": ""}}, {"id": "tab_log", "set": {"badge": "0"}},
+            {"id": "layout_status", "set": {"text": "menu clear_log menu_button"}}])
+        self.layout_command("add_line")
+        self.assertEqual(self.next_patch()[0], {"id": "log", "append": "line 1\n"})
+        host.view_event("layout", "tool_button", "clicked")
+        self.assertEqual(self.next_patch(), [
+            {"id": "chart", "append_points": {"series": "rx", "points": [[12, 42]]}},
+            {"id": "chart", "append_points": {"series": "tx", "points": [[12, 27]]}},
+            {"id": "spark", "set": {"values": [50, 64, 75, 80, 77, 68, 54, 39, 27, 21, 21, 29, 42]}},
+            {"id": "layout_status", "set": {"text": "point 12"}}])
+        host.view_event("layout", "link_button", "clicked")
+        self.assertEqual(self.next_patch(), [{"id": "form_name", "focus": True},
+                                             {"id": "layout_status", "set": {"text": "focus form_name"}}])
+        host.view_event("layout", "edit_button", "clicked")
+        self.assertEqual(self.next_patch(), [{"id": "layout_body", "set": {"modified": True}},
+                                             {"id": "layout_status", "set": {"text": "modified true"}}])
+
+        # The busy overlay: Cancel ends the simulated work at once.
+        host.view_event("layout", "busy_button", "clicked")
+        self.assertEqual(self.next_patch(), [
+            {"id": "layout_body", "set": {"busy": True, "busy_text": "Simulating work...",
+                                          "busy_cancel": True}},
+            {"id": "layout_status", "set": {"text": "working"}}])
+        host.cancel_busy("layout", "layout_body")
+        self.assertEqual(self.next_patch(), [{"id": "layout_body", "set": {"busy": False}},
+                                             {"id": "layout_status", "set": {"text": "cancelled"}}])
+
+        # The dialog: a button click and the result it closed with.
+        host.view_event("layout", "ask_button", "clicked")
+        self.assertEqual(host.wait_for("view/show"), {"view_id": "ask", "window_id": "w1"})
+        self.assertEqual(self.layout_status(self.next_patch()), "dialog opened")
+        host.open_view("ask")
+        ask = elements(host.wait_for("view/update", lambda params: "root" in params
+                                     and params["view_id"] == "ask")["root"])
+        self.assertEqual((ask["ask_body"]["type"], ask["ask_name"]["kind"], ask["ask_name"]["label"]),
+                         ("column", "text", "Name"))
+        self.check_layout_answers((
+            (lambda: host.press_dialog_button("ask", "apply", inputs={"ask_name": "Ann"}),
+             "dialog clicked apply"),
+            (lambda: host.close_view("ask", result="ok", inputs={"ask_name": "Ann"}),
+             "dialog closed ok Ann"),
+            (lambda: host.close_view("ask", result=None, inputs={"ask_name": "Bo"}),
+             "dialog closed none Bo"),
+            (lambda: host.toggle_button("layout", "pin_button", False), "pinned false")))
+
+        # A new window shows the plugin's state.
+        tree = self.open_layout("w2")
+        self.assertEqual(tree["layout_tabs"]["current"], "tab_log")
+        self.assertEqual((tree["log"]["text"], tree["tab_log"]["badge"]), ("line 1\n", "1"))
+        self.assertEqual(tree["pin_button"]["checked"], False)
+        self.assertTrue(tree["layout_body"]["modified"])
+        self.assertNotIn("busy", tree["layout_body"])
+        self.assertEqual(tree["chart"]["series"][1]["points"][-1], [12, 27])
+        self.assertEqual(tree["layout_status"]["text"], "pinned false")
+        self.assertEqual(len(host.notifications("ui/icons")), 1)  # registered once
+        self.assertEqual(host.shutdown(), 0)
+        self.assertEqual(host.errors, [])
+        self.assertEqual(host.stderr, "")
+
+    def check_layout_on_an_older_host(self, picture):
+        """A host without the E17f features gets the layout window as columns, rows and groups
+        (the content elements go as they are) and the answers it can show."""
+        host = self.host
+        tree = self.open_layout()
+        self.assertIn("need a newer CILogg", tree["layout_note"]["text"])
+        for element in tree.values():
+            self.assertNotIn(element["type"], ("tabs", "tab", "splitter", "form", "grid",
+                                               "separator", "spacer"), element["id"])
+            for key in ("stretch", "min_height", "modified", "close_confirm", "style", "menu",
+                        "checkable", "checked", "shortcut", "default", "icon", "badge"):
+                self.assertNotIn(key, element, element["id"])
+        self.assertEqual([(child["type"], child["id"], child["title"])
+                          for child in tree["layout_tabs"]["children"]],
+                         [("group", "tab_form", "Form"), ("group", "tab_log", "Log"),
+                          ("group", "tab_notes", "Notes"), ("group", "tab_charts", "Charts")])
+        self.assertEqual(tree["layout_tabs"]["type"], "column")
+        form_rows = tree["layout_form"]["children"]
+        self.assertEqual([row_element["type"] for row_element in form_rows], ["row"] * 4)
+        self.assertEqual(form_rows[2]["children"][0], {"type": "label", "text": "Option"})
+        self.assertEqual(form_rows[3]["children"][0], {"type": "label", "text": "Buttons"})
+        self.assertEqual([len(item["children"]) for item in tree["form_grid"]["children"]], [2, 2])
+        self.assertEqual(tree["charts_split"]["children"][0]["type"], "row")
+        self.assertEqual((tree["chart"]["type"], tree["log"]["type"]), ("chart", "text_view"))
+        self.assertEqual(tree["picture"]["source"], picture)
+        self.layout_command("add_line")
+        self.assertEqual(self.next_patch(), [
+            {"id": "tab_log", "set": {}},  # the group knows no badge
+            {"id": "layout_status", "set": {"text": "menu add_line menu_button"}}])
+        self.check_layout_answers((
+            (lambda: host.view_event("layout", "tool_button", "clicked"), "point 12"),
+            (lambda: host.view_event("layout", "link_button", "clicked"), "focus form_name"),
+            (lambda: host.view_event("layout", "pin_button", "clicked"), "pinned true"),
+            (lambda: host.switch_tab("layout", "layout_tabs", "nope", 7), "tab nope 7"),
+            (lambda: host.close_view("ask"), "dialog closed none none")))
+        tree = self.open_layout("w2")
+        self.assertEqual(tree["log"]["text"], "line 1\n")
+        self.assertEqual(host.shutdown(), 0)
+        self.assertEqual(host.errors, [])
+        self.assertEqual(host.stderr, "")
+
+    def test_layout_window_on_an_e17e_host(self):
+        self.host.initialize(host_features=self.testing.E17E_HOST_FEATURES,
+                             host_feature_versions=self.testing.E17E_HOST_FEATURE_VERSIONS)
+        self.check_layout_on_an_older_host("image:gallery-picture")
+
+    def test_layout_window_on_an_e14_host(self):
+        self.host.initialize_older_host()
+        self.check_layout_on_an_older_host("builtin:info")
 
 
 if __name__ == "__main__":

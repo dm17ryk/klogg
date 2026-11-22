@@ -4,7 +4,8 @@ A small tour of the plugin view, menu, form and table features of the advanced p
 `docs/plugin-sdk.md` and `docs/plugin-sdk-advanced.md`). It grows with each E17 slice. It is
 disabled by default; enable it in **Plugins → Manage Plugins…**, then open **Plugins → UI
 Gallery → Open gallery** (or press **Ctrl+Alt+Shift+G**). **Plugins → UI Gallery → Open
-explorer** opens a second view with a tree and a file tree (E17e).
+explorer** opens a second view with a tree and a file tree (E17e), and **Open layout** a window
+with tabs, a chart and a dialog (E17f).
 
 ## What it shows
 
@@ -148,6 +149,53 @@ explorer**) has:
   `selected files <paths>`, `activated file <path>` (paths relative to the gallery's folder)
   and `path <clicked path|none> (<count> selected)`.
 
+### Layout window: layout, content and dialogs (E17f)
+
+The **UI Gallery Layout** view (`layout`, a 900 by 640 window; **Plugins → UI Gallery → Open
+layout**) has a root column `layout_body` (with `close_confirm`) holding a note, the tabs, a
+row of buttons and the status label `layout_status`:
+
+- **Tabs** `layout_tabs` (`tabs()` of `tab()`s with icons):
+  - **Form** (`tab_form`): a `form` with the fields `form_name` (Name) and `form_port` (Port), the
+    check box `form_check` captioned by its `label` "Option", and a `grid` of four buttons
+    (`grid_a` to `grid_d`, two columns) captioned "Buttons";
+  - **Log** (`tab_log`): the `text_view` `log` (plain, monospace, `follow`, `max_lines` 1000);
+    the tab's `badge` shows the line count;
+  - **Notes** (`tab_notes`): the Markdown `text_view` `notes` with a heading, a list, the link
+    `[docs](https://example.com/docs)` and the image `![info](builtin:info)`;
+  - **Charts** (`tab_charts`): the `splitter` `charts_split` with the line `chart` `chart` (series
+    `rx` and `tx`) and a column holding the `sparkline` `spark` and the `image` `picture`, a PNG
+    registered as `image:gallery-picture` with `png_icon(..., picture=True)` (on a CILogg
+    without icons: `builtin:info`).
+- **Buttons** (`layout_buttons`, with a `separator` and a `spacer`): **Add point** (`tool_button`,
+  style `tool`, icon `builtin:refresh`: `append_points()` to both series and the newest values
+  in the sparkline), **Focus name** (`link_button`, style `link`: `focus_element("form_name")`),
+  **Log actions** (`menu_button` with `menu: "layout_menu"`, the `element` menu with **Add
+  Line** and **Clear Log**), **Pin** (`pin_button`, `checkable`), **Simulate work**
+  (`busy_button`: `busy`, `busy_text` and `busy_cancel` on `layout_body` for 5 seconds on a
+  worker thread, ended early by Cancel), **Toggle modified** (`edit_button`: `modified` on the
+  root, so closing the window asks first), **Ask...** (`ask_button`: opens the dialog `ask`
+  with `show_view`) and **Apply** (`apply_button`, `default` with the shortcut
+  **Ctrl+Alt+Shift+L**).
+- **The dialog** `ask` (`kind: dialog`, modal, `buttons: ["ok", "cancel", "apply"]`, `default:
+  "ok"`): a column `ask_body` with the field `ask_name` (Name).
+
+The status label answers each event:
+
+| Event | `layout_status` |
+| --- | --- |
+| A tab picked (`changed` of `layout_tabs`) | `tab <tab id> <index>` |
+| An entry of Log actions (`ui/command`, the element is the button) | `menu <entry> <element id>`; Add Line also appends `line <n>` to `log`, Clear Log empties it (`set text ""`) |
+| Pin (`changed` of `pin_button`) | `pinned true` or `pinned false` |
+| A link of a text view (`link`) | `link <href>` |
+| Cancel of the busy overlay (`cancel` of `layout_body`) | `cancelled` (`working` when it starts, `work done` after 5 seconds) |
+| A dialog button (`clicked` from `#buttons`) | `dialog clicked <name>` |
+| The dialog closed (`view/closed`) | `dialog closed <result or none> <ask_name>` |
+| Add point, Focus name, Toggle modified, Ask..., Apply, a grid button | `point <x>`, `focus form_name`, `modified <true or false>`, `dialog opened`, `applied`, `clicked <button>` |
+
+A new window shows the plugin's state: the last tab, the log, the pin, `modified`, the chart
+and the last status.
+
 `plugin.json` lists the host-to-plugin methods the plugin handles in `handles`
 (`tooltip/resolve`, `menu/populate`, `field/complete`, `tree/children`, `ui/command`,
 `query/cancel`); without them CILogg never sends them (an `event` entry is then disabled), and
@@ -179,6 +227,15 @@ A CILogg without `tree` and `file_tree` skips those elements, and the SDK does n
 them, so the explorer checks `plugin.supports("tree")` and `plugin.supports("file_tree")` and
 leaves them out; its first label then says that the explorer needs a newer CILogg.
 
+The layout window stays readable without the E17f features: the SDK sends the tabs as a column
+of groups titled like the tabs, the splitter, the form (a caption becomes a label before its
+element) and the grid as columns of rows, leaves out the separator and the spacers, the size
+hints, the button styles, icons, menu, check state, shortcut and default, the busy keys,
+`modified` and `close_confirm`, and drops the `append`, `append_points` and `focus` patches. The
+text views, the chart, the sparkline and the image go as they are, and an older CILogg skips
+them. The note at the top then says what needs a newer CILogg; Pin toggles on `clicked`, and
+the dialog closes without a result (`dialog closed none none`).
+
 ## Testing without CILogg
 
 ```python
@@ -205,8 +262,16 @@ with FakeHost.start_package("plugins/examples/ui-gallery") as host:  # with cilo
     host.move_nodes("explorer", "benches", ["board2"], parent="bench2", before="board3")
     print(host.wait_for("view/update", lambda params: "patch" in params))  # update_nodes, select_nodes
     host.send_node_command("node_actions", "reset_node", "explorer", "benches", node_id="board3")
+    host.open_view("layout")                                         # the layout window (E17f)
+    host.wait_for("view/update", lambda params: params["view_id"] == "layout")
+    host.switch_tab("layout", "layout_tabs", "tab_log", 1)           # "tab tab_log 1"
+    host.send_command("layout_menu", "add_line", "element",
+                      context={"view_id": "layout", "element_id": "menu_button"})
+    print(host.wait_for("view/update", lambda params: "patch" in params))  # append, badge, status
+    host.press_dialog_button("ask", "apply", inputs={"ask_name": "Ann"})   # "dialog clicked apply"
+    host.close_view("ask", result="ok", inputs={"ask_name": "Ann"})        # "dialog closed ok Ann"
 ```
 
 `tests/plugins/test_ui_gallery.py` does this for every tooltip, menu entry, command, control,
-completion, table event and tree event, on a current, an E17d, an E17c, an E17b, an E17a and an
-older host.
+completion, table event, tree event and layout answer, on a current, an E17e, an E17d, an
+E17c, an E17b, an E17a and an older host.
