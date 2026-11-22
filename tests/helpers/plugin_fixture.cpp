@@ -533,6 +533,9 @@ int main( int argc, char** argv )
                             { "host_features", plugin.hostFeatures() } };
     } );
     plugin.action( "cleanup", [ &plugin ]( cilogg_plugin::Job& job, const QJsonObject& ) {
+        // First progress: the action runs. The host shows a job as running once it sends it, and
+        // the SDK answers a job cancelled before its action starts without running the action.
+        plugin.notify( "progress", { { "job_id", job.id }, { "value", 0.1 } } );
         // Report cleanup progress after cancellation; the SDK then answers "Job cancelled".
         while ( !job.cancelled.load() && !plugin.stopping() ) {
             std::this_thread::sleep_for( std::chrono::milliseconds( 2 ) );
@@ -615,7 +618,9 @@ int main( int argc, char** argv )
                           { "buttons", QJsonArray{ "ok" } } } );
         return QJsonObject{};
     } );
-    plugin.action( "stubborn", [ &plugin ]( cilogg_plugin::Job&, const QJsonObject& ) {
+    plugin.action( "stubborn", [ &plugin ]( cilogg_plugin::Job& job, const QJsonObject& ) {
+        // First progress: the action runs (see "cleanup").
+        plugin.notify( "progress", { { "job_id", job.id }, { "value", 0.1 } } );
         for ( int tick = 0; tick < 3000 && !plugin.stopping(); ++tick ) {
             std::this_thread::sleep_for( std::chrono::milliseconds( 1 ) );
         }

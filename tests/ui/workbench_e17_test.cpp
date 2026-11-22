@@ -34,6 +34,9 @@ using cilogg::plugins::PluginManager;
 
 namespace {
 const QString PluginId = QStringLiteral( "org.test.e17" );
+// The host fails a plugin that is not ready 10 s after its start (PluginProcess); waiting longer
+// than that means the host's verdict ends the wait, never this timeout.
+constexpr int PluginStartWaitMs = 15000;
 
 bool waitFor( const std::function<bool()>& predicate, int timeout = 5000 )
 {
@@ -87,6 +90,18 @@ struct E17Plugin {
             = std::make_unique<PluginManager>( QDir( temp.path() ).filePath( "data" ), shipped );
         REQUIRE( manager->manage( "enable", PluginId, {} ).ok() );
     }
+    // Starting the fixture process can take seconds on a busy machine (a run right after a build
+    // once took over 5 s): wait for the host's ready or failed, then require ready.
+    void waitUntilStarted()
+    {
+        REQUIRE( waitFor(
+            [ & ] {
+                const auto state = manager->pluginState( PluginId );
+                return state == "ready" || state == "failed";
+            },
+            PluginStartWaitMs ) );
+        REQUIRE( manager->pluginState( PluginId ) == "ready" );
+    }
     void run( const QString& action )
     {
         const auto job = manager->invoke( PluginId, action, {}, {} );
@@ -116,9 +131,10 @@ struct TipsHost {
             plugin.manager.get(), []( const CommanderRequest& ) { return CommanderResult{}; } );
         host->setRenderIntervalMs( 10 );
         QString error;
-        REQUIRE( host->openView( PluginId, "tips", {}, &error ) );
+        REQUIRE( host->openView( PluginId, "tips", {}, &error ) ); // starts the plugin
         view = host->view( PluginId, "tips" );
         REQUIRE( view );
+        plugin.waitUntilStarted();
         REQUIRE( waitFor( [ & ] {
             auto* status = qobject_cast<QLabel*>( view->element( "status" ) );
             return status && status->text() == "ready tips" && view->isEnabled();
@@ -410,7 +426,8 @@ TEST_CASE( "E17 get_plugin_tooltip and icon_ref in the Plugins menu", "[ui][work
     open.action = CommanderAction::OpenPluginView;
     open.pluginId = PluginId;
     open.viewId = "tips";
-    REQUIRE( window.executeCommanderRequest( open ).ok() );
+    REQUIRE( window.executeCommanderRequest( open ).ok() ); // starts the plugin
+    plugin.waitUntilStarted();
     REQUIRE( waitFor( [ & ] {
         auto* status = window.findChild<QLabel*>(
             PluginView::objectNameFor( PluginId, "tips", "status" ) );

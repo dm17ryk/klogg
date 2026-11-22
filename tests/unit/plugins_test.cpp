@@ -76,6 +76,9 @@ protected:
                                 delays.value( request.url().toString() ) );
     }
 };
+// The host fails a plugin that is not ready 10 s after its start (PluginProcess); waiting longer
+// than that means the host's verdict ends the wait, never this timeout.
+constexpr int PluginStartWaitMs = 15000;
 bool waitFor( const std::function<bool()>& predicate, int timeout = 5000 )
 {
     QElapsedTimer timer;
@@ -1214,11 +1217,27 @@ TEST_CASE( "Cancelled plugin jobs keep a grace period for cleanup", "[plugins][E
     package( shipped );
     PluginManager manager( QDir( temp.path() ).filePath( "data" ), shipped );
     REQUIRE( manager.manage( "enable", "org.test.fixture", {} ).ok() );
+    // Cancel only once the plugin's action runs. "running" means the host sent the job: a cancel
+    // right after it can reach the plugin before the action starts, and the SDK then answers
+    // "Job cancelled" without running the action. Both actions report progress when they start.
+    // The job starts the plugin, which can take more than 5 s on a busy machine: the host's ready
+    // or failed ends the first wait (it fails a plugin not ready 10 s after its start).
+    const auto waitUntilActionRuns = [ & ]( const QString& id ) {
+        REQUIRE( waitFor(
+            [ & ] {
+                const auto state = pluginState( manager );
+                return state == "ready" || state == "failed";
+            },
+            PluginStartWaitMs ) );
+        REQUIRE( pluginState( manager ) == "ready" );
+        REQUIRE( waitFor(
+            [ & ] { return manager.job( id ).payload.value( "progress" ).toDouble() > 0; } ) );
+        REQUIRE( manager.job( id ).payload.value( "state" ) == "running" );
+    };
     SECTION( "progress and the final answer are accepted while cancelling" )
     {
         const auto id = jobId( manager.invoke( "org.test.fixture", "cleanup", {}, {} ) );
-        REQUIRE(
-            waitFor( [ & ] { return manager.job( id ).payload.value( "state" ) == "running"; } ) );
+        waitUntilActionRuns( id );
         const auto cancelled = manager.cancel( id );
         REQUIRE( cancelled.ok() );
         REQUIRE( cancelled.payload.value( "state" ) == "cancelling" );
@@ -1233,8 +1252,7 @@ TEST_CASE( "Cancelled plugin jobs keep a grace period for cleanup", "[plugins][E
     {
         manager.setCancelGraceMs( 200 );
         const auto id = jobId( manager.invoke( "org.test.fixture", "stubborn", {}, {} ) );
-        REQUIRE(
-            waitFor( [ & ] { return manager.job( id ).payload.value( "state" ) == "running"; } ) );
+        waitUntilActionRuns( id );
         REQUIRE( manager.cancel( id ).ok() );
         QElapsedTimer elapsed;
         elapsed.start();
