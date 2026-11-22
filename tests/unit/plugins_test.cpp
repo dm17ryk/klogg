@@ -1384,7 +1384,8 @@ TEST_CASE( "Cancelled plugin jobs keep a grace period for cleanup", "[plugins][E
     }
     SECTION( "a plugin that ignores cancellation is cancelled after the grace period" )
     {
-        manager.setCancelGraceMs( 200 );
+        constexpr qint64 GraceMs = 200;
+        manager.setCancelGraceMs( static_cast<int>( GraceMs ) );
         const auto id = jobId( manager.invoke( "org.test.fixture", "stubborn", {}, {} ) );
         waitUntilActionRuns( id );
         REQUIRE( manager.cancel( id ).ok() );
@@ -1392,7 +1393,11 @@ TEST_CASE( "Cancelled plugin jobs keep a grace period for cleanup", "[plugins][E
         elapsed.start();
         REQUIRE( manager.job( id ).payload.value( "state" ) == "cancelling" );
         REQUIRE( waitFor( [ & ] { return finished( manager, id ); }, 2000 ) );
-        REQUIRE( elapsed.elapsed() < 1500 );
+        // Only the grace timer ends this job (the plugin answers after 3 s, with an error), and a
+        // timer this short never fires early: it ended after the grace period, long before 3 s.
+        const auto took = elapsed.elapsed();
+        REQUIRE( took >= GraceMs / 2 );
+        REQUIRE( took < 1500 );
         REQUIRE( manager.job( id ).payload.value( "state" ) == "cancelled" );
         REQUIRE( manager.job( id ).payload.value( "error" ).toString().isEmpty() );
     }
