@@ -19,9 +19,11 @@
 
 #include <catch2/catch.hpp>
 
+#include <QAbstractItemView>
 #include <QAction>
 #include <QApplication>
 #include <QHelpEvent>
+#include <QScreen>
 #include <QScrollBar>
 #include <QToolTip>
 #include <QComboBox>
@@ -1479,4 +1481,56 @@ TEST_CASE( "Filtered visible range tracks wrapped rows", "[ui][wrap]" )
     REQUIRE( filteredVisibleRange.value( "start" ).toULongLong() == 1 );
     REQUIRE( filteredVisibleRange.value( "end" ).toULongLong() >= 2 );
     REQUIRE( crawlerVisitor.focusedViewObjectName() == "filteredView" );
+}
+
+TEST_CASE( "Predefined filters list opens as wide as its longest entry",
+           "[ui][crawler][searchbar]" )
+{
+    // Build 26.04.2.1374: the checkable list opened as narrow as its squeezed button, so the
+    // names were cut ("Softv", "LTE I", "Inco"). Each pane's search bar has its own list: the
+    // main pane's and a second pane's are checked alike.
+    QTemporaryFile mainFile{ "predefined_popup_main_XXXXXX" };
+    QTemporaryFile paneFile{ "predefined_popup_pane_XXXXXX" };
+    REQUIRE( generateDataFiles( mainFile ) );
+    REQUIRE( generateDataFiles( paneFile ) );
+    Session session;
+    for ( auto* file : { &mainFile, &paneFile } ) {
+        CrawlerWidgetVisitor visitor;
+        visitor.crawler.reset( static_cast<CrawlerWidget*>(
+            session.open( file->fileName(), []() { return new CrawlerWidget(); } ) ) );
+        REQUIRE( waitUiState( [ & ]() { return visitor.isLoadingFinished(); } ) );
+        auto* crawler = visitor.crawler.get();
+        auto* combo = crawler->findChild<PredefinedFiltersComboBox*>( "predefinedFiltersComboBox" );
+        REQUIRE( combo != nullptr );
+        auto* model = qobject_cast<QStandardItemModel*>( combo->model() );
+        REQUIRE( model != nullptr );
+        for ( const auto* name :
+              { "Software version and build information", "Startup of the control panel",
+                "Modem registration on the LTE network", "Incoming call handling" } ) {
+            auto* item = new QStandardItem( QString::fromLatin1( name ) );
+            item->setFlags( Qt::ItemIsUserCheckable | Qt::ItemIsEnabled );
+            item->setData( Qt::Unchecked, Qt::CheckStateRole );
+            model->appendRow( item );
+        }
+        crawler->resize( 900, 600 );
+        crawler->show();
+        combo->setFixedWidth( combo->fontMetrics().averageCharWidth() * 6 );
+        REQUIRE( QTest::qWaitForWindowExposed( crawler ) );
+
+        combo->showPopup();
+        auto* view = combo->view();
+        auto* popup = view->window();
+        REQUIRE( QTest::qWaitFor( [ popup ] { return popup->isVisible(); }, 5000 ) );
+        // The longest entry with its check box, and never wider than the screen.
+        const auto longest = view->sizeHintForColumn( 0 );
+        CHECK( longest > combo->width() );
+        CHECK( popup->width() >= longest );
+        const auto* screen = combo->screen();
+        REQUIRE( screen != nullptr );
+        CHECK( popup->width() <= screen->availableGeometry().width() );
+        CHECK( popup->geometry().left() >= screen->availableGeometry().left() );
+        CHECK( popup->geometry().right() <= screen->availableGeometry().right() );
+        combo->hidePopup();
+        crawler->hide();
+    }
 }
