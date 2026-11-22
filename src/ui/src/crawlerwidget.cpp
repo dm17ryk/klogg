@@ -546,12 +546,12 @@ void CrawlerWidget::refreshMatchLabelers()
         pendingFilterSelection_ = {};
     }
     int relabelled = 0;
-    for ( const auto& [ view, data ] : filteredViewsData_ ) {
-        if ( !data || !data->hasCurrentRegexp() ) {
+    for ( const auto& [ filteredView, filteredData ] : filteredViewsData_ ) {
+        if ( !filteredData || !filteredData->hasCurrentRegexp() ) {
             continue;
         }
         QList<PredefinedFilter> filters;
-        const auto selection = viewFilterSelections_.find( view );
+        const auto selection = viewFilterSelections_.find( filteredView );
         if ( selection != viewFilterSelections_.end() ) {
             if ( refresh( selection->second ) ) {
                 filters = selection->second.filters;
@@ -560,8 +560,8 @@ void CrawlerWidget::refreshMatchLabelers()
                 viewFilterSelections_.erase( selection );
             }
         }
-        view->setMatchLabeler( std::make_shared<const MatchLabeler>(
-            MatchLabeler::fromSearch( data->currentRegexp(), filters, knownFilters ) ) );
+        filteredView->setMatchLabeler( std::make_shared<const MatchLabeler>(
+            MatchLabeler::fromSearch( filteredData->currentRegexp(), filters, knownFilters ) ) );
         ++relabelled;
     }
     LOG_DEBUG << "Matched-by labels rebuilt after the predefined filters changed: views="
