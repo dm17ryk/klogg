@@ -68,7 +68,7 @@ class QCheckListStyledItemDelegate : public QStyledItemDelegate {
 };
 
 PredefinedFiltersComboBox::PredefinedFiltersComboBox( QWidget* parent )
-    : QComboBox( parent )
+    : WidePopupComboBox( parent )
     , model_( new QStandardItemModel(this) )
     , ignoreCollecting_( false )
 {
@@ -210,7 +210,7 @@ std::optional<PredefinedFilter> PredefinedFiltersComboBox::commanderFilterByInde
 void PredefinedFiltersComboBox::showPopup()
 {
     if ( searchPattern_.newOne_ == searchPattern_.lastOne_ ) {
-        QComboBox::showPopup();
+        WidePopupComboBox::showPopup();
         return;
     }
 
@@ -252,7 +252,7 @@ void PredefinedFiltersComboBox::showPopup()
 
     ignoreCollecting_ = false;
 
-    QComboBox::showPopup();
+    WidePopupComboBox::showPopup();
 }
 
 void PredefinedFiltersComboBox::setTitle( const QString& title )

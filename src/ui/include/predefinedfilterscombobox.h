@@ -41,6 +41,7 @@
 #define PREDEFINEDFILTERSCOMBOBOX_H_
 
 #include <QComboBox>
+#include "searchbarlayout.h"
 #include <QVariantList>
 #include <optional>
 
@@ -48,7 +49,9 @@
 
 class QStandardItemModel;
 
-class PredefinedFiltersComboBox final : public QComboBox {
+// The checkable list of predefined filters. Its drop-down list opens as wide as its longest entry,
+// check box included (WidePopupComboBox), however narrow the search bar makes the button.
+class PredefinedFiltersComboBox final : public WidePopupComboBox {
     Q_OBJECT
 
   public:
@@ -71,7 +74,7 @@ class PredefinedFiltersComboBox final : public QComboBox {
         return filtersCollection_.getFilters();
     }
 
-    virtual void showPopup();
+    void showPopup() override;
 
   Q_SIGNALS:
     void filterChanged( const QList<PredefinedFilter>& selectedFilters);
