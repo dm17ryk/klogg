@@ -45,6 +45,28 @@ int optionSettingLength( const QString& regex, int position )
     return end - position + 1;
 }
 
+// End (exclusive) of the character class that starts at `position`, or -1. A ']' right after
+// '[' or '[^' is a member, as in the alternative scanner.
+int classEnd( const QString& regex, int position )
+{
+    const auto size = static_cast<int>( regex.size() );
+    auto i = position + 1;
+    if ( i < size && regex.at( i ) == QLatin1Char( '^' ) ) {
+        ++i;
+    }
+    const auto firstMember = i;
+    for ( ; i < size; ++i ) {
+        const auto character = regex.at( i );
+        if ( character == QLatin1Char( '\\' ) ) {
+            ++i;
+        }
+        else if ( character == QLatin1Char( ']' ) && i > firstMember ) {
+            return i + 1;
+        }
+    }
+    return -1;
+}
+
 // "(x)" -> "x" when the parentheses are one plain capturing group around everything; otherwise
 // `alternative` itself.
 QString withoutOuterGroup( const QString& alternative )
@@ -55,20 +77,18 @@ QString withoutOuterGroup( const QString& alternative )
         return alternative;
     }
     int depth = 0;
-    bool inClass = false;
     const auto size = static_cast<int>( alternative.size() );
     for ( int i = 0; i < size; ++i ) {
         const auto character = alternative.at( i );
         if ( character == QLatin1Char( '\\' ) ) {
             ++i;
-            continue;
         }
-        if ( inClass ) {
-            inClass = character != QLatin1Char( ']' );
-            continue;
-        }
-        if ( character == QLatin1Char( '[' ) ) {
-            inClass = true;
+        else if ( character == QLatin1Char( '[' ) ) {
+            const auto end = classEnd( alternative, i );
+            if ( end < 0 ) {
+                return alternative;
+            }
+            i = end - 1;
         }
         else if ( character == QLatin1Char( '(' ) ) {
             ++depth;
@@ -89,27 +109,6 @@ struct RegexToken {
     QString atom;
     QString quantifier;
 };
-
-// End (exclusive) of the character class that starts at `position`, or -1.
-int classEnd( const QString& regex, int position )
-{
-    const auto size = static_cast<int>( regex.size() );
-    auto i = position + 1;
-    if ( i < size && regex.at( i ) == QLatin1Char( '^' ) ) {
-        ++i;
-    }
-    const auto firstMember = i;
-    for ( ; i < size; ++i ) {
-        const auto character = regex.at( i );
-        if ( character == QLatin1Char( '\\' ) ) {
-            ++i;
-        }
-        else if ( character == QLatin1Char( ']' ) && i > firstMember ) {
-            return i + 1;
-        }
-    }
-    return -1;
-}
 
 // End (exclusive) of the group that starts at `position`, or -1.
 int groupEnd( const QString& regex, int position )
@@ -152,13 +151,28 @@ int quantifierLength( const QString& regex, int position )
         end = position + 1;
     }
     else if ( character == QLatin1Char( '{' ) ) {
-        const auto close = regex.indexOf( QLatin1Char( '}' ), position );
-        static const QRegularExpression counted( QStringLiteral( "^\\{\\d+(,\\d*)?\\}$" ) );
-        if ( close < 0
-             || !counted.match( regex.mid( position, close - position + 1 ) ).hasMatch() ) {
+        // "{n}", "{n,}" or "{n,m}"; anything else is a literal '{'. Read in place: a pattern
+        // of many '{' stays linear.
+        end = position + 1;
+        const auto digitsFrom = [ &regex, size ]( int from ) {
+            while ( from < size && regex.at( from ) >= QLatin1Char( '0' )
+                    && regex.at( from ) <= QLatin1Char( '9' ) ) {
+                ++from;
+            }
+            return from;
+        };
+        const auto afterCount = digitsFrom( end );
+        if ( afterCount == end ) {
             return 0;
         }
-        end = static_cast<int>( close ) + 1;
+        end = afterCount;
+        if ( end < size && regex.at( end ) == QLatin1Char( ',' ) ) {
+            end = digitsFrom( end + 1 );
+        }
+        if ( end >= size || regex.at( end ) != QLatin1Char( '}' ) ) {
+            return 0;
+        }
+        ++end;
     }
     else {
         return 0;
@@ -294,8 +308,9 @@ bool hasOwnName( const PredefinedFilter& filter )
     return !filter.name.isEmpty() && filter.name != filter.pattern;
 }
 
-// The predefined filter a quoted term of a boolean search was built from: the crawler quotes a
-// filter's pattern, escaped first when the filter is plain text and the search is not.
+// The predefined filter a quoted term of a boolean search was built from: the term is exactly
+// what the crawler quotes for it (CrawlerWidget::escapeSearchPattern), the pattern escaped first
+// when the filter is plain text and the search is not.
 const PredefinedFilter* filterOfTerm( const QList<PredefinedFilter>& filters,
                                       const QString& termPattern, bool plainTextSearch )
 {
@@ -303,9 +318,10 @@ const PredefinedFilter* filterOfTerm( const QList<PredefinedFilter>& filters,
         if ( filter.pattern.isEmpty() ) {
             continue;
         }
-        if ( termPattern == filter.pattern
-             || ( !filter.useRegex && !plainTextSearch
-                  && termPattern == QRegularExpression::escape( filter.pattern ) ) ) {
+        const auto quoted = !filter.useRegex && !plainTextSearch
+                                ? QRegularExpression::escape( filter.pattern )
+                                : filter.pattern;
+        if ( termPattern == quoted ) {
             return &filter;
         }
     }

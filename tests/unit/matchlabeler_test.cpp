@@ -308,7 +308,24 @@ TEST_CASE( "labels_readable_alternative_names", "[workbench][U14]" )
     CHECK( MatchLabeler::alternativeDisplayName( "^.*$" ) == "^.*$" );
     CHECK( MatchLabeler::alternativeDisplayName( "(*UCP)x" ) == "(*UCP)x" );
     CHECK( MatchLabeler::alternativeDisplayName( "a{2}" ) == "a{2}" );
+    CHECK( MatchLabeler::alternativeDisplayName( "a{2,}" ) == "a{2,}" );
     CHECK( MatchLabeler::alternativeDisplayName( "[a-z]+" ) == "[a-z]+" );
+    // A '{' that starts no count is a plain character; many of them stay cheap.
+    CHECK( MatchLabeler::alternativeDisplayName( "x{" ) == "x{" );
+    const QString braces( 50000, QChar( '{' ) );
+    CHECK( MatchLabeler::alternativeDisplayName( braces ) == braces );
+    // A ']' first in a class is a member, also when the outer group is taken off.
+    CHECK( MatchLabeler::alternativeDisplayName( "([])])" ) == "[])]" );
+}
+
+TEST_CASE( "labels_regex_term_with_the_text_of_a_plain_filter", "[workbench][U14]" )
+{
+    // The crawler quotes a plain-text filter escaped when regex search is on: a regex term with
+    // the filter's raw text is not that filter.
+    const auto labeler
+        = MatchLabeler::fromSearch( booleanSearch( quotedOr( { "Error (code)", "x" } ) ), {},
+                                    { filter( "Paren", "Error (code)", false ) } );
+    CHECK( labeler.label( "Error code 5" ) == "Error (code)" );
 }
 
 TEST_CASE( "labels_typed_alternatives_without_group_parentheses", "[workbench][U14]" )
