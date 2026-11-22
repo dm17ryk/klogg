@@ -386,19 +386,25 @@ TEST_CASE( "Configure shows where a plugin came from, why it fails and reinstall
     // A repointed folder is saved with OK, before the configuration.
     const auto moved = QDir( temp.path() ).filePath( "moved" );
     requests.clear();
+    bool reinstallWithoutPath = true;
     QTimer::singleShot( 0, manage, [ & ] {
         auto* form = manage->findChild<QDialog*>( "pluginFormDialog" );
         auto* path = form ? form->findChild<QLineEdit*>( "pluginSourcePath" ) : nullptr;
-        if ( !path ) {
+        auto* reinstall = form ? form->findChild<QPushButton*>( "pluginSourceReinstall" ) : nullptr;
+        if ( !path || !reinstall ) {
             if ( form ) {
                 form->reject();
             }
             return;
         }
+        // Without a folder or ZIP there is nothing to reinstall from.
+        path->clear();
+        reinstallWithoutPath = reinstall->isEnabled();
         path->setText( moved );
         form->findChild<QPushButton*>( "pluginFormAccept" )->click();
     } );
     manage->findChild<QPushButton*>( "pluginManage_configure" )->click();
+    CHECK_FALSE( reinstallWithoutPath );
     REQUIRE( requests.size() == 2 );
     CHECK( requests.at( 0 ).pluginOperation == "set_source" );
     CHECK( QDir::cleanPath( requests.at( 0 ).pluginArguments.value( "path" ).toString() )

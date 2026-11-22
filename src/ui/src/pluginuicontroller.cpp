@@ -1320,7 +1320,8 @@ QWidget* PluginUiController::createInstalledTab( QWidget* parent )
                             const auto repointed = setPluginSource( id, chosenPath );
                             status->setText(
                                 repointed.ok()
-                                    ? tr( "%1 is now reinstalled from %2." )
+                                    ? tr( "The source of %1 is now %2. Reinstall installs it from "
+                                          "there." )
                                           .arg( name, QDir::toNativeSeparators( chosenPath ) )
                                     : repointed.message );
                             if ( !repointed.ok() ) {
@@ -1415,10 +1416,11 @@ QWidget* PluginUiController::createInstalledTab( QWidget* parent )
                 return;
             }
             const auto result = setPluginSource( id, path );
-            status->setText( result.ok() ? tr( "%1 is now reinstalled from %2." )
-                                               .arg( plugin.value( "name", id ).toString(),
-                                                     QDir::toNativeSeparators( path ) )
-                                         : result.message );
+            status->setText(
+                result.ok() ? tr( "The source of %1 is now %2. Reinstall installs it from there." )
+                                  .arg( plugin.value( "name", id ).toString(),
+                                        QDir::toNativeSeparators( path ) )
+                            : result.message );
         } );
     }
     changeSource->setMenu( sourceMenu );

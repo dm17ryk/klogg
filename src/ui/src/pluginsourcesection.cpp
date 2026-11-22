@@ -120,6 +120,13 @@ SourceSection createSourceSection( QWidget* parent, const QVariantMap& plugin )
         section.reinstall->setAccessibleName( tr( "Reinstall from this folder or ZIP" ) );
         section.reinstall->setToolTip(
             tr( "Install the plugin again from this folder or ZIP and restart it" ) );
+        // Nothing to reinstall from until a folder or ZIP is given.
+        auto* reinstall = section.reinstall;
+        const auto updateReinstall = [ reinstall ]( const QString& text ) {
+            reinstall->setEnabled( !text.trimmed().isEmpty() );
+        };
+        updateReinstall( path->text() );
+        QObject::connect( path, &QLineEdit::textChanged, reinstall, updateReinstall );
         rowLayout->addWidget( section.reinstall );
         form->addRow( tr( "Folder or ZIP" ), row );
     }
