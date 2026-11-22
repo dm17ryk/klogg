@@ -3,11 +3,11 @@
 #include "log.h"
 #include "packeditors.h"
 #include <QComboBox>
-#include <algorithm>
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QDir>
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QHeaderView>
@@ -21,6 +21,7 @@
 #include <QTableWidget>
 #include <QTimer>
 #include <QVBoxLayout>
+#include <algorithm>
 
 namespace pluginsui {
 namespace {
@@ -342,7 +343,17 @@ QString sourceLabel( const QVariantMap& plugin )
                    : tr( "%1 (source unavailable)" )
                          .arg( name.isEmpty() ? source.value( "repository" ).toString() : name );
     }
-    return type == QLatin1String( "local" ) ? tr( "Local file" ) : tr( "Shipped with CILogg" );
+    if ( type == QLatin1String( "local" ) ) {
+        // The folder or ZIP it was installed from, when CILogg recorded it.
+        const auto path = source.value( "path" ).toString();
+        if ( path.isEmpty() ) {
+            return tr( "Local file" );
+        }
+        return ( source.value( "pathKind" ) == QLatin1String( "zip" ) ? tr( "Local ZIP: %1" )
+                                                                      : tr( "Local folder: %1" ) )
+            .arg( QDir::toNativeSeparators( path ) );
+    }
+    return tr( "Shipped with CILogg" );
 }
 
 QString repositoryStateText( const QVariantMap& repository )

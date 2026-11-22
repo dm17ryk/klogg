@@ -441,14 +441,16 @@ void PluginManager::failStorageJob( QString pluginId, QString jobId, QString err
     }
     const auto entry = entries_.find( pluginId );
     if ( entry != entries_.end() ) {
-        entry->second->diagnostics = ( entry->second->diagnostics + error + '\n' ).right( 32768 );
-        if ( entry->second->process ) {
-            const auto job = jobs_.find( jobId );
-            if ( job != jobs_.end() && !job->second.outputPath.isEmpty() ) {
-                // A converter writes independently; stop its process once a violation is observed.
-                entry->second->process->fail( error );
-            }
-            else {
+        const auto job = jobs_.find( jobId );
+        if ( entry->second->process && job != jobs_.end() && !job->second.outputPath.isEmpty() ) {
+            // A converter writes independently; stop its process once a violation is observed.
+            // fail() adds the error to the diagnostics.
+            entry->second->process->fail( error );
+        }
+        else {
+            entry->second->diagnostics
+                = ( entry->second->diagnostics + error + '\n' ).right( 32768 );
+            if ( entry->second->process ) {
                 entry->second->process->notify( "cancel", { { "job_id", jobId } } );
             }
         }
@@ -764,10 +766,7 @@ PluginProcess* PluginManager::ensureProcess( Entry& entry )
         }
     }
     if ( python.isEmpty() ) {
-        python = QStandardPaths::findExecutable( "python3" );
-    }
-    if ( python.isEmpty() ) {
-        python = QStandardPaths::findExecutable( "python" );
+        python = cilogg::pythonruntime::pathInterpreterCandidates().value( 0 );
     }
     // Lets a plugin call Commander on its own instance (docs/plugin-sdk.md).
     process->start( config, configDir, python,
@@ -1281,7 +1280,7 @@ Result PluginManager::manage( const QString& operation, const QString& id,
     }
     // How a pack install or update merges with the local edits: refused elsewhere rather than
     // ignored, so a call never reports success without the merge it asked for.
-    if ( operation != "install" && operation != "update" ) {
+    if ( operation != "install" && operation != "update" && operation != "reinstall" ) {
         for ( const auto* key : { "strategy", "resolutions", "revision" } ) {
             if ( options.contains( QLatin1String( key ) ) ) {
                 return { QStringLiteral( "%1 applies only to install and update." )
@@ -1304,6 +1303,33 @@ Result PluginManager::manage( const QString& operation, const QString& id,
     }
     if ( operation == "skip_update" ) {
         return skipUpdate( id, options );
+    }
+    if ( operation == "reinstall" ) {
+        // Installs the plugin again from the folder or ZIP it was installed from (set_source
+        // repoints it), with the same checks as an install from that path.
+        const auto reinstalled = entries_.find( id );
+        if ( reinstalled == entries_.end() ) {
+            return { "Plugin not found.", {} };
+        }
+        const auto type = sourceInfo( id, *reinstalled->second ).value( "type" ).toString();
+        if ( type == QLatin1String( "repository" ) ) {
+            return { "This plugin was installed from a repository: update it, or install it "
+                     "again from the repository.",
+                     {} };
+        }
+        if ( type == QLatin1String( "shipped" ) ) {
+            return { "This plugin ships with CILogg and has no folder or ZIP to reinstall from.",
+                     {} };
+        }
+        const auto path = repositories_.localSource( id );
+        if ( path.isEmpty() ) {
+            return { "The folder or ZIP this plugin was installed from is not known: choose it "
+                     "with set_source, or install the plugin again from it.",
+                     {} };
+        }
+        auto installOptions = options;
+        installOptions.insert( "path", path );
+        return manage( "install", id, installOptions, origin );
     }
     // Configuration packs edited in place (design 4.6).
     if ( packOperation( operation ) ) {
@@ -1368,11 +1394,15 @@ Result PluginManager::manage( const QString& operation, const QString& id,
         }
     }
     if ( operation == "install" && options.contains( "path" ) ) {
-        const auto jobId = addJob( id, "install", mergeContext, true );
+        const auto path = options.value( "path" ).toString();
+        // Recorded as the plugin's source once installed, for Reinstall (set_source repoints it).
+        auto context = mergeContext;
+        context.insert( "sourcePath", QDir::cleanPath( QFileInfo( path ).absoluteFilePath() ) );
+        const auto jobId = addJob( id, "install", context, true );
         if ( jobId.isEmpty() ) {
             return { "Too many jobs.", {} };
         }
-        install( options.value( "path" ).toString(), jobId, id );
+        install( path, jobId, id );
         return job( jobId );
     }
     if ( fromCatalog ) {
@@ -1507,6 +1537,47 @@ Result PluginManager::manage( const QString& operation, const QString& id,
         settings_.setValue( configurationKey( id ) + "menus/hidden", hidden );
         LOG_DEBUG << "Plugin menu locations hidden plugin=" << id.toStdString()
                   << " locations=" << hidden.join( ',' ).toStdString();
+    }
+    else if ( operation == "set_source" ) {
+        // The folder or ZIP a plugin installed without a repository is reinstalled from.
+        if ( sourceInfo( id, e ).value( "type" ) != "local" ) {
+            return { "set_source applies only to a plugin installed from a folder or ZIP.", {} };
+        }
+        const auto path = options.value( "path" ).toString();
+        // Absolute only: a relative path would be read against CILogg's working folder, which a
+        // CLI or MCP caller does not see.
+        if ( path.isEmpty() || QDir::isRelativePath( path ) ) {
+            return { "set_source needs the absolute path of the plugin's folder or ZIP.", {} };
+        }
+        // An install or update of this plugin, or a local install whose plugin is not known yet,
+        // records its own source when it finishes: it would overwrite this one.
+        const bool installing = std::any_of(
+            jobs_.cbegin(), jobs_.cend(), [ &id ]( const auto& pair ) {
+                const auto& j = pair.second;
+                return !j.invocation && pending( j.state ) && packageOperation( j.action )
+                       && ( j.pluginId == id || ( j.action == "install" && j.pluginId.isEmpty() ) );
+            } );
+        if ( installing ) {
+            return { "A plugin management operation is already running.", {} };
+        }
+        const auto absolute = QDir::cleanPath( path );
+        // As an install from it: a link is refused there (PluginRepository::stage).
+        if ( QFileInfo( absolute ).isSymLink() ) {
+            return { "Plugin source cannot be a symbolic link.", {} };
+        }
+        const auto found = PluginRepository::packageManifest( absolute ).value( "id" ).toString();
+        if ( found.isEmpty() ) {
+            return { QStringLiteral( "No plugin.json in %1." )
+                         .arg( QDir::toNativeSeparators( absolute ) ),
+                     {} };
+        }
+        if ( found != id ) {
+            return { QStringLiteral( "%1 holds plugin %2, not %3." )
+                         .arg( QDir::toNativeSeparators( absolute ), found, id ),
+                     {} };
+        }
+        repositories_.setLocalSource( id, absolute );
+        LOG_INFO << "Plugin source set id=" << id.toStdString();
     }
     else {
         return { "Unknown plugin management operation.", {} };
@@ -1751,6 +1822,10 @@ void PluginManager::commitWhenStopped( const StagedPlugin& staged, const QString
         // is installed at this point, so a settings write failure is a warning, not a failure:
         // retrying would only install the same package again.
         repositories_.setSource( staged.manifest.id, source );
+        const auto localPath = jobIt->second.context.value( "sourcePath" ).toString();
+        if ( source.repository.isEmpty() && !localPath.isEmpty() ) {
+            repositories_.setLocalSource( staged.manifest.id, localPath );
+        }
         if ( !jobIt->second.context.value( "automatic" ).toBool() ) {
             clearAutoUpdateFailure( staged.manifest.id ); // reported again if it fails again
         }
