@@ -973,7 +973,11 @@ repository the plugin was installed from; an update to the installed version, or
 older one, needs its `catalog_entry_id`. Installing from another repository requires
 `switch_source: true`. Disabled repositories offer nothing. `get_plugins` reports each plugin's `kind` and
 `source` (`type` `repository`, `local` or `shipped`, the repository and the
-installed version). A newer catalog request supersedes the previous request;
+installed version; for `local`, the `path` of the folder or ZIP it was installed
+from and `pathKind` `folder` or `zip`, once CILogg recorded it). `set_source`
+with `{"path"}` repoints a `local` plugin to another folder or ZIP of the same
+plugin ID, and `reinstall` installs it again from there (the plugin's Configure
+dialog has the same: Folder…, ZIP… and Reinstall). A newer catalog request supersedes the previous request;
 obsolete selections are rejected after refresh. Packages reject traversal, links, Windows device names, and path
 components ending in dots or spaces on every platform.
 Plugin IDs use lowercase ASCII letters, digits, dots, underscores, and hyphens
@@ -982,6 +986,14 @@ to prevent case aliases from replacing another plugin on Windows.
 Restart jobs complete only after an enabled plugin successfully initializes;
 initialization failures are reported through the job. Streams remain stopped
 after restart and require explicit invocation.
+
+A plugin must answer `initialize` within 10 s. A plugin that fails reports why in
+`error` (a timeout names the program it started and says whether the plugin wrote
+anything to stderr), and `diagnostics` keeps its stderr after a line saying which
+program CILogg started. A `python` plugin runs with the interpreter in
+`CILOGG_SCRIPT_PYTHON`, else the bundled one, else Python from `PATH`: on Windows
+`python.exe` and `python3.exe` before launcher scripts such as the pyenv-win
+`python3.bat` shim, which can take longer than 10 s to start Python.
 
 ## Configuration packs
 

@@ -10,6 +10,7 @@
 #include <functional>
 
 class AnalysisSourcePicker;
+class QLabel;
 class MainWindow;
 class PluginMenus;
 struct PluginMenuContext;
@@ -68,6 +69,12 @@ private:
     void queuePanel( const QString& pluginId, const QJsonObject& panel,
                      const QVariantMap& context );
     void report( const CommanderResult& result );
+    // The folder or ZIP a plugin installed without a repository is reinstalled from (set_source).
+    CommanderResult setPluginSource( const QString& pluginId, const QString& path );
+    // Installs the plugin again from `path` (the recorded source when empty) and reports the
+    // outcome in `status`.
+    void reinstallFrom( QWidget* parent, QLabel* status, const QString& pluginId,
+                        const QString& name, const QString& path );
     QPointer<MainWindow> window_;
     QPointer<cilogg::plugins::PluginManager> manager_;
     Executor executor_;

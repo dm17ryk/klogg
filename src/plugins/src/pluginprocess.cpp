@@ -1,6 +1,8 @@
 #include "pluginprocess.h"
 #include "log.h"
 #include "pluginfeatures.h"
+#include "pythonruntime.h"
+#include <QDateTime>
 #include <QDir>
 #include <QJsonDocument>
 #include <QProcessEnvironment>
@@ -19,7 +21,7 @@ PluginProcess::PluginProcess( Manifest manifest, QObject* parent )
             process_.kill();
         }
         else {
-            fail( QStringLiteral( "Plugin initialization timed out." ) );
+            fail( initializationTimeoutError() );
         }
     } );
     process_.setProcessChannelMode( QProcess::SeparateChannels );
@@ -39,7 +41,9 @@ PluginProcess::PluginProcess( Manifest manifest, QObject* parent )
         // Drain in bounded chunks; never forward plugin text to host stdout.
         process_.setReadChannel( QProcess::StandardError );
         while ( process_.bytesAvailable() > 0 ) {
-            const auto text = QString::fromUtf8( process_.read( 32768 ) );
+            const auto bytes = process_.read( 32768 );
+            stderrBytes_ += bytes.size();
+            const auto text = QString::fromUtf8( bytes );
             LOG_DEBUG << "Plugin stderr id=" << manifest_.id.toStdString() << " "
                       << text.toStdString();
             Q_EMIT diagnostic( text );
@@ -48,7 +52,8 @@ PluginProcess::PluginProcess( Manifest manifest, QObject* parent )
     } );
     connect( &process_, &QProcess::errorOccurred, this, [ this ]( QProcess::ProcessError error ) {
         if ( error == QProcess::FailedToStart ) {
-            fail( process_.errorString() );
+            fail( QStringLiteral( "Cannot start %1: %2" )
+                      .arg( commandLine(), process_.errorString() ) );
             Q_EMIT stopped();
         }
     } );
@@ -59,6 +64,7 @@ PluginProcess::PluginProcess( Manifest manifest, QObject* parent )
                      error_ = QStringLiteral( "Plugin exited unexpectedly (code %1, status %2)." )
                                   .arg( code )
                                   .arg( static_cast<int>( status ) );
+                     note( error_ );
                      setState( "failed" );
                  }
                  else if ( state_ == "stopping" ) {
@@ -117,12 +123,51 @@ void PluginProcess::start( const QJsonObject& configuration, const QString& conf
     initializeParams_.insert( "host_feature_versions", hostFeatureVersions() );
     initializeParams_.insert( "host_version", hostVersion_ );
     initializeParams_.insert( "host_limits", hostLimits() );
-    const auto executable
-        = manifest_.executable == "python"
-              ? pythonExecutable
-              : QDir( manifest_.directory ).absoluteFilePath( manifest_.executable );
-    deadline_.start( 10000 );
-    process_.start( executable, manifest_.arguments );
+    program_ = manifest_.executable == "python"
+                   ? pythonExecutable
+                   : QDir( manifest_.directory ).absoluteFilePath( manifest_.executable );
+    stderrBytes_ = 0;
+    // The plugin's diagnostics start with what was run, so a plugin that fails before writing
+    // anything still says which interpreter it was given.
+    note( QStringLiteral( "Starting %1 in %2" )
+              .arg( commandLine(), QDir::toNativeSeparators( manifest_.directory ) ) );
+    deadline_.start( initializationTimeoutMs_ );
+    process_.start( program_, manifest_.arguments );
+}
+
+QString PluginProcess::commandLine() const
+{
+    QStringList parts{ QDir::toNativeSeparators( program_ ) };
+    parts.append( manifest_.arguments );
+    for ( auto& part : parts ) {
+        if ( part.isEmpty() || part.contains( QLatin1Char( ' ' ) ) ) {
+            part = QLatin1Char( '"' ) + part + QLatin1Char( '"' );
+        }
+    }
+    return parts.join( QLatin1Char( ' ' ) );
+}
+
+void PluginProcess::note( const QString& text )
+{
+    Q_EMIT diagnostic( QStringLiteral( "[CILogg %1] %2\n" )
+                           .arg( QDateTime::currentDateTime().toString( "HH:mm:ss" ), text ) );
+}
+
+QString PluginProcess::initializationTimeoutError() const
+{
+    auto error = QStringLiteral( "Plugin initialization timed out: no answer to initialize within "
+                                 "%1 s from %2." )
+                     .arg( initializationTimeoutMs_ / 1000.0 )
+                     .arg( commandLine() );
+    if ( manifest_.executable == "python" && pythonruntime::isLauncherScript( program_ ) ) {
+        // pathInterpreterCandidates() takes such a script only when no python.exe is on PATH.
+        error += QStringLiteral( " That is a launcher script, which can take long to start "
+                                 "Python; install Python with python.exe on PATH or set "
+                                 "CILOGG_SCRIPT_PYTHON to a python.exe." );
+    }
+    error += stderrBytes_ == 0 ? QStringLiteral( " The plugin wrote nothing to stderr." )
+                               : QStringLiteral( " See its stderr in the plugin's diagnostics." );
+    return error;
 }
 
 void PluginProcess::request( const QString& id, const QString& method, const QJsonObject& params )
@@ -281,6 +326,7 @@ void PluginProcess::drain()
 void PluginProcess::fail( const QString& error )
 {
     error_ = error;
+    note( error );
     deadline_.stop();
     waiting_.clear();
     setState( "failed" );

@@ -3,6 +3,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
+#include <QStandardPaths>
 
 namespace cilogg::pythonruntime {
 
@@ -48,6 +49,32 @@ QStringList bundledInterpreterCandidates( const QString& applicationDir )
         candidates << QDir::cleanPath( appDir.absoluteFilePath( relative ) );
     }
     return candidates;
+}
+
+QStringList pathInterpreterCandidates( const QStringList& searchPaths )
+{
+#ifdef Q_OS_WIN
+    // "python3" with the PATHEXT suffixes also finds launcher scripts such as the pyenv-win shim
+    // python3.bat, which starts Python through VBScript and can take half a minute: longer than a
+    // plugin may take to initialize. Real executables are tried first.
+    const auto names = { "python.exe", "python3.exe", "python", "python3" };
+#else
+    const auto names = { "python3", "python" };
+#endif
+    QStringList candidates;
+    for ( const auto* name : names ) {
+        candidates << QStandardPaths::findExecutable( QString::fromLatin1( name ), searchPaths );
+    }
+    candidates.removeAll( QString{} );
+    candidates.removeDuplicates();
+    return candidates;
+}
+
+bool isLauncherScript( const QString& path )
+{
+    const auto suffix = QFileInfo( path ).suffix();
+    return suffix.compare( QLatin1String( "bat" ), Qt::CaseInsensitive ) == 0
+           || suffix.compare( QLatin1String( "cmd" ), Qt::CaseInsensitive ) == 0;
 }
 
 } // namespace cilogg::pythonruntime

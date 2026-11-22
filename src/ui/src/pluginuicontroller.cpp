@@ -1,12 +1,13 @@
 #include "pluginuicontroller.h"
 #include "analysissource.h"
 #include "configpack.h"
-#include "packeditors.h"
 #include "log.h"
 #include "mainwindow.h"
+#include "packeditors.h"
 #include "pluginicons.h"
 #include "pluginmenus.h"
 #include "pluginsandpacks.h"
+#include "pluginsourcesection.h"
 #include "pluginviewhost.h"
 #include "previewdecodersettings.h"
 #include "semanticversion.h"
@@ -41,15 +42,20 @@
 #include <algorithm>
 
 namespace {
-// The action form. With `source`, its first row is the shared source picker (U15b).
+// The action form. With `source`, its first row is the shared source picker (U15b). `decorate`
+// adds widgets above the fields (the Configure dialog's "Installed from" section).
 bool editValues( QWidget* parent, const QString& title, const QJsonArray& fields,
                  QJsonObject* values, QString* source = nullptr,
-                 const std::function<QVariantList()>& sources = {} )
+                 const std::function<QVariantList()>& sources = {},
+                 const std::function<void( QDialog&, QVBoxLayout* )>& decorate = {} )
 {
     QDialog dialog( parent );
     dialog.setObjectName( "pluginFormDialog" );
     dialog.setWindowTitle( title );
     auto* layout = new QVBoxLayout( &dialog );
+    if ( decorate ) {
+        decorate( dialog, layout );
+    }
     auto* form = new QFormLayout;
     layout->addLayout( form );
     AnalysisSourcePicker* picker = nullptr;
@@ -403,6 +409,50 @@ void PluginUiController::report( const CommanderResult& result )
         QMessageBox::warning( window_, tr( "Plugins" ), result.message );
     }
 }
+
+CommanderResult PluginUiController::setPluginSource( const QString& pluginId, const QString& path )
+{
+    CommanderRequest request;
+    request.action = CommanderAction::PluginManage;
+    request.origin = CommanderOriginGui;
+    request.pluginOperation = "set_source";
+    request.pluginId = pluginId;
+    request.pluginArguments = { { "path", path } };
+    return executor_( request );
+}
+
+void PluginUiController::reinstallFrom( QWidget* parent, QLabel* status, const QString& pluginId,
+                                        const QString& name, const QString& path )
+{
+    if ( !manager_ ) {
+        return;
+    }
+    CommanderRequest request;
+    request.action = CommanderAction::PluginManage;
+    request.origin = CommanderOriginGui;
+    request.pluginId = pluginId;
+    // An install from the path checks that it holds this plugin and records the path as the
+    // plugin's source; without one, reinstall uses the recorded source.
+    request.pluginOperation = path.isEmpty() ? "reinstall" : "install";
+    if ( !path.isEmpty() ) {
+        request.pluginArguments = { { "path", path } };
+    }
+    status->setText( tr( "Reinstalling %1…" ).arg( name ) );
+    LOG_INFO << "Plugin reinstall requested id=" << pluginId.toStdString();
+    const QPointer<QLabel> label( status );
+    pluginsui::runPackAwareInstall(
+        parent, manager_, executor_, request, name, [ label, name ]( const QVariantMap& job ) {
+            if ( !label ) {
+                return;
+            }
+            label->setText( job.value( "state" ) == "completed"
+                                ? tr( "Reinstalled %1." ).arg( name )
+                                      + pluginsui::jobWarningSuffix( job )
+                                : tr( "Could not reinstall %1: %2" )
+                                      .arg( name, job.value( "error" ).toString() ) );
+        } );
+}
+
 bool PluginUiController::confirmPackLua( QWidget* parent, const QString& id ) const
 {
     if ( !manager_ ) {
@@ -979,7 +1029,11 @@ QWidget* PluginUiController::createInstalledTab( QWidget* parent )
         QString info;
         for ( const auto& p : list ) {
             if ( p.toMap().value( "id" ).toString() == selected ) {
-                info = QJsonDocument::fromVariant( p ).toJson( QJsonDocument::Indented );
+                // Why it fails, readable, before the raw details (a timeout, the interpreter).
+                const auto problem = pluginsui::problemText( p.toMap() );
+                info = ( problem.isEmpty() ? QString{} : problem + QStringLiteral( "\n\n" ) )
+                       + QString::fromUtf8(
+                           QJsonDocument::fromVariant( p ).toJson( QJsonDocument::Indented ) );
             }
         }
         info += "\nJobs:\n"
@@ -1154,7 +1208,8 @@ QWidget* PluginUiController::createInstalledTab( QWidget* parent )
             processOnly.append( button );
         }
         connect(
-            button, &QPushButton::clicked, tab, [ this, tab, managed = operation, selectedId ] {
+            button, &QPushButton::clicked, tab,
+            [ this, tab, status, managed = operation, selectedId ] {
                 const auto id = selectedId();
                 if ( id.isEmpty() || !manager_ ) {
                     return;
@@ -1206,8 +1261,51 @@ QWidget* PluginUiController::createInstalledTab( QWidget* parent )
                                 fields[ index ] = field;
                             }
                         }
-                        if ( !editValues( tab, tr( "Configure Plugin" ), fields, &config ) ) {
+                        // Where the plugin was installed from, with Reinstall, and why it fails.
+                        bool reinstall = false;
+                        QString chosenPath; // read while the dialog is still open
+                        const auto decorate = [ &p, &reinstall, &chosenPath ](
+                                                  QDialog& dialog, QVBoxLayout* layout ) {
+                            const auto section = pluginsui::createSourceSection( &dialog, p );
+                            layout->addWidget( section.widget );
+                            if ( section.path == nullptr ) {
+                                return;
+                            }
+                            auto* path = section.path;
+                            QObject::connect(
+                                &dialog, &QDialog::finished, path, [ path, &chosenPath ] {
+                                    chosenPath
+                                        = QDir::fromNativeSeparators( path->text().trimmed() );
+                                } );
+                            QObject::connect( section.reinstall, &QPushButton::clicked, &dialog,
+                                              [ &reinstall, &dialog ] {
+                                                  reinstall = true;
+                                                  dialog.reject();
+                                              } );
+                        };
+                        const bool accepted = editValues( tab, tr( "Configure Plugin" ), fields,
+                                                          &config, nullptr, {}, decorate );
+                        const auto name = p.value( "name", id ).toString();
+                        if ( reinstall ) {
+                            reinstallFrom( tab, status, id, name, chosenPath );
                             return;
+                        }
+                        if ( !accepted ) {
+                            return;
+                        }
+                        const auto recorded
+                            = p.value( "source" ).toMap().value( "path" ).toString();
+                        if ( !chosenPath.isEmpty()
+                             && QDir::cleanPath( chosenPath ) != QDir::cleanPath( recorded ) ) {
+                            const auto repointed = setPluginSource( id, chosenPath );
+                            status->setText(
+                                repointed.ok()
+                                    ? tr( "%1 is now reinstalled from %2." )
+                                          .arg( name, QDir::toNativeSeparators( chosenPath ) )
+                                    : repointed.message );
+                            if ( !repointed.ok() ) {
+                                return;
+                            }
                         }
                         r.pluginArguments = { { "configuration", config.toVariantMap() } };
                     }
@@ -1265,6 +1363,73 @@ QWidget* PluginUiController::createInstalledTab( QWidget* parent )
             }
         } );
     }
+    // A plugin installed from a folder or ZIP: repoint it there and install it again from it.
+    const auto selectedPlugin = [ self, selectedId ] {
+        if ( self && self->manager_ ) {
+            const auto id = selectedId();
+            for ( const auto& value : self->manager_->plugins() ) {
+                if ( value.toMap().value( "id" ) == id ) {
+                    return value.toMap();
+                }
+            }
+        }
+        return QVariantMap{};
+    };
+    auto* changeSource = addButton( secondRow, tr( "Change Source…" ), "pluginManage_setSource" );
+    changeSource->setToolTip(
+        tr( "Choose the folder or ZIP the selected plugin is reinstalled from" ) );
+    auto* sourceMenu = new QMenu( changeSource );
+    sourceMenu->setObjectName( "pluginSourceMenu" );
+    for ( const bool zip : { false, true } ) {
+        auto* choose = sourceMenu->addAction( zip ? tr( "ZIP…" ) : tr( "Folder…" ) );
+        choose->setObjectName( zip ? "pluginSourceZip" : "pluginSourceFolder" );
+        connect( choose, &QAction::triggered, tab, [ this, tab, status, selectedPlugin, zip ] {
+            const auto plugin = selectedPlugin();
+            const auto id = plugin.value( "id" ).toString();
+            if ( id.isEmpty() ) {
+                return;
+            }
+            const auto path = pluginsui::choosePluginSource(
+                tab, plugin.value( "source" ).toMap().value( "path" ).toString(), zip );
+            if ( path.isEmpty() ) {
+                return;
+            }
+            const auto result = setPluginSource( id, path );
+            status->setText( result.ok() ? tr( "%1 is now reinstalled from %2." )
+                                               .arg( plugin.value( "name", id ).toString(),
+                                                     QDir::toNativeSeparators( path ) )
+                                         : result.message );
+        } );
+    }
+    changeSource->setMenu( sourceMenu );
+    auto* reinstall = addButton( secondRow, tr( "Reinstall" ), "pluginManage_reinstall" );
+    reinstall->setToolTip(
+        tr( "Install the selected plugin again from the folder or ZIP it was installed from" ) );
+    connect( reinstall, &QPushButton::clicked, tab, [ this, tab, status, selectedPlugin ] {
+        const auto plugin = selectedPlugin();
+        const auto id = plugin.value( "id" ).toString();
+        if ( id.isEmpty() || !manager_ ) {
+            return;
+        }
+        const auto name = plugin.value( "name", id ).toString();
+        // A pack with Lua that is enabled runs the reinstalled Lua: asked first (design 4.3).
+        const auto manifest = manager_->manifest( id );
+        if ( cilogg::plugins::isConfigPack( manifest )
+             && !pluginsui::confirmPackLua( tab, manager_, id, name,
+                                            cilogg::plugins::packContents( manifest ), false ) ) {
+            return;
+        }
+        reinstallFrom( tab, status, id, name, {} );
+    } );
+    const auto refreshSourceButtons = [ changeSource, reinstall, selectedPlugin ] {
+        const auto source = selectedPlugin().value( "source" ).toMap();
+        const bool local = source.value( "type" ) == QLatin1String( "local" );
+        changeSource->setEnabled( local );
+        reinstall->setEnabled( local && !source.value( "path" ).toString().isEmpty() );
+    };
+    refreshSourceButtons();
+    connect( table, &QTableWidget::itemSelectionChanged, tab, refreshSourceButtons );
+    connect( manager_.data(), &cilogg::plugins::PluginManager::changed, tab, refreshSourceButtons );
     // Configuration packs: their items, edited in place (design 4.6).
     auto* packFiles = addButton( secondRow, tr( "Pack Files…" ), "pluginManage_packFiles" );
     packFiles->setEnabled( false );

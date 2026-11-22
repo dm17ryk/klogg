@@ -22,6 +22,14 @@ public:
     {
         hostVersion_ = version;
     }
+    static constexpr int DefaultInitializationTimeoutMs = 10000;
+    // How long the plugin may take to answer `initialize`; set before start().
+    void setInitializationTimeout( int milliseconds )
+    {
+        initializationTimeoutMs_ = milliseconds;
+    }
+    // The program the last start() ran and its arguments, quoted where needed.
+    QString commandLine() const;
     void request( const QString& id, const QString& method, const QJsonObject& params );
     void notify( const QString& method, const QJsonObject& params );
     void cancelRequest( const QString& id );
@@ -72,7 +80,13 @@ private:
     void send( const QJsonObject& message );
     void drain();
     void setState( const QString& state );
+    // A timestamped line for the plugin's diagnostics (what the host did, next to its stderr).
+    void note( const QString& text );
+    QString initializationTimeoutError() const;
     Manifest manifest_;
+    QString program_;
+    qint64 stderrBytes_ = 0;
+    int initializationTimeoutMs_ = DefaultInitializationTimeoutMs;
     QProcess process_;
     QTimer deadline_;
     QByteArray input_;

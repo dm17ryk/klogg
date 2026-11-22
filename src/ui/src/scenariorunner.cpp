@@ -61,8 +61,7 @@ QStringList pythonExecutableCandidates( const QString& runtimeRoot )
 #endif
     }
     candidates << qEnvironmentVariable( "CILOGG_SCRIPT_PYTHON" );
-    candidates << QStandardPaths::findExecutable( QStringLiteral( "python3" ) );
-    candidates << QStandardPaths::findExecutable( QStringLiteral( "python" ) );
+    candidates << cilogg::pythonruntime::pathInterpreterCandidates();
     candidates.removeAll( QString{} );
     candidates.removeDuplicates();
     return candidates;

@@ -33,6 +33,14 @@ QString shortHash( const QString& text )
         QCryptographicHash::hash( text.toUtf8(), QCryptographicHash::Sha256 ).toHex().left( 16 ) );
 }
 
+// "zip" for a package file, "folder" otherwise (decided by the name: no disk access).
+QString localSourceKind( const QString& path )
+{
+    return path.endsWith( QLatin1String( ".zip" ), Qt::CaseInsensitive )
+               ? QStringLiteral( "zip" )
+               : QStringLiteral( "folder" );
+}
+
 bool isHttps( const QUrl& url )
 {
     return url.isValid() && url.scheme() == QLatin1String( "https" ) && !url.host().isEmpty();
@@ -176,7 +184,15 @@ QVariantMap PluginManager::sourceInfo( const QString& id, const Entry& entry ) c
     }
     const auto source = repositories_.source( id );
     if ( source.repository.isEmpty() ) {
-        return { { "type", "local" } };
+        // The folder or ZIP it was installed from, when recorded. Not checked here: plugins() is
+        // read often and the path may be on a slow network share.
+        QVariantMap local{ { "type", "local" } };
+        const auto path = repositories_.localSource( id );
+        if ( !path.isEmpty() ) {
+            local.insert( "path", path );
+            local.insert( "pathKind", localSourceKind( path ) );
+        }
+        return local;
     }
     const auto record = repositories_.find( source.repository );
     return { { "type", "repository" },

@@ -538,6 +538,7 @@ void PluginRepositories::setSource( const QString& pluginId, const InstallSource
     settings_.setValue( sourceKey( pluginId, "sourceRepository" ), source.repository );
     settings_.setValue( sourceKey( pluginId, "sourceVersion" ), source.version );
     settings_.setValue( sourceKey( pluginId, "sourceUrl" ), source.url );
+    settings_.remove( sourceKey( pluginId, "sourcePath" ) );
 }
 
 void PluginRepositories::clearSource( const QString& pluginId )
@@ -545,5 +546,16 @@ void PluginRepositories::clearSource( const QString& pluginId )
     settings_.remove( sourceKey( pluginId, "sourceRepository" ) );
     settings_.remove( sourceKey( pluginId, "sourceVersion" ) );
     settings_.remove( sourceKey( pluginId, "sourceUrl" ) );
+    settings_.remove( sourceKey( pluginId, "sourcePath" ) );
+}
+
+QString PluginRepositories::localSource( const QString& pluginId ) const
+{
+    return settings_.value( sourceKey( pluginId, "sourcePath" ) ).toString();
+}
+
+void PluginRepositories::setLocalSource( const QString& pluginId, const QString& path )
+{
+    settings_.setValue( sourceKey( pluginId, "sourcePath" ), path );
 }
 } // namespace cilogg::plugins

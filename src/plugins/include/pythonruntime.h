@@ -26,4 +26,13 @@ QString root();
 // Callers keep the first one that exists before falling back to PATH.
 QStringList bundledInterpreterCandidates( const QString& applicationDir );
 
+// Python interpreters found on PATH, best first. On Windows real executables come first:
+// python.exe, then python3.exe, so a launcher script such as the pyenv-win shim python3.bat
+// (which can take half a minute to start Python) is used only when nothing else is installed.
+// Elsewhere python3 comes first, then python. `searchPaths` replaces PATH (tests).
+QStringList pathInterpreterCandidates( const QStringList& searchPaths = {} );
+
+// Whether `path` is a launcher script rather than an interpreter (.bat or .cmd on Windows).
+bool isLauncherScript( const QString& path );
+
 } // namespace cilogg::pythonruntime

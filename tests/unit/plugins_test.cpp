@@ -530,7 +530,19 @@ TEST_CASE( "Plugins enforce initialization and shutdown deadlines", "[plugins]" 
         REQUIRE( manager.manage( "enable", "org.test.fixture", {} ).ok() );
         const auto id = jobId( manager.invoke( "org.test.fixture", "summary", {}, {} ) );
         REQUIRE( waitFor( [ & ] { return finished( manager, id ); }, 12000 ) );
-        REQUIRE( manager.job( id ).payload[ "error" ].toString().contains( "timed out" ) );
+        const auto error = manager.job( id ).payload[ "error" ].toString();
+        REQUIRE( error.contains( "timed out" ) );
+        // The timeout says what was started and that the plugin printed nothing (build 1374
+        // reported "Plugin initialization timed out." with empty diagnostics).
+        const auto executable = manifest()[ "executable" ].toString();
+        CHECK( error.contains( executable ) );
+        CHECK( error.contains( "wrote nothing to stderr" ) );
+        const auto plugin = manager.plugins()[ 0 ].toMap();
+        CHECK( plugin.value( "error" ).toString() == error );
+        const auto diagnostics = plugin.value( "diagnostics" ).toString();
+        CHECK( diagnostics.contains( "Starting" ) );
+        CHECK( diagnostics.contains( executable ) );
+        CHECK( diagnostics.contains( "timed out" ) );
     }
     SECTION( "graceful deadline and destructor" )
     {
@@ -565,7 +577,82 @@ TEST_CASE( "Plugins enforce initialization and shutdown deadlines", "[plugins]" 
         const auto id = jobId( manager.invoke( "org.test.fixture", "summary", {}, {} ) );
         REQUIRE( waitFor( [ & ] { return finished( manager, id ); } ) );
         REQUIRE( manager.job( id ).payload[ "state" ] == "failed" );
+        CHECK( manager.plugins()[ 0 ].toMap().value( "error" ).toString().startsWith(
+            "Cannot start" ) );
     }
+}
+
+TEST_CASE( "Plugins installed from a folder or ZIP record it and reinstall from it",
+           "[plugins][source]" )
+{
+    QTemporaryDir temp;
+    const auto source = package( QDir( temp.path() ).filePath( "source" ) );
+    const auto other = package( QDir( temp.path() ).filePath( "other" ), "org.test.other" );
+    const auto shipped = QDir( temp.path() ).filePath( "shipped" );
+    package( shipped, "org.test.shipped" );
+    const auto data = QDir( temp.path() ).filePath( "data" );
+    const auto pluginSource = [ &data, &shipped ]( const QString& id ) {
+        PluginManager reader( data, shipped );
+        for ( const auto& value : reader.plugins() ) {
+            if ( value.toMap().value( "id" ) == id ) {
+                return value.toMap().value( "source" ).toMap();
+            }
+        }
+        return QVariantMap{};
+    };
+    {
+        PluginManager manager( data, shipped );
+        const auto install
+            = jobId( manager.manage( "install", "org.test.fixture", { { "path", source } } ) );
+        REQUIRE( waitFor( [ & ] { return finished( manager, install ); } ) );
+        REQUIRE( manager.job( install ).payload[ "state" ] == "completed" );
+    }
+    // Recorded in the plugin settings, so it survives a restart.
+    auto recorded = pluginSource( "org.test.fixture" );
+    CHECK( recorded.value( "type" ) == "local" );
+    CHECK( recorded.value( "path" ) == QDir::cleanPath( source ) );
+    CHECK( recorded.value( "pathKind" ) == "folder" );
+
+    PluginManager manager( data, shipped );
+    // A folder of another plugin, or one without plugin.json, is refused.
+    const auto wrong = manager.manage( "set_source", "org.test.fixture", { { "path", other } } );
+    REQUIRE_FALSE( wrong.ok() );
+    CHECK( wrong.error.contains( "org.test.other" ) );
+    const auto empty = QDir( temp.path() ).filePath( "empty" );
+    REQUIRE( QDir().mkpath( empty ) );
+    CHECK_FALSE( manager.manage( "set_source", "org.test.fixture", { { "path", empty } } ).ok() );
+    CHECK_FALSE( manager.manage( "set_source", "org.test.fixture", {} ).ok() );
+    // A shipped plugin has no install source to change or reinstall from.
+    CHECK_FALSE( manager.manage( "set_source", "org.test.shipped", { { "path", source } } ).ok() );
+    const auto unknown = manager.manage( "reinstall", "org.test.shipped", {} );
+    REQUIRE_FALSE( unknown.ok() );
+    CHECK( unknown.error.contains( "set_source" ) );
+
+    // Repointed to a ZIP of the same plugin.
+    const auto archive = QDir( temp.path() ).filePath( "fixture.zip" );
+    {
+        KZip zip( archive );
+        REQUIRE( zip.open( QIODevice::WriteOnly ) );
+        QFile json( QDir( source ).filePath( "plugin.json" ) );
+        REQUIRE( json.open( QIODevice::ReadOnly ) );
+        REQUIRE( zip.writeFile( "plugin.json", json.readAll() ) );
+        REQUIRE( zip.close() );
+    }
+    REQUIRE( manager.manage( "set_source", "org.test.fixture", { { "path", archive } } ).ok() );
+    recorded = manager.plugins()[ 0 ].toMap().value( "source" ).toMap();
+    CHECK( recorded.value( "path" ) == QDir::cleanPath( archive ) );
+    CHECK( recorded.value( "pathKind" ) == "zip" );
+
+    // Back to the folder; Reinstall installs from it again.
+    REQUIRE( manager.manage( "set_source", "org.test.fixture", { { "path", source } } ).ok() );
+    writeFile( QDir( source ).filePath( "marker.txt" ), "reinstalled" );
+    const auto reinstall = jobId( manager.manage( "reinstall", "org.test.fixture", {} ) );
+    REQUIRE( waitFor( [ & ] { return finished( manager, reinstall ); } ) );
+    REQUIRE( manager.job( reinstall ).payload[ "state" ] == "completed" );
+    CHECK( QFileInfo::exists(
+        QDir( manager.pluginDirectory( "org.test.fixture" ) ).filePath( "marker.txt" ) ) );
+    CHECK( manager.plugins()[ 0 ].toMap().value( "source" ).toMap().value( "path" )
+           == QDir::cleanPath( source ) );
 }
 
 TEST_CASE( "Catalog selects platform, verifies checksums and preserves old installs", "[plugins]" )

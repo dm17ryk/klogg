@@ -53,6 +53,8 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/pluginuicontroller.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/include/pluginsandpacks.h
   ${CMAKE_CURRENT_SOURCE_DIR}/src/pluginsandpacks.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/pluginsourcesection.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/pluginsourcesection.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/include/packeditors.h
   ${CMAKE_CURRENT_SOURCE_DIR}/src/packeditors.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/include/pluginupdatenotices.h
