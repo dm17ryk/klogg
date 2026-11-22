@@ -19,9 +19,11 @@
 
 #include <catch2/catch.hpp>
 
+#include <QAbstractItemView>
 #include <QAction>
 #include <QApplication>
 #include <QHelpEvent>
+#include <QScreen>
 #include <QScrollBar>
 #include <QToolTip>
 #include <QComboBox>
