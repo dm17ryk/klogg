@@ -515,9 +515,73 @@ bool CrawlerWidget::isKeepSearchResultsEnabled() const
     return keepSearchResultsButton_ != nullptr && keepSearchResultsButton_->isChecked();
 }
 
-void CrawlerWidget::reloadPredefinedFilters() const
+void CrawlerWidget::reloadPredefinedFilters()
 {
+    const auto before = predefinedFilters_->filters();
     predefinedFilters_->populatePredefinedFilters();
+    const auto after = predefinedFilters_->filters();
+    const auto same = []( const PredefinedFilter& left, const PredefinedFilter& right ) {
+        return left.id == right.id && left.name == right.name && left.pattern == right.pattern
+               && left.useRegex == right.useRegex;
+    };
+    // Any settings change reloads the list; labels are rebuilt only when a filter changed.
+    if ( before.size() != after.size()
+         || !std::equal( before.cbegin(), before.cend(), after.cbegin(), same ) ) {
+        refreshMatchLabelers();
+    }
+}
+
+void CrawlerWidget::refreshMatchLabelers()
+{
+    const auto knownFilters = predefinedFilters_->filters();
+    // The ticked filters, by ID, with their current names. A filter that is gone, or whose
+    // pattern changed, no longer describes the search: the selection is dropped and the search's
+    // terms are matched to the filters by pattern instead.
+    const auto refresh = [ &knownFilters ]( PredefinedFilterSelection& selection ) {
+        QList<PredefinedFilter> current;
+        for ( const auto& ticked : selection.filters ) {
+            // A search-history entry run through Commander has no ID: it is not a predefined
+            // filter, and changing the filters does not change it.
+            if ( ticked.id.isEmpty() ) {
+                current.append( ticked );
+                continue;
+            }
+            const auto now = std::find_if(
+                knownFilters.cbegin(), knownFilters.cend(),
+                [ &ticked ]( const PredefinedFilter& filter ) { return filter.id == ticked.id; } );
+            if ( now == knownFilters.cend() || now->pattern != ticked.pattern
+                 || now->useRegex != ticked.useRegex ) {
+                return false;
+            }
+            current.append( *now );
+        }
+        selection.filters = current;
+        return true;
+    };
+    if ( !refresh( pendingFilterSelection_ ) ) {
+        pendingFilterSelection_ = {};
+    }
+    int relabelled = 0;
+    for ( const auto& [ filteredView, filteredData ] : filteredViewsData_ ) {
+        if ( !filteredData || !filteredData->hasCurrentRegexp() ) {
+            continue;
+        }
+        QList<PredefinedFilter> filters;
+        const auto selection = viewFilterSelections_.find( filteredView );
+        if ( selection != viewFilterSelections_.end() ) {
+            if ( refresh( selection->second ) ) {
+                filters = selection->second.filters;
+            }
+            else {
+                viewFilterSelections_.erase( selection );
+            }
+        }
+        filteredView->setMatchLabeler( std::make_shared<const MatchLabeler>(
+            MatchLabeler::fromSearch( filteredData->currentRegexp(), filters, knownFilters ) ) );
+        ++relabelled;
+    }
+    LOG_DEBUG << "Matched-by labels rebuilt after the predefined filters changed: views="
+              << relabelled << ", known filters=" << knownFilters.size();
 }
 
 QString CrawlerWidget::encodingText() const
@@ -1489,10 +1553,13 @@ CrawlerWidget::makeMatchLabeler( const FilteredView* view, const QString& search
     }
     const auto& filters
         = fromFilters ? pendingFilterSelection_.filters : QList<PredefinedFilter>{};
-    auto labeler
-        = std::make_shared<const MatchLabeler>( MatchLabeler::fromSearch( pattern, filters ) );
+    // Without the selection (a search restored from the session, picked from the history or run
+    // in all tabs), the quoted terms of a boolean search are matched to the filters by pattern.
+    const auto knownFilters = predefinedFilters_->filters();
+    auto labeler = std::make_shared<const MatchLabeler>(
+        MatchLabeler::fromSearch( pattern, filters, knownFilters ) );
     LOG_DEBUG << "Matched-by labels for search: predefined filters=" << filters.size()
-              << ", empty=" << labeler->isEmpty();
+              << ", known filters=" << knownFilters.size() << ", empty=" << labeler->isEmpty();
     return labeler;
 }
 
@@ -2351,7 +2418,14 @@ void CrawlerWidget::closeFilteredView( int tabIndex )
 
 void CrawlerWidget::filteredViewDestroyed( QObject* view )
 {
-    filteredViewsData_.erase( qobject_cast<FilteredView*>( view ) );
+    // destroyed() comes after ~FilteredView, so qobject_cast no longer finds a FilteredView: the
+    // entry is found by the QObject address of its key (a static_cast only adjusts the pointer).
+    const auto entry = std::find_if(
+        filteredViewsData_.begin(), filteredViewsData_.end(),
+        [ view ]( const auto& item ) { return static_cast<QObject*>( item.first ) == view; } );
+    if ( entry != filteredViewsData_.end() ) {
+        filteredViewsData_.erase( entry );
+    }
     // Keyed by the QObject address, which destroyed() still reports.
     viewFilterSelections_.erase( view );
 }

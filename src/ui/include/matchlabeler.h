@@ -23,8 +23,12 @@ class MatchLabeler {
     // `filters` are the predefined filters the search text was built from. Pass them only while
     // the search text still equals their combination; otherwise the pattern itself is split.
     // Lines of a search built from filters are labelled with the filter names, even for one.
+    // `knownFilters` are all predefined filters: a quoted term of a boolean search whose pattern
+    // is one of them is labelled like that filter, so a search restored from the session or the
+    // history ("p1" or "p2") still names its filters and the alternatives that matched.
     static MatchLabeler fromSearch( const RegularExpressionPattern& search,
-                                    const QList<PredefinedFilter>& filters = {} );
+                                    const QList<PredefinedFilter>& filters = {},
+                                    const QList<PredefinedFilter>& knownFilters = {} );
 
     // Top-level `|` alternatives of a regular expression; escapes, character classes and groups
     // are kept intact.
@@ -41,12 +45,15 @@ class MatchLabeler {
     }
 
     // The names of the terms that match `line`, joined with ", ". A typed search with a single
-    // term reports the matched text instead. A predefined filter made of several top-level
-    // alternatives reports the alternatives that matched, after the filter name when the filter
-    // has one of its own. Empty when nothing matches.
+    // term of one alternative reports the matched text instead. A predefined filter or quoted
+    // term made of several top-level alternatives reports the alternatives that matched, after
+    // the filter name when the filter has one of its own. Empty when nothing matches.
     QString label( const QString& line ) const;
 
-    // How an alternative is shown in a label: a lone capturing group "(x)" is shown as "x".
+    // How an alternative is shown in a label: a lone capturing group "(x)" is shown as "x";
+    // anchors, lookarounds, inline option settings and ".*" at its ends are left out, and what is
+    // left is unescaped when it is plain text, so "(^(?!.*\+CME).*ERROR)" is shown as "ERROR"
+    // and "(\[TX\])" as "[TX]".
     static QString alternativeDisplayName( const QString& alternative );
 
     // A column width, in characters, that fits typical labels.
@@ -83,6 +90,8 @@ private:
     };
 
     QString termLabel( const Term& term, const QString& line ) const;
+    // label() reports the matched text rather than term names.
+    bool showsMatchedText() const;
 
     struct Alternative {
         QString text;

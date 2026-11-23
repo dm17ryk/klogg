@@ -68,6 +68,11 @@ class PredefinedFiltersComboBox final : public WidePopupComboBox {
     QVariantList commanderFilters() const;
     std::optional<PredefinedFilter> commanderFilterById( const QString& filterId ) const;
     std::optional<PredefinedFilter> commanderFilterByIndex( int filterIndex ) const;
+    // The filters this list offers.
+    QList<PredefinedFilter> filters() const
+    {
+        return filtersCollection_.getFilters();
+    }
 
     void showPopup() override;
 

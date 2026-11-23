@@ -405,8 +405,10 @@ private:
     void changeTopViewSize( int32_t delta );
     void updatePredefinedFiltersWidget();
 
-    // Reload predefined filters after changing settings
-    void reloadPredefinedFilters() const;
+    // Reload predefined filters after changing settings, and label the searches on show with the
+    // filters' current names.
+    void reloadPredefinedFilters();
+    void refreshMatchLabelers();
 
     QString escapeSearchPattern( const QString& searchPattern, bool isRegex = false ) const;
     QString& combinePatterns( QString& currentPattern, const QString& newPattern ) const;
