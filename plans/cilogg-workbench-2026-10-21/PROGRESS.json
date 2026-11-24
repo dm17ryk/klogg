@@ -2346,7 +2346,7 @@
       ],
       "limitations": [
         "Decision D17 accepted on 2026-11-19 with every recommended answer of the design's section 23 and a separate yes to question 13: E17i (host commands from plugins) is built as the last slice. Until it lands, plugins never send requests to the host (D11, D14).",
-        "E17a to E17e leave for later slices, as planned: layout and content (E17f), window integration with dragging rows, nodes and files out, kept tree state and toolbar drop-down menus (E17g), and the C++ fake host header, JSON Schemas, validator, protocol log and C++ view example (E17h)."
+        "E17a to E17e are merged; as planned, they left these for later slices: layout and content (E17f), window integration with dragging rows, nodes and files out, kept tree state and toolbar drop-down menus (E17g), and the C++ fake host header, JSON Schemas, validator, protocol log and C++ view example (E17h)."
       ],
       "slices": [
         "E17a: capability negotiation (handles, features, requires), host queries, icons, plain-text element tooltips, static and advanced tooltips, accessibility names, table model extraction, SDK forward and backward compatibility, typing, fake host, golden-frame and version-skew tests, PR https://github.com/dm17ryk/klogg/pull/130, merged as 78417e99",
