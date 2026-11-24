@@ -21,8 +21,9 @@
 
 #include <QAction>
 #include <QComboBox>
-#include <QDir>
 #include <QDialogButtonBox>
+#include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QLineEdit>
 #include <QMenu>
@@ -31,6 +32,7 @@
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QTabBar>
+#include <QTableView>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTemporaryDir>
@@ -1298,6 +1300,70 @@ TEST_CASE( "Actions picker routes default sends while explicit selectors retain 
     selectDisabled.tabId = fixture.tabIds.at( 2 );
     REQUIRE_FALSE( fixture.window.executeCommanderRequest( selectDisabled ).ok() );
     REQUIRE( fixture.actionsWindow->selectedActionTabId() == fixture.tabIds.at( 0 ) );
+}
+
+TEST_CASE( "Pressing Send transmits at once even when the action has an initial delay (#142)",
+           "[ui][commander][actions][send-latency]" )
+{
+    // Dmitry's "<9.41> Read Version" action carries a 3600 ms initial delay from the legacy
+    // import; pressing Send put the [TX] line 3.6 to 4.4 s after the press.
+    constexpr int LegacyInitialDelayMs = 3600;
+    constexpr qint64 PressToWriteBudgetMs = 250;
+    ActionsDefinitionsRestoreGuard restoreDefinitions;
+    ActionsTabsFixture fixture;
+    ActionDefinition action;
+    action.id = ActionsManager::instance().nextActionId();
+    action.name = "Read Version latency probe";
+    action.sequence.type = ActionSequenceType::String;
+    action.sequence.value = "GET VERSION:01;\r\n";
+    action.parameters.delay = LegacyInitialDelayMs;
+    QString error;
+    REQUIRE( ActionsManager::instance().createAction( action, &error ) );
+    fixture.enable( 0, true );
+    fixture.select( 0 );
+    QSignalSpy sent( fixture.streams[ 0 ].get(), &StreamSession::actionSent );
+
+    // Press the Send button of the action's row, as the user does.
+    fixture.actionsWindow->show();
+    auto* table = fixture.actionsWindow->findChild<QTableView*>( "actionsTableView" );
+    REQUIRE( table != nullptr );
+    QModelIndex sendCell;
+    for ( int row = 0; row < table->model()->rowCount() && !sendCell.isValid(); ++row ) {
+        for ( int column = 0; column < table->model()->columnCount(); ++column ) {
+            if ( table->model()->index( row, column ).data().toString() == action.name ) {
+                sendCell = table->model()->index( row, 1 );
+                break;
+            }
+        }
+    }
+    REQUIRE( sendCell.isValid() );
+    table->scrollTo( sendCell );
+    QApplication::processEvents();
+    const auto button = table->visualRect( sendCell ).center();
+    QElapsedTimer pressed;
+    pressed.start();
+    QTest::mouseClick( table->viewport(), Qt::LeftButton, {}, button );
+    const auto buttonLatency = sent.isEmpty() ? -1 : pressed.elapsed();
+    if ( sent.isEmpty() ) {
+        // Report how late it is instead of only failing.
+        const auto late
+            = QTest::qWaitFor( [ &sent ] { return !sent.isEmpty(); }, LegacyInitialDelayMs + 2000 );
+        WARN( "the write came only after the press, late=" << late );
+    }
+    INFO( "press to write took " << ( sent.isEmpty() ? -1 : pressed.elapsed() ) << " ms" );
+    REQUIRE( sent.size() == 1 );
+    CHECK( buttonLatency >= 0 );
+    CHECK( buttonLatency <= PressToWriteBudgetMs );
+    CHECK( sent.front().at( 3 ).toByteArray() == QByteArrayLiteral( "GET VERSION:01;\r\n" ) );
+
+    // A Commander / MCP send_action is an explicit request too.
+    CommanderRequest send;
+    send.action = CommanderAction::SendAction;
+    send.entityId = action.id;
+    pressed.restart();
+    REQUIRE( fixture.window.executeCommanderRequest( send ).ok() );
+    CHECK( sent.size() == 2 );
+    CHECK( pressed.elapsed() <= PressToWriteBudgetMs );
 }
 
 TEST_CASE( "Actions enablement falls back to an eligible destination and persists every tab flag",

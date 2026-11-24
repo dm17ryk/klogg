@@ -18,6 +18,9 @@ struct ResponseMatchResult {
 ResponseMatchResult matchResponseDefinition( const ResponseDefinition& response,
                                             const QByteArray& lineBytes,
                                             const QString& lineText = {} );
+// How long the first send of `action` waits. A manual send goes out at once; only automatic
+// sends (responses) wait for the action's initial delay.
+int initialSendDelayMs( const ActionDefinition& action, bool automatic );
 bool sendActionDefinition( StreamSession* session, const ActionDefinition& action,
                            const QVariantMap& parameters = {}, int stepIndex = -1,
                            QString* errorMessage = nullptr, bool automatic = false );

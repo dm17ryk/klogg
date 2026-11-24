@@ -21,6 +21,14 @@ int effectiveRepeatCount( const ActionDefinition& action )
 {
     return qMax( action.parameters.repeat ? 2 : 1, action.parameters.repeatCount );
 }
+} // namespace
+
+int initialSendDelayMs( const ActionDefinition& action, bool automatic )
+{
+    return automatic ? qMax( 0, action.parameters.delay ) : 0;
+}
+
+namespace {
 
 void setError( QString* errorMessage, const QString& message )
 {
@@ -370,7 +378,10 @@ bool sendActionDefinition( StreamSession* session, const ActionDefinition& reque
 #endif
     const auto observableBytes = sensitive ? QByteArrayLiteral( "<redacted>" ) : encoded.bytes;
     const auto repeatCount = effectiveRepeatCount( action );
-    const auto firstDelay = qMax( 0, action.parameters.delay );
+    // A manual send (the Send button, a menu, the parameter dialog, Commander) goes out the
+    // moment it is asked for (issue #142): the action's initial delay only postpones automatic
+    // sends, which responses schedule. Repeats keep their interval either way.
+    const auto firstDelay = initialSendDelayMs( action, automatic );
     const auto repeatInterval = qMax( 0, action.parameters.repeatInterval );
     const auto sessionName = session->sourceDisplayName();
     const auto parameterNames = QStringList( parameters.keys() );
