@@ -1216,18 +1216,29 @@
       "TASK_INDEX.json",
       "tasks/E17.md"
     ],
-    "gateHead": "4cd7a38d",
+    "gateHead": "190dd5ce",
     "msvcW4WX": "passed",
     "clangWarningSet": "clean on every changed C++ file",
-    "unitCases": 508,
+    "unitCases": 510,
     "e17UiCasesEach": 70,
     "uiSuiteCases": 263,
-    "pythonTests": 431,
+    "pythonTests": 432,
     "pythonSkipped": 48,
     "mypyStrict": "clean",
     "mcpTests": 128,
     "mcpSkipped": 1,
     "parityE17Cases": 6,
-    "hostIntegration": "passed"
+    "hostIntegration": "passed",
+    "reviewRounds": [
+      {
+        "round": 1,
+        "head": "dff21a85",
+        "reviewer": "fresh-context Claude reviewers (C++ and Python); the Codex bot over its usage limit, the local Codex CLI out of credits",
+        "findings": 14,
+        "fixed": 10,
+        "answered": 4,
+        "fixedIn": "190dd5ce"
+      }
+    ]
   }
 }
