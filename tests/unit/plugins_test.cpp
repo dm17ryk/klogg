@@ -1395,9 +1395,10 @@ TEST_CASE( "Cancelled plugin jobs keep a grace period for cleanup", "[plugins][E
         REQUIRE( manager.cancel( id ).ok() );
         REQUIRE( manager.job( id ).payload.value( "state" ) == "cancelling" );
         REQUIRE( waitFor( [ & ] { return finished( manager, id ); }, 2000 ) );
-        // Only the grace timer can end this job: the plugin's own answer comes after 3 s, with an
-        // error. A single shot under 2 s is a precise QTimer, which never fires early, so a floor
-        // at half the grace period leaves a wide margin and still catches a much shorter grace.
+        // Only the grace timer can end this job: the plugin's own answer comes no earlier than
+        // about 3 s, with an error. A single shot under 2 s defaults to a precise QTimer, and even
+        // a coarse one fires at most 5% early, so a floor at half the grace period leaves a wide
+        // margin and still catches a much shorter grace.
         const auto took = elapsed.elapsed();
         REQUIRE( took >= GraceMs / 2 );
         REQUIRE( took < 1500 );
