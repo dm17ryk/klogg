@@ -1164,11 +1164,43 @@
       "allFixedWithTests": true
     }
   },
+  "mergedPullRequestChecks20261124": {
+    "date": "2026-11-24",
+    "tasksCompleted": [],
+    "mergedPullRequests": {
+      "E17a": {
+        "pullRequest": "https://github.com/dm17ryk/klogg/pull/130",
+        "mergeCommit": "78417e99fb7b495181a45d1c4d6e8039c9df14e8"
+      },
+      "E17b": {
+        "pullRequest": "https://github.com/dm17ryk/klogg/pull/131",
+        "mergeCommit": "049c9ce1bd37acac95c32f60b36207ce93df39ed"
+      },
+      "E17c": {
+        "pullRequest": "https://github.com/dm17ryk/klogg/pull/134",
+        "mergeCommit": "a1afe7881adc2d06cfe99599a8f958fafd84a1e0"
+      },
+      "E17c review fixes": {
+        "pullRequest": "https://github.com/dm17ryk/klogg/pull/135",
+        "mergeCommit": "0856e39ab8203dab60cb22bc97ae508dd86badc1"
+      },
+      "E17d": {
+        "pullRequest": "https://github.com/dm17ryk/klogg/pull/136",
+        "mergeCommit": "f9363c622309234115df768e14b0fc69901ae3c2"
+      },
+      "E17e": {
+        "pullRequest": "https://github.com/dm17ryk/klogg/pull/137",
+        "mergeCommit": "fb385753b6c00ab4a89e5d9aa7e5e9345da09d58"
+      }
+    },
+    "note": "E17 stays in progress: E17f to E17i are planned (E17i after its separate approval)."
+  },
   "e17fChecks": {
     "date": "2026-11-24",
     "task": "E17",
     "slice": "E17f",
     "decision": "D17",
+    "issue": "https://github.com/dm17ryk/klogg/issues/150",
     "pullRequest": "https://github.com/dm17ryk/klogg/pull/158",
     "basedOn": "f908f0ed",
     "taskStatus": "in_progress",
@@ -1180,7 +1212,9 @@
     "hashesRefreshed": [
       "PLAN_VALIDATION.json",
       "PROGRESS.json",
-      "TASK_INDEX.json"
+      "README.md",
+      "TASK_INDEX.json",
+      "tasks/E17.md"
     ],
     "gateHead": "4cd7a38d",
     "msvcW4WX": "passed",
