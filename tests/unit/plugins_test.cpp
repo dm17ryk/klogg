@@ -1388,9 +1388,11 @@ TEST_CASE( "Cancelled plugin jobs keep a grace period for cleanup", "[plugins][E
         manager.setCancelGraceMs( static_cast<int>( GraceMs ) );
         const auto id = jobId( manager.invoke( "org.test.fixture", "stubborn", {}, {} ) );
         waitUntilActionRuns( id );
-        REQUIRE( manager.cancel( id ).ok() );
+        // Started before cancel() schedules the grace timer, so a test thread that is held up
+        // anywhere only adds to the measured time, never takes from it.
         QElapsedTimer elapsed;
         elapsed.start();
+        REQUIRE( manager.cancel( id ).ok() );
         REQUIRE( manager.job( id ).payload.value( "state" ) == "cancelling" );
         REQUIRE( waitFor( [ & ] { return finished( manager, id ); }, 2000 ) );
         // Only the grace timer ends this job (the plugin answers after 3 s, with an error), and a
