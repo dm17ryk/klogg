@@ -256,8 +256,12 @@ class Builders(LayoutCase):
         self.assertEqual(sdk.button("pin", "Pin", checkable=True, checked=False),
                          {"type": "button", "id": "pin", "label": "Pin", "checkable": True,
                           "checked": False})
+        # An unchecked button needs no checkable: the host ignores `checked` without it.
+        self.assertEqual(sdk.button("plain", "Plain", checkable=False, checked=False),
+                         {"type": "button", "id": "plain", "label": "Plain", "checkable": False,
+                          "checked": False})
         for keywords in (dict(style="flat"), dict(menu=""), dict(menu="a/b"), dict(menu=3),
-                         dict(checked=True), dict(checkable=False, checked=False),
+                         dict(checked=True), dict(checkable=False, checked=True),
                          dict(shortcut=""), dict(shortcut=3)):
             with self.subTest(keywords=keywords), self.assertRaises(ValueError):
                 sdk.button("b", "B", **keywords)
@@ -476,6 +480,25 @@ class Downgrades(LayoutCase):
         self.assertEqual(root, self.view())  # charts and sparklines go as they are
         patches = self.patches()
         self.assertEqual(patch, [*patches[:10], *patches[12:]])
+
+    def test_form_caption_patch_on_a_host_without_layout(self):
+        # The caption became a label element of its own (no id): a `label` patch of the
+        # checkbox would only be warned about, so it goes; a field's and a button's label stay.
+        for initialize, expected in ((self.without("layout"),
+                                      [{"id": "opt", "set": {"text": "On"}},
+                                       {"id": "name", "set": {"label": "Full name"}},
+                                       {"id": "go", "set": {"label": "Run"}}]),
+                                     ({}, None)):
+            with self.subTest(layout=not initialize):
+                plugin = self.plugin()
+                host = self.host(plugin, **initialize)
+                plugin.update("main", self.view())
+                host.wait_for("view/update")
+                changes = [self.sdk.set_props("opt", label="Other", text="On"),
+                           self.sdk.set_props("name", label="Full name"),
+                           self.sdk.set_props("go", label="Run")]
+                plugin.patch("main", changes)
+                self.assertEqual(host.wait_for("view/update")["patch"], expected or changes)
 
     def test_host_without_layout_and_toggles(self):
         _plugin, root, _patch = self.session(**self.without("layout", "toggles"))

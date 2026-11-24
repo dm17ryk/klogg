@@ -5,12 +5,16 @@
 // dialog buttons, and the pure parts of the text view, image, sparkline and chart widgets.
 #include "pluginchart.h"
 #include "pluginfeatures.h"
+#include "pluginicons.h"
 #include "pluginmanifest.h"
 #include "plugintextview.h"
+#include <QCoreApplication>
+#include <QDir>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLineEdit>
+#include <QTemporaryDir>
 #include <QTextDocument>
 #include <QUrl>
 #include <catch2/catch.hpp>
@@ -164,6 +168,50 @@ TEST_CASE( "E17f Markdown never loads remote or file images and has HTML off", "
                        .isValid() );
     REQUIRE_FALSE( view.browser()->loadResource( QTextDocument::StyleSheetResource, QUrl( "a.css" ) )
                        .isValid() );
+}
+
+TEST_CASE( "E17f appended Markdown is rendered once per event loop turn", "[plugins][E17]" )
+{
+    PluginTextView view( "md" );
+    view.setMarkdown( true );
+    view.setText( "# First\n" );
+    for ( int index = 0; index < 50; ++index ) {
+        view.append( QString( "\nline %1\n" ).arg( index ) );
+    }
+    REQUIRE( view.text().endsWith( "line 49\n" ) );
+    QCoreApplication::processEvents();
+    REQUIRE( view.browser()->toPlainText().contains( "line 49" ) );
+    // A text set meanwhile is rendered at once and drops the pending render.
+    view.append( "\nlater\n" );
+    view.setText( "# Replaced\n" );
+    QCoreApplication::processEvents();
+    REQUIRE_FALSE( view.browser()->toPlainText().contains( "later" ) );
+    REQUIRE( view.browser()->toPlainText().contains( "Replaced" ) );
+    // Turning to plain text with a render pending keeps the plain text.
+    view.append( "\n*pending*\n" );
+    view.setMarkdown( false );
+    QCoreApplication::processEvents();
+    REQUIRE( view.browser()->toPlainText().contains( "*pending*" ) );
+}
+
+TEST_CASE( "E17f pictures of plugin files take their own size without a box", "[plugins][E17]" )
+{
+    QTemporaryDir folder;
+    REQUIRE( folder.isValid() );
+    QImage source( 300, 200, QImage::Format_ARGB32 );
+    source.fill( Qt::darkCyan );
+    REQUIRE( source.save( QDir( folder.path() ).filePath( "photo.png" ) ) );
+    auto& registry = PluginIconRegistry::instance();
+    const auto natural = registry.pictureFor( "org.test.layout.pictures", folder.path(), "photo.png", QSize{} );
+    REQUIRE( natural.size() == QSize( 300, 200 ) );
+    const auto boxed = registry.pictureFor( "org.test.layout.pictures", folder.path(), "photo.png",
+                                            QSize( 60, 60 ) );
+    REQUIRE( boxed.width() <= 60 );
+    REQUIRE( boxed.height() <= 60 );
+    REQUIRE( registry.pictureFor( "org.test.layout.pictures", folder.path(), "missing.png", QSize{} )
+                 .isNull() );
+    REQUIRE( registry.pictureFor( "org.test.layout.pictures", folder.path(), "image:none", QSize{} )
+                 .isNull() );
 }
 
 TEST_CASE( "E17f images are placed by their scale", "[plugins][E17]" )

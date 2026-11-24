@@ -72,6 +72,7 @@ private:
     QLineEdit* find_ = nullptr;
     QString source_; // the Markdown source
     bool markdown_ = false;
+    bool renderPending_ = false; // appended Markdown waits for its render
     bool follow_ = false;
     int maxLines_ = 0;
 };

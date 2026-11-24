@@ -55,7 +55,6 @@ constexpr int MaxStretch = 100;
 constexpr int MaxRowSpan = 64;
 constexpr int MaxBadgeChars = 64;
 constexpr int KeptSizesDelayMs = 500;
-constexpr int DefaultPictureSide = 256;
 // Elements that keep their natural size in a row (a row without other children adds a stretch).
 const QStringList NaturalTypes{ "button", "label", "badge", "image", "sparkline", "separator",
                                 "spacer" };
@@ -140,6 +139,12 @@ QString formCaption( const QJsonObject& element )
         return {};
     }
     return element.value( "label" ).toString().left( PluginView::MaxTextChars );
+}
+
+QString captionText( QString caption )
+{
+    // A label with a buddy reads `&` as a mnemonic, even as plain text.
+    return caption.replace( QLatin1Char( '&' ), QStringLiteral( "&&" ) );
 }
 } // namespace pluginlayout
 
@@ -268,13 +273,16 @@ void PluginView::placeChild( Node& container, Node& child, const QJsonObject& el
         auto* form = qobject_cast<QFormLayout*>( container.content->layout() );
         const auto caption = pluginlayout::formCaption( element );
         if ( child.type == "field" || !caption.isEmpty() ) {
-            // A caption cell: a field always has one, so a later label shows there.
-            auto* label = new QLabel( caption, container.content );
+            // A caption cell: a field always has one, so a later label shows there. It is part of
+            // the row: it follows the control's `visible` and `enabled`.
+            auto* label = new QLabel( pluginlayout::captionText( caption ), container.content );
             label->setTextFormat( Qt::PlainText );
             if ( !child.automatic ) {
                 label->setObjectName( nameFor( child.id ) + "_caption" );
             }
             label->setBuddy( child.widget );
+            label->setVisible( child.props.value( "visible" ).toBool( true ) );
+            label->setEnabled( child.props.value( "enabled" ).toBool( true ) );
             child.formCaption = label;
             if ( child.type == "field" && child.content ) {
                 child.content->setVisible( false ); // the field's own caption
@@ -519,11 +527,11 @@ void PluginView::applyLayout( Node& node, const QJsonObject& props, const QJsonO
     if ( pluginlayout::containerTypes().contains( type )
          && ( props.contains( "busy" ) || props.contains( "busy_text" )
               || props.contains( "busy_cancel" ) ) ) {
-        applyBusy( node, props );
+        applyBusy( node, props, previous.value( "busy" ).toBool(), fromRoot );
     }
 }
 
-void PluginView::applyBusy( Node& node, const QJsonObject& props )
+void PluginView::applyBusy( Node& node, const QJsonObject& props, bool wasBusy, bool fromRoot )
 {
     const bool busy = node.props.value( "busy" ).toBool();
     if ( busy && !node.busy && node.outer && node.content ) {
@@ -540,8 +548,10 @@ void PluginView::applyBusy( Node& node, const QJsonObject& props )
     if ( node.busy ) {
         node.busy->setText( text( node.props, "busy_text" ) );
         node.busy->setCancellable( node.props.value( "busy_cancel" ).toBool() );
-        if ( busy && props.contains( "busy" ) ) {
-            node.busy->resetCancel(); // busy set again: Cancel is available again
+        // Busy set again (turned on, or a patch that sets it): Cancel is available again. A
+        // same-shaped root that still says busy leaves a pressed Cancel as it is.
+        if ( busy && props.contains( "busy" ) && ( !wasBusy || !fromRoot ) ) {
+            node.busy->resetCancel();
         }
         node.busy->setVisible( busy );
         if ( busy ) {
@@ -705,7 +715,10 @@ void PluginView::applyImageSource( Node& node )
     }
     const auto width = boundedInt( node.props.value( "width" ), 0, MaxImageSide, 0 );
     const auto height = boundedInt( node.props.value( "height" ), 0, MaxImageSide, 0 );
-    const QSize request( width > 0 ? width : DefaultPictureSide, height > 0 ? height : DefaultPictureSide );
+    // Without a box the image takes its own size: an invalid size asks for it.
+    const auto request = width > 0 || height > 0
+                             ? QSize( width > 0 ? width : MaxImageSide, height > 0 ? height : MaxImageSide )
+                             : QSize{};
     const auto source = node.props.value( "source" );
     const bool given = source.isObject() || !source.toString().isEmpty();
     image->setImage( given ? pictureFor( source, request ) : QImage{} );
@@ -793,7 +806,8 @@ void PluginView::applyPlacement( Node& node )
     layout->setAlignment( node.outer, alignmentOf( node.props.value( "align" ).toString() ) );
 }
 
-void PluginView::applyButton( Node& node, const QJsonObject& props )
+void PluginView::applyButton( Node& node, const QJsonObject& props, const QJsonObject& previous,
+                              bool fromRoot )
 {
     auto* button = qobject_cast<QPushButton*>( node.widget.data() );
     if ( props.contains( "tone" ) || props.contains( "style" ) ) {
@@ -824,7 +838,9 @@ void PluginView::applyButton( Node& node, const QJsonObject& props )
         QScopedValueRollback<bool> rollback( applying_, true );
         button->setCheckable( props.value( "checkable" ).toBool() );
     }
-    if ( props.contains( "checked" ) ) {
+    // A same-shaped root that sends the `checked` the plugin last set keeps the user's toggle.
+    if ( props.contains( "checked" )
+         && !( fromRoot && previous.value( "checked" ) == props.value( "checked" ) ) ) {
         QScopedValueRollback<bool> rollback( applying_, true ); // never echoed
         button->setChecked( props.value( "checked" ).toBool() );
     }

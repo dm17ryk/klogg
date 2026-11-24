@@ -496,20 +496,7 @@ bool PluginViewHost::openView( const QString& pluginId, const QString& viewId,
     };
     // E17f: `image` elements and Markdown images. A registered picture shows at its own size.
     queries.picture = [ pluginId, directory ]( const QJsonValue& reference, const QSize& size ) {
-        auto& registry = PluginIconRegistry::instance();
-        auto value = reference;
-        if ( value.isObject() ) {
-            value = value.toObject().value( PluginIconRegistry::darkTheme() ? "dark" : "light" );
-        }
-        const auto text = value.toString();
-        if ( text.startsWith( QLatin1String( "image:" ) ) ) {
-            const auto picture = registry.picture( pluginId, text.mid( 6 ) );
-            if ( !picture.isNull() ) {
-                return picture;
-            }
-        }
-        const auto icon = registry.icon( pluginId, directory, value );
-        return icon.isNull() ? QImage{} : icon.pixmap( size ).toImage();
+        return PluginIconRegistry::instance().pictureFor( pluginId, directory, reference, size );
     };
     // E17c completion (design 8.2): one query per view; a newer one replaces it.
     queries.complete = [ host = QPointer<PluginViewHost>( this ), pluginId, viewId,

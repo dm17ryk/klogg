@@ -1767,7 +1767,9 @@ follows.
   of panes; a later `set: {sizes}` of the plugin applies.
 - **`form`.** Two aligned columns. A field's caption is its `label` (the field then shows no
   caption of its own); any other element inside a form may set `label` for its caption, except a
-  button, whose `label` is its text. An element without a caption spans both columns.
+  button, whose `label` is its text. An element without a caption spans both columns. The caption
+  cell is part of its row: it follows the element's `visible` and `enabled`, and shows `&` as
+  written.
 - **`grid`.** `columns` (1 to 12, default 2); children fill the rows from left to right, each
   taking `span` columns (at most `columns`) and `row_span` rows (at most 64).
 - **`separator`.** `orientation` `horizontal` or `vertical`; the default is vertical inside a
@@ -1796,8 +1798,11 @@ follows.
   The patch entry `{"id", "append": "..."}` adds text at the end (at most 65,536 characters; a
   longer append is refused with a warning). A same-shaped root replaces the text only when it
   differs from the text the plugin last set, so appended text stays; `set: {text}` always replaces
-  it. Ctrl+F opens a find bar (`<element>_find`): Enter finds the next match, Shift+Enter the
-  previous one, Esc closes it. `get_ui` reads the text as `plainText` (read-only).
+  it. Appended Markdown is rendered once per turn of the event loop, however many appends arrive
+  in it. Ctrl+F opens a find bar (`<element>_find`): the text claims the key while it has the
+  focus, so CILogg's own Find shortcut neither fires nor makes it ambiguous; Enter finds the next
+  match, Shift+Enter the previous one, Esc closes it. `get_ui` reads the text as `plainText`
+  (read-only).
 - **Markdown** is CommonMark through Qt's reader with HTML off (`MarkdownNoHTML`). An image shows
   only when its source is an icon reference (section 6); other sources show nothing and are never
   fetched. Links are never opened by the host: a click sends `link` with `value` `{href}`. On Qt
@@ -1806,8 +1811,10 @@ follows.
   registered picture, or the light/dark form), `width` and `height` (1 to 4,096 pixels), `scale`
   (`fit`, the default: inside the box with its aspect ratio; `fill`: stretched to the box; `none`:
   its own size, cut by the box) and `alt` (its accessible name, also shown when the source cannot be
-  shown). Without `width` and `height` the image takes its own size (at most 4,096 pixels). When
-  the plugin's registered images change, every `image` element shows the new picture.
+  shown). Without `width` and `height` the image takes its own size (at most 4,096 pixels): a
+  registered picture's, the largest size of a plugin file or built-in icon, and 256 pixels for a
+  scalable (SVG) one. When the plugin's registered images change, every `image` element shows the
+  new picture.
 - **`sparkline`.** `values` (numbers; at most 1,024, the last ones kept; `null` is a gap), `min` and
   `max` (default: the range of the values), `kind` (`line`, the default, or `bar`) and `tone`. Its
   default size is 120 by 24 pixels; its accessible description names the count and the last value.
@@ -1833,7 +1840,8 @@ follows.
   it as a drop-down, rebuilt each time it opens, and does nothing else when clicked; its entries
   get the view and the button as the element, without a row or node), `checkable` and `checked`
   (a checkable button sends `changed` with the new state instead of `clicked` or its action;
-  `set: {checked}` sends nothing), `shortcut` (a key sequence that presses the button while the
+  `set: {checked}` sends nothing, and a same-shaped root that sends the `checked` the plugin last
+  set keeps the user's toggle), `shortcut` (a key sequence that presses the button while the
   focus is in the view; refused with a warning when it is a reserved key of section 7.6, a
   shortcut of the CILogg window, or the shortcut of another button of the view) and `default`
   (Enter in the view presses it, unless the focused control uses Enter itself: multi-line text,
@@ -1843,7 +1851,8 @@ follows.
   container's contents are disabled (the keyboard focus leaves them) and covered by a busy
   indicator with the text (`<element>_busy`); `busy_cancel` adds Cancel (`<element>_busy_cancel`),
   which sends `cancel` (value null) and then shows "Cancelling…", disabled, until `busy` is set
-  again. The container's own `enabled` is unaffected.
+  again (turned on, or set by a patch; a same-shaped root that still says busy leaves it). The
+  container's own `enabled` is unaffected.
 - **Unsaved changes.** `modified` and `close_confirm` are keys of the root element (elsewhere they
   are unknown properties). `modified: true` adds " *" to the title of the dock, window or dialog;
   the user closing it (the title bar's button, Esc, or a dialog's `cancel`, `no` or `close`) then
@@ -1881,7 +1890,8 @@ follows.
   `focus_element()`, TypedDicts for the elements, events and `view/closed`, and `FakeHost` helpers.
   Its `update()` and `patch()` convert for an older host: without `layout`, `tabs` become a
   `column` of `group`s titled like the tabs, `splitter`, `form` and `grid` a `column` of `row`s, and
-  `separator` and `spacer` are left out, with the size hints removed; without `view_dialogs` the
+  `separator` and `spacer` are left out, with the size hints removed (a form caption becomes a
+  label of its own, which later `label` patches do not change); without `view_dialogs` the
   button keys, the busy keys, `modified`, `close_confirm` and focus patches are removed; `text_view`,
   `image`, `sparkline` and `chart` go as they are (an older host skips them with a warning), and
   their `append`, `append_points` and `clear` patches are left out. The C++ SDK needs nothing new.

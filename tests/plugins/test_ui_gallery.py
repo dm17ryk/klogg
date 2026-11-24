@@ -940,6 +940,13 @@ class UiGallery(unittest.TestCase):
         self.assertNotIn("busy", tree["layout_body"])
         self.assertEqual(tree["chart"]["series"][1]["points"][-1], [12, 27])
         self.assertEqual(tree["layout_status"]["text"], "pinned false")
+        # Closing one window keeps the unsaved changes the other still shows; closing the last
+        # one (after "Discard changes?") drops them.
+        host.close_view("layout", "w1")
+        self.assertTrue(self.open_layout("w3")["layout_body"]["modified"])
+        for window_id in ("w2", "w3"):
+            host.close_view("layout", window_id)
+        self.assertFalse(self.open_layout("w4")["layout_body"]["modified"])
         self.assertEqual(len(host.notifications("ui/icons")), 1)  # registered once
         self.assertEqual(host.shutdown(), 0)
         self.assertEqual(host.errors, [])

@@ -336,6 +336,41 @@ QImage PluginIconRegistry::picture( const QString& pluginId, const QString& id )
     return images_.value( pluginId ).pictures.value( id ).image;
 }
 
+QImage PluginIconRegistry::pictureFor( const QString& pluginId, const QString& directory,
+                                       const QJsonValue& reference, const QSize& size )
+{
+    auto value = reference;
+    if ( value.isObject() ) {
+        value = value.toObject().value( darkTheme() ? "dark" : "light" );
+    }
+    const auto text = value.toString();
+    if ( text.startsWith( QLatin1String( "image:" ) ) ) {
+        const auto registered = picture( pluginId, text.mid( 6 ) );
+        if ( !registered.isNull() ) {
+            return registered;
+        }
+    }
+    const auto found = icon( pluginId, directory, value );
+    if ( found.isNull() ) {
+        return {};
+    }
+    auto wanted = size;
+    if ( !wanted.isValid() ) {
+        // Its own size: the largest a file or built-in icon has; a scalable one gets a default.
+        qint64 largest = 0;
+        wanted = QSize( DefaultPictureSide, DefaultPictureSide );
+        for ( const auto& available : found.availableSizes() ) {
+            const auto area = qint64( available.width() ) * available.height();
+            if ( available.isValid() && area > largest ) {
+                largest = area;
+                wanted = available;
+            }
+        }
+    }
+    wanted = wanted.boundedTo( QSize( MaxPicturePixels, MaxPicturePixels ) );
+    return found.pixmap( wanted ).toImage();
+}
+
 void PluginIconRegistry::warnOnce( const QString& pluginId, const QString& reference,
                                    const QString& reason )
 {

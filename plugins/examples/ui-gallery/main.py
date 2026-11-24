@@ -429,6 +429,7 @@ def opened(params: JsonObject) -> None:
 
 @plugin.on_view_closed
 def closed(params: JsonObject) -> None:
+    global modified
     view_id = params.get("view_id")
     if view_id == ASK:
         ask_closed(params)
@@ -436,6 +437,10 @@ def closed(params: JsonObject) -> None:
     windows = {EXPLORER: explorer_windows, LAYOUT: layout_windows}.get(str(view_id), open_windows)
     with state_lock:
         windows.discard(str(params.get("window_id")))
+        if view_id == LAYOUT and not layout_windows:
+            # The user closed the last layout window (after "Discard changes?"): the unsaved
+            # changes are gone.
+            modified = False
 
 
 def event_value(value: object) -> str:

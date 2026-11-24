@@ -78,6 +78,7 @@ struct View {
     QString menuElement;
     QJsonObject kept;
     QImage picture;
+    QList<QSize> pictureSizes; // the sizes the view asked pictures for
 
     explicit View( const QJsonObject& root )
         : view( PluginId, "main", {} )
@@ -90,7 +91,10 @@ struct View {
         queries.icon = []( const QJsonValue& reference ) {
             return reference.toString().startsWith( "builtin:" ) ? QIcon( QPixmap( 16, 16 ) ) : QIcon{};
         };
-        queries.picture = [ this ]( const QJsonValue& reference, const QSize& ) {
+        queries.picture = [ this ]( const QJsonValue& reference, const QSize& size ) {
+            if ( reference.toString() == "image:pic" ) {
+                pictureSizes.append( size );
+            }
             return reference.toString() == "image:pic" ? picture : QImage{};
         };
         queries.elementMenu = [ this ]( QMenu* menu, const QString& elementId, const QString& id,
@@ -268,6 +272,19 @@ TEST_CASE( "E17f layout containers: tabs, splitter, form, grid, separators and s
     REQUIRE( fixture.view.findChild<QLabel*>( nameOf( "check" ) + "_caption" )->text() == "Option" );
     REQUIRE( fixture.view.findChild<QLabel*>( nameOf( "apply" ) + "_caption" ) == nullptr );
     REQUIRE( form->itemAt( 2, QFormLayout::SpanningRole ) != nullptr );
+    // A caption cell is part of its row: it follows the control's visible and enabled, and
+    // shows `&` as written (a label with a buddy would read it as a mnemonic).
+    auto* checkCaption = fixture.view.findChild<QLabel*>( nameOf( "check" ) + "_caption" );
+    fixture.patch( { QJsonObject{ { "id", "check" }, { "set", QJsonObject{ { "visible", false } } } } } );
+    REQUIRE_FALSE( checkCaption->isVisibleTo( &fixture.view ) );
+    fixture.patch( { QJsonObject{ { "id", "check" },
+                                  { "set", QJsonObject{ { "visible", true }, { "enabled", false },
+                                                        { "label", "Save & Close" } } } } } );
+    REQUIRE( checkCaption->isVisibleTo( &fixture.view ) );
+    REQUIRE_FALSE( checkCaption->isEnabled() );
+    REQUIRE( checkCaption->text() == "Save && Close" );
+    fixture.patch( { QJsonObject{ { "id", "check" }, { "set", QJsonObject{ { "enabled", true } } } } } );
+    REQUIRE( checkCaption->isEnabled() );
 
     // Grid: spans and row spans fill the rows from left to right; a span is at most `columns`.
     auto* grid = fixture.view.element( "grid" )->findChild<QGridLayout*>();
@@ -407,11 +424,18 @@ TEST_CASE( "E17f text views: plain text, Markdown, appends, limits, links and fi
     REQUIRE( link.value( "element_id" ) == "log" );
     REQUIRE( link.value( "value" ).toObject().value( "href" ) == "https://example.com/docs" );
     REQUIRE( browser->source().isEmpty() );
-    // Ctrl+F shows the find bar; Esc closes it.
+    // Ctrl+F shows the find bar, also where the window has a Find shortcut of its own (CILogg's):
+    // the text claims the key, so it is neither ambiguous nor the window's; Esc closes the bar.
+    int windowFinds = 0;
+    auto* windowFind = new QShortcut( QKeySequence::Find, &fixture.view );
+    windowFind->setContext( Qt::WindowShortcut );
+    QObject::connect( windowFind, &QShortcut::activated, [ &windowFinds ] { ++windowFinds; } );
+    QObject::connect( windowFind, &QShortcut::activatedAmbiguously, [ &windowFinds ] { ++windowFinds; } );
     browser->setFocus();
     REQUIRE( QTest::qWaitForWindowActive( &fixture.view ) );
     QTest::keyClick( browser, Qt::Key_F, Qt::ControlModifier );
     REQUIRE( waitFor( [ & ] { return view->findBar()->isVisible(); } ) );
+    REQUIRE( windowFinds == 0 );
     REQUIRE( view->findBar()->objectName() == nameOf( "log" ) + "_find" );
     view->findBar()->setText( "docs" );
     QTest::keyClick( view->findBar(), Qt::Key_Escape );
@@ -438,6 +462,9 @@ TEST_CASE( "E17f images, sparklines and charts", "[ui][workbench][E17]" )
     REQUIRE( picture );
     REQUIRE( picture->image().size() == QSize( 30, 20 ) );
     REQUIRE( picture->accessibleName() == "Board photo" );
+    // Without width and height the view asks for the picture's own size (an invalid size).
+    REQUIRE_FALSE( fixture.pictureSizes.isEmpty() );
+    REQUIRE_FALSE( fixture.pictureSizes.back().isValid() );
     REQUIRE( fixture.get<PluginImage>( "missing" )->image().isNull() );
     // New pictures show after the plugin's images change.
     fixture.picture = QImage( 10, 10, QImage::Format_ARGB32 );
@@ -447,6 +474,7 @@ TEST_CASE( "E17f images, sparklines and charts", "[ui][workbench][E17]" )
                                   { "set", QJsonObject{ { "width", 40 }, { "height", 30 }, { "scale", "fill" } } } } } );
     REQUIRE( picture->size() == QSize( 40, 30 ) );
     REQUIRE( picture->scale() == PluginImage::Scale::Fill );
+    REQUIRE( fixture.pictureSizes.back() == QSize( 40, 30 ) );
 
     auto* spark = fixture.get<PluginSparkline>( "spark" );
     REQUIRE( spark->values().size() == 4 );
@@ -530,6 +558,27 @@ TEST_CASE( "E17f buttons: icons, styles, checkable, drop-down menus, shortcuts a
     REQUIRE( fixture.countOf( "changed" ) == changes );
     REQUIRE( pin->setProperty( "checked", true ) ); // set_ui
     REQUIRE( fixture.countOf( "changed" ) == changes + 1 );
+    // A same-shaped root that sends the `checked` the plugin last set keeps the user's toggle; a
+    // root with another value sets it.
+    const auto pinRoot = [ & ]( bool checked ) {
+        return column( QJsonArray{ element( "button", "pin", { { "label", "Pin" },
+                                                               { "checkable", true },
+                                                               { "checked", checked } } ) } );
+    };
+    {
+        // A window of its own, closed before the keys below need `fixture` active.
+        View toggled( pinRoot( false ) );
+        auto* toggle = toggled.get<QPushButton>( "pin" );
+        toggle->click();
+        REQUIRE( toggle->isChecked() );
+        toggled.view.setRoot( pinRoot( false ) );
+        REQUIRE( toggled.get<QPushButton>( "pin" ) == toggle );
+        REQUIRE( toggle->isChecked() );
+        toggled.view.setRoot( pinRoot( true ) );
+        toggled.view.setRoot( pinRoot( false ) );
+        REQUIRE_FALSE( toggle->isChecked() );
+        REQUIRE( toggled.countOf( "changed" ) == 1 ); // the plugin's values are never echoed
+    }
 
     // A drop-down menu: the element menu with the button as the element and no row.
     auto* more = fixture.get<QPushButton>( "more" );
@@ -574,6 +623,7 @@ TEST_CASE( "E17f buttons: icons, styles, checkable, drop-down menus, shortcuts a
     REQUIRE( fixture.lastOf( "clicked" ).value( "element_id" ) == "go" );
 
     // Enter presses the default button, but not inside a multi-line field.
+    fixture.view.activateWindow();
     REQUIRE( QTest::qWaitForWindowActive( &fixture.view ) );
     const auto clicks = fixture.countOf( "clicked" );
     auto* name = fixture.view.element( "name" );
@@ -597,11 +647,15 @@ TEST_CASE( "E17f buttons: icons, styles, checkable, drop-down menus, shortcuts a
 TEST_CASE( "E17f the busy overlay covers a container, and Cancel sends cancel",
            "[ui][workbench][E17]" )
 {
-    View fixture( column( QJsonArray{ element( "field", "name", { { "kind", "text" } } ),
-                                      element( "group", "box",
-                                               { { "title", "Box" },
-                                                 { "children", QJsonArray{ element( "button", "inner",
-                                                                                    { { "label", "Inner" } } ) } } } ) } ) );
+    const auto root = [ & ]( const QJsonObject& busy ) {
+        return column( QJsonArray{ element( "field", "name", { { "kind", "text" } } ),
+                                   element( "group", "box",
+                                            { { "title", "Box" },
+                                              { "children", QJsonArray{ element( "button", "inner",
+                                                                                 { { "label", "Inner" } } ) } } } ) },
+                       busy );
+    };
+    View fixture( root( {} ) );
     auto* name = fixture.view.element( "name" );
     REQUIRE( QTest::qWaitForWindowActive( &fixture.view ) );
     name->setFocus();
@@ -622,6 +676,12 @@ TEST_CASE( "E17f the busy overlay covers a container, and Cancel sends cancel",
     REQUIRE( fixture.lastOf( "cancel" ).value( "element_id" ) == "body" );
     REQUIRE( fixture.lastOf( "cancel" ).value( "value" ).isNull() );
     REQUIRE_FALSE( overlay->cancelButton()->isEnabled() );
+    // A same-shaped root that still says busy leaves the pressed Cancel as it is ...
+    const QJsonObject busy{ { "busy", true }, { "busy_text", "Flashing…" }, { "busy_cancel", true } };
+    fixture.view.setRoot( root( busy ) );
+    REQUIRE( overlay->isVisible() );
+    REQUIRE_FALSE( overlay->cancelButton()->isEnabled() );
+    // ... a patch that sets busy again makes Cancel available again.
     fixture.patch( { QJsonObject{ { "id", "body" }, { "set", QJsonObject{ { "busy", true } } } } } );
     REQUIRE( overlay->cancelButton()->isEnabled() );
     fixture.patch( { QJsonObject{ { "id", "body" }, { "set", QJsonObject{ { "busy", false } } } } } );

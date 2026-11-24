@@ -1631,9 +1631,15 @@ void PluginView::apply( Node& node, const QJsonObject& incoming, bool fromRoot )
     }
     if ( props.contains( "enabled" ) ) {
         node.outer->setEnabled( props.value( "enabled" ).toBool( true ) );
+        if ( node.formCaption ) {
+            node.formCaption->setEnabled( props.value( "enabled" ).toBool( true ) ); // E17f
+        }
     }
     if ( props.contains( "visible" ) ) {
         node.outer->setVisible( props.value( "visible" ).toBool( true ) );
+        if ( node.formCaption ) {
+            node.formCaption->setVisible( props.value( "visible" ).toBool( true ) );
+        }
     }
     if ( props.contains( "tooltip" ) ) {
         // Plain text, like row tooltips: text that looks like HTML is shown as written.
@@ -1683,7 +1689,7 @@ void PluginView::apply( Node& node, const QJsonObject& incoming, bool fromRoot )
                 caption->setBuddy( node.widget );
             }
             if ( node.formCaption ) {
-                node.formCaption->setText( label );
+                node.formCaption->setText( pluginlayout::captionText( label ) );
             }
         }
         if ( auto* box = qobject_cast<QCheckBox*>( node.widget.data() );
@@ -1807,7 +1813,7 @@ void PluginView::apply( Node& node, const QJsonObject& incoming, bool fromRoot )
         if ( props.contains( "label" ) ) {
             button->setText( text( props, "label" ) );
         }
-        applyButton( node, props ); // tone, and the E17f keys (section 29.3)
+        applyButton( node, props, previous, fromRoot ); // tone, and the E17f keys (section 29.3)
     }
     else if ( type == "progress" ) {
         auto* bar = qobject_cast<QProgressBar*>( node.widget.data() );
@@ -1910,7 +1916,7 @@ void PluginView::apply( Node& node, const QJsonObject& incoming, bool fromRoot )
     if ( props.contains( "label" ) && node.parentType == "form" && type != "field"
          && type != "button" ) {
         if ( node.formCaption ) {
-            node.formCaption->setText( text( props, "label" ) );
+            node.formCaption->setText( pluginlayout::captionText( text( props, "label" ) ) );
         }
         else if ( !text( props, "label" ).isEmpty() ) {
             warnOnce( "caption:" + node.id,

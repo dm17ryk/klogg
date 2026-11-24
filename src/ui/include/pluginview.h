@@ -201,8 +201,11 @@ private:
     void applyContent( Node& node, const QJsonObject& props, bool fromRoot );
     void applySizeHints( Node& node, const QJsonObject& props );
     void applyPlacement( Node& node );
-    void applyBusy( Node& node, const QJsonObject& props );
-    void applyButton( Node& node, const QJsonObject& props );
+    // `wasBusy` and `fromRoot`: Cancel is available again only when busy is set again (section
+    // 29.3), not when a same-shaped root sends the same busy.
+    void applyBusy( Node& node, const QJsonObject& props, bool wasBusy, bool fromRoot );
+    void applyButton( Node& node, const QJsonObject& props, const QJsonObject& previous,
+                      bool fromRoot );
     void applyButtonLook( Node& node );
     void applyButtonShortcut( Node& node );
     void applyImageSource( Node& node );

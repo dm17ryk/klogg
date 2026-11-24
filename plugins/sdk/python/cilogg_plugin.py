@@ -196,6 +196,7 @@ _LAYOUT_CONVERTED: Dict[str, FrozenSet[str]] = {
     "splitter": frozenset({"orientation", "sizes"}), "form": frozenset(),
     "grid": frozenset({"columns"})}
 _LAYOUT_ONLY_KEYS = frozenset({"current", "position", "sizes", "badge"})  # no other element has them
+_FORM_CAPTION_KEYS = frozenset({"label"})  # the caption of a form row on any element
 _SPACING_TYPES = frozenset({"separator", "spacer"})  # left out on a host without layout
 _CONTENT_TYPES = frozenset({"text_view", "image", "sparkline", "chart"})  # never converted
 _CONTAINER_TYPES = frozenset({"column", "row", "group", "tabs", "tab", "splitter", "form", "grid"})
@@ -1244,8 +1245,8 @@ def button(id: str, label: str, action: Optional[str] = None,
     _check_one_of("style", style, BUTTON_STYLES)
     if menu is not None and (not isinstance(menu, str) or not menu or "/" in menu):
         raise ValueError(f"menu is the id of a menu with location element: {menu!r}")
-    if checked is not None and not checkable:
-        raise ValueError("checked needs checkable=True")
+    if checked and not checkable:
+        raise ValueError("checked=True needs checkable=True")
     if shortcut is not None and (not isinstance(shortcut, str) or not shortcut):
         raise ValueError('A button shortcut is a key sequence such as "Ctrl+Alt+L"')
     return _element("button", id, label=label, action=action, arguments=arguments,
@@ -3172,6 +3173,11 @@ def _compatible_props(props: Any, rules: _StripRules, element_type: Optional[str
         if whole:
             return _layout_as_column(result, element_type, rules)
         result = _without(result, _LAYOUT_CONVERTED[element_type])
+    if not rules.layout and not whole and element_type not in (None, "field", "button"):
+        # A form caption (`label` on another element) became a label element of its own on
+        # this host, without an id: it keeps its first text, and the key would only be warned
+        # about.
+        result = _without(result, _FORM_CAPTION_KEYS)
     if element_type in _TOGGLE_FIELDS and not rules.toggles:
         result = _toggle_as_field(result, element_type, whole)
         element_type, kind = "field", _TOGGLE_FIELDS[element_type][0]

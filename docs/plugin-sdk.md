@@ -830,7 +830,7 @@ changes and dialog buttons (design sections 12 and 29).
   size, `max_lines` or chart `window` out of range, text over `MAX_TEXT_VIEW_CHARS`, more than
   `MAX_SPARKLINE_VALUES` values, `MAX_CHART_SERIES` series (or two with one id) or
   `MAX_CHART_POINTS` points, a point that is neither a number nor an `[x, y]` pair, a button
-  `menu` that is not a menu id, `checked` without `checkable=True`, or an empty shortcut.
+  `menu` that is not a menu id, `checked=True` without `checkable=True`, or an empty shortcut.
 - **Patches.** Each helper returns one entry for `plugin.patch()` (`ContentPatch`):
   `append_text(text_view_id, text)` (at most `MAX_TEXT_APPEND_CHARS`, 65,536 characters; the
   oldest lines go beyond `max_lines`), `append_points(chart_id, series_id, points)`,

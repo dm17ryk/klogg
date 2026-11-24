@@ -32,6 +32,8 @@ const QStringList& containerTypes();
 bool expands( const QString& type );
 // A form child's caption: a field's `label`, else the element's own `label` (never a button's).
 QString formCaption( const QJsonObject& element );
+// A caption as the text of a label with a buddy (`&` shown as written).
+QString captionText( QString caption );
 } // namespace pluginlayout
 
 struct PluginView::Node {

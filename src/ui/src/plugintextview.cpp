@@ -9,12 +9,12 @@
 #include <QLineEdit>
 #include <QPointer>
 #include <QScrollBar>
-#include <QShortcut>
 #include <QTextBlock>
 #include <QTextCursor>
 #include <QTextDocument>
 #include <QTimer>
 #include <QVBoxLayout>
+#include <utility>
 
 using cilogg::plugins::MaxTextViewChars;
 
@@ -60,9 +60,9 @@ PluginTextView::PluginTextView( const QString& objectName, QWidget* parent )
     connect( browser_, &QTextBrowser::anchorClicked, this, [ this ]( const QUrl& url ) {
         Q_EMIT linkActivated( url.toString().left( 4096 ) );
     } );
-    auto* shortcut = new QShortcut( QKeySequence::Find, this );
-    shortcut->setContext( Qt::WidgetWithChildrenShortcut );
-    connect( shortcut, &QShortcut::activated, this, &PluginTextView::showFind );
+    // Ctrl+F is claimed by the text itself (ShortcutOverride), so CILogg's own Find shortcut
+    // neither fires nor makes the key ambiguous while the text has the focus.
+    browser_->installEventFilter( this );
     connect( find_, &QLineEdit::textChanged, this, [ this ] {
         // Search from the start of the current match, so typing extends it in place.
         auto cursor = browser_->textCursor();
@@ -100,6 +100,7 @@ void PluginTextView::setMarkdown( bool markdown )
 
 void PluginTextView::setText( const QString& text )
 {
+    renderPending_ = false; // rendered now; a pending Markdown render must not overwrite it
     if ( markdown_ ) {
         source_ = tail( text, MaxTextViewChars );
         render();
@@ -117,8 +118,18 @@ void PluginTextView::append( const QString& text )
         return;
     }
     if ( markdown_ ) {
+        // Markdown is rendered again from its whole source: once per event loop turn, however
+        // many appends arrive in it.
         source_ = tail( source_ + text, MaxTextViewChars );
-        render();
+        if ( !std::exchange( renderPending_, true ) ) {
+            QTimer::singleShot( 0, this, [ this ] {
+                if ( std::exchange( renderPending_, false ) && markdown_ ) {
+                    render();
+                    followEnd();
+                }
+            } );
+        }
+        return;
     }
     else {
         // A cursor of its own: the user's selection and scroll position stay.
@@ -235,6 +246,15 @@ bool PluginTextView::findNext( bool backward )
 
 bool PluginTextView::eventFilter( QObject* watched, QEvent* event )
 {
+    if ( watched == browser_
+         && ( event->type() == QEvent::ShortcutOverride || event->type() == QEvent::KeyPress )
+         && static_cast<QKeyEvent*>( event )->matches( QKeySequence::Find ) ) {
+        event->accept();
+        if ( event->type() == QEvent::KeyPress ) {
+            showFind();
+        }
+        return true;
+    }
     if ( watched == find_ && event->type() == QEvent::KeyPress ) {
         const auto* key = static_cast<QKeyEvent*>( event );
         if ( key->key() == Qt::Key_Escape ) {
