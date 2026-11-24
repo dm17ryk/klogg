@@ -111,9 +111,34 @@ QVector<QPointF> chartPoints( const QJsonArray& points, double nextX, int* skipp
     return result;
 }
 
+// An element's share of the free space in its container: its `stretch`, or 1 for a spacer
+// without a size (section 29.1).
+int stretchOf( const QString& type, const QJsonObject& props )
+{
+    const auto stretch = boundedInt( props.value( "stretch" ), 0, MaxStretch, 0 );
+    const auto size = props.value( "size" );
+    if ( type == QLatin1String( "spacer" ) && stretch == 0
+         && !( size.isDouble() && size.toDouble() >= 0 ) ) {
+        return 1;
+    }
+    return stretch;
+}
+
 QString shortcutText( const QKeySequence& keys )
 {
     return keys.toString( QKeySequence::PortableText );
+}
+
+// Whether a shortcut belongs to a plugin view: those act only while the focus is in their own
+// view, so they never conflict with another view's (section 29.3).
+bool insidePluginView( const QObject* object )
+{
+    for ( ; object; object = object->parent() ) {
+        if ( qobject_cast<const PluginView*>( object ) ) {
+            return true;
+        }
+    }
+    return false;
 }
 } // namespace
 
@@ -247,7 +272,7 @@ QWidget* PluginView::buildContainer( Node& node, const QJsonObject& element, QWi
         }
         placeChild( node, *childNode, child, childWidget, cursor );
         natural = natural && NaturalTypes.contains( childType );
-        stretched = stretched || boundedInt( child.value( "stretch" ), 0, MaxStretch, 0 ) > 0;
+        stretched = stretched || stretchOf( childType, child ) > 0;
     }
     currentParentId_ = parentId;
     currentParentType_ = parentType;
@@ -395,7 +420,8 @@ void PluginView::saveSplitter( const QString& id )
 {
     const auto node = nodes_.value( id );
     auto* splitter = node ? qobject_cast<QSplitter*>( node->content.data() ) : nullptr;
-    if ( !splitter || !queries_.saveState ) {
+    // An id-less splitter keeps nothing: afterBuild() has no id to read its sizes back by.
+    if ( !splitter || node->automatic || !queries_.saveState ) {
         return;
     }
     QJsonArray sizes;
@@ -501,7 +527,9 @@ void PluginView::applyLayout( Node& node, const QJsonObject& props, const QJsonO
                               || ( orientation.isEmpty() && node.parentType == "row" );
         line->setFrameShape( vertical ? QFrame::VLine : QFrame::HLine );
     }
-    else if ( type == "spacer" ) {
+    else if ( type == "spacer"
+              && ( previous.isEmpty() || fromRoot || props.contains( "size" ) ) ) {
+        // Built, a same-shaped root, or a new `size`: other patches leave the size alone.
         auto* space = node.widget.data();
         const bool horizontal = node.parentType == "row";
         const auto size = node.props.value( "size" );
@@ -522,6 +550,8 @@ void PluginView::applyLayout( Node& node, const QJsonObject& props, const QJsonO
             space->setSizePolicy( horizontal ? QSizePolicy::Expanding : QSizePolicy::Minimum,
                                   horizontal ? QSizePolicy::Minimum : QSizePolicy::Expanding );
         }
+        // The reset above also cleared the element's minimum and maximum size hints.
+        applySizeHints( node, node.props );
         applyPlacement( node );
     }
     if ( pluginlayout::containerTypes().contains( type )
@@ -784,11 +814,7 @@ void PluginView::applyPlacement( Node& node )
     if ( !parent || !parent->content || !node.outer ) {
         return;
     }
-    auto stretch = boundedInt( node.props.value( "stretch" ), 0, MaxStretch, 0 );
-    if ( node.type == "spacer" && stretch == 0
-         && !( node.props.value( "size" ).isDouble() && node.props.value( "size" ).toDouble() >= 0 ) ) {
-        stretch = 1; // a spacer without a size stretches
-    }
+    const auto stretch = stretchOf( node.type, node.props );
     if ( auto* splitter = qobject_cast<QSplitter*>( parent->content.data() ) ) {
         const auto index = splitter->indexOf( node.outer );
         if ( index >= 0 ) {
@@ -905,8 +931,8 @@ QString PluginView::shortcutRefusal( const QString& id, const QKeySequence& keys
         }
     }
     for ( const auto* shortcut : dialogParent_->findChildren<QShortcut*>() ) {
-        if ( shortcut->key() == keys && shortcut->parent() != this
-             && !isAncestorOf( qobject_cast<QWidget*>( shortcut->parent() ) ) ) {
+        // This view's buttons are checked above; another view's shortcuts act only there.
+        if ( shortcut->key() == keys && !insidePluginView( shortcut ) ) {
             return QStringLiteral( "%1 is a shortcut of CILogg" ).arg( wanted );
         }
     }

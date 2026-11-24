@@ -109,6 +109,7 @@ MAX_TABLE_IDS = 1000  # selected and checked ids in one event or menu context
 MAX_TREE_IDS = 1000  # node ids or paths in one tree event or menu context
 MAX_ID_BYTES = 256 * 1024  # ... and the JSON of those ids, so a frame stays below MAX_MESSAGE
 DIALOG_BUTTONS = ("ok", "cancel", "apply", "close", "yes", "no")
+DIALOG_CLOSING_BUTTONS = ("ok", "cancel", "close", "yes", "no")  # `apply` never closes a dialog
 DIALOG_BUTTONS_ELEMENT = "#buttons"  # the element_id of a dialog button's clicked event
 TO_PLUGIN = "to_plugin"
 FROM_PLUGIN = "from_plugin"
@@ -573,16 +574,37 @@ class FakeHost:
         self.notify("view/opened", {"view_id": view_id, "window_id": window_id,
                                     "context": dict(context or {})})
 
+    def _declared_dialog_buttons(self, view_id: str) -> Optional[List[str]]:
+        """The `buttons` the manifest declares for view_id (empty for a view that is not a
+        dialog or declares none); None when the manifest does not describe the view."""
+        views = self.manifest.get("views")
+        if not isinstance(views, list):
+            return None
+        for view in views:
+            if isinstance(view, dict) and view.get("id") == view_id:
+                buttons = view.get("buttons") if view.get("kind") == "dialog" else None
+                return ([name for name in buttons if isinstance(name, str)]
+                        if isinstance(buttons, list) else [])
+        return None
+
     def close_view(self, view_id: str, window_id: str = "w1", *,
                    result: Optional[str] = _NOT_GIVEN,
                    inputs: Optional[Mapping[str, Any]] = None) -> None:
         """Send view/closed. For a dialog that declares `buttons`, CILogg adds `result` (the
-        DIALOG_BUTTONS name of the button that closed it, None when it closed otherwise) and
-        `inputs` (the view's inputs); each goes out only when given."""
+        name of the button that closed it: one of DIALOG_CLOSING_BUTTONS the dialog declares;
+        None when it closed otherwise) and `inputs` (the view's inputs); each goes out only when
+        given. When the manifest describes the view, a result it could not send is refused."""
         params: JsonObject = {"view_id": view_id, "window_id": window_id}
         if result is not _NOT_GIVEN:
-            if result is not None and result not in DIALOG_BUTTONS:
-                raise ValueError(f"A dialog result is None or one of {', '.join(DIALOG_BUTTONS)}")
+            if result is not None and result not in DIALOG_CLOSING_BUTTONS:
+                raise ValueError("A dialog result is None or one of "
+                                 f"{', '.join(DIALOG_CLOSING_BUTTONS)}")
+            declared = self._declared_dialog_buttons(view_id)
+            if declared is not None and not declared:
+                raise ValueError(f"View {view_id!r} is not a dialog with buttons, so CILogg "
+                                 "sends no result")
+            if declared and result is not None and result not in declared:
+                raise ValueError(f"Dialog {view_id!r} declares no {result!r} button")
             params["result"] = result
         if inputs is not None:
             params["inputs"] = dict(inputs)
@@ -787,10 +809,14 @@ class FakeHost:
                             inputs: Optional[Mapping[str, Any]] = None) -> None:
         """Send the `clicked` event of a dialog button (element_id "#buttons", value the button's
         name, with the view's inputs). It does not close the dialog: send close_view(...,
-        result=name, inputs=...) for the buttons that close it (ok, yes, cancel, no, close)."""
+        result=name, inputs=...) for the buttons that close it (DIALOG_CLOSING_BUTTONS). When
+        the manifest describes the view, a button it does not declare is refused."""
         if name not in DIALOG_BUTTONS:
             raise ValueError(f"A dialog button is one of {', '.join(DIALOG_BUTTONS)}, not "
                              f"{name!r}")
+        declared = self._declared_dialog_buttons(view_id)
+        if declared is not None and name not in declared:
+            raise ValueError(f"View {view_id!r} declares no {name!r} dialog button")
         self.view_event(view_id, DIALOG_BUTTONS_ELEMENT, "clicked", name, window_id=window_id,
                         inputs=inputs)
 

@@ -3236,13 +3236,16 @@ def _plain_row(children: List[Any]) -> JsonObject:
 
 def _form_row(child: Any, rules: _StripRules) -> JsonObject:
     """One child of a form as a row for a host without layout: a child that is neither a field
-    nor a button loses its `label`, which becomes an id-less label element before it."""
+    nor a button loses its `label`, which becomes an id-less label element before it, shown and
+    enabled as the child is (patches reach only the child, which keeps its id)."""
     items: List[Any] = []
     if isinstance(child, dict) and child.get("type") not in ("field", "button") \
             and "label" in child:
         caption = child["label"]
         if isinstance(caption, str) and caption:
-            items.append({"type": "label", "text": caption})
+            label: JsonObject = {"type": "label", "text": caption}
+            label.update((key, child[key]) for key in ("visible", "enabled") if key in child)
+            items.append(label)
         child = _without(child, frozenset({"label"}))
     items.append(_compatible_element(child, rules))
     return _plain_row(items)

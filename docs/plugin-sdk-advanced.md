@@ -1780,7 +1780,8 @@ follows.
   `column`, `row`, `tab`, `group` or `splitter`), `min_width`, `max_width`, `min_height`,
   `max_height` (0 to 10,000 pixels; a maximum of 0 means none) and `align` (`left`, `center`,
   `right`, `top`, `bottom`, or `fill`, the default). A row whose children include one with
-  `stretch` adds no stretch of its own at its end. A value out of range is clamped; a value of the
+  `stretch`, or a spacer without a size, adds no stretch of its own at its end. A value out of
+  range is clamped; a value of the
   wrong type is ignored with a warning.
 - **Same-shaped roots.** The new containers are part of a view's shape, as `column` and `row` are:
   a root that changes their children rebuilds the view; one with the same shape applies in place.
@@ -1891,7 +1892,8 @@ follows.
   Its `update()` and `patch()` convert for an older host: without `layout`, `tabs` become a
   `column` of `group`s titled like the tabs, `splitter`, `form` and `grid` a `column` of `row`s, and
   `separator` and `spacer` are left out, with the size hints removed (a form caption becomes a
-  label of its own, which later `label` patches do not change); without `view_dialogs` the
+  label of its own, shown and enabled as its element is in the root; later patches of `label`,
+  `visible` or `enabled` reach only the element); without `view_dialogs` the
   button keys, the busy keys, `modified`, `close_confirm` and focus patches are removed; `text_view`,
   `image`, `sparkline` and `chart` go as they are (an older host skips them with a warning), and
   their `append`, `append_points` and `clear` patches are left out. The C++ SDK needs nothing new.

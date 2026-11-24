@@ -500,6 +500,19 @@ class Downgrades(LayoutCase):
                 plugin.patch("main", changes)
                 self.assertEqual(host.wait_for("view/update")["patch"], expected or changes)
 
+    def test_form_caption_is_shown_and_enabled_as_its_element_on_a_host_without_layout(self):
+        sdk = self.sdk
+        plugin = self.plugin()
+        host = self.host(plugin, **self.without("layout"))
+        plugin.update("main", sdk.column(
+            sdk.form(sdk.checkbox("opt", "Enabled", label="Option", visible=False, enabled=False),
+                     sdk.label("note", "x", label="Note", enabled=True), id="f"), id="body"))
+        rows = by_id(host.wait_for("view/update")["root"])["f"]["children"]
+        self.assertEqual(rows[0]["children"][0],
+                         {"type": "label", "text": "Option", "visible": False, "enabled": False})
+        self.assertEqual(rows[0]["children"][1]["visible"], False)
+        self.assertEqual(rows[1]["children"][0], {"type": "label", "text": "Note", "enabled": True})
+
     def test_host_without_layout_and_toggles(self):
         _plugin, root, _patch = self.session(**self.without("layout", "toggles"))
         option_row = by_id(root)["f"]["children"][1]
@@ -622,6 +635,34 @@ class Events(LayoutCase):
             {"view_id": "ask", "window_id": "w1", "inputs": {"ask_name": ""}}])
         with self.assertRaises(ValueError):
             host.close_view("ask", result="help")
+        with self.assertRaises(ValueError):
+            host.close_view("ask", result="apply")  # `apply` never closes a dialog
+
+    def test_dialog_events_follow_the_manifest_when_it_describes_the_view(self):
+        # CILogg sends only the buttons a dialog declares, and a result only for such a dialog.
+        host, events, closed = self.received()
+        host.manifest = {"views": [
+            {"id": "main", "kind": "window"},
+            {"id": "ask", "kind": "dialog", "buttons": ["ok", "cancel", "apply"]},
+            {"id": "plain", "kind": "dialog"}]}
+        host.press_dialog_button("ask", "apply")
+        host.close_view("ask", result="cancel")
+        host.close_view("ask", result=None)
+        host.close_view("plain")
+        host.press_dialog_button("other", "close")  # not described: nothing to check against
+        self.assertEqual([(event["view_id"], event["value"]) for event in
+                          (events.get(timeout=2), events.get(timeout=2))],
+                         [("ask", "apply"), ("other", "close")])
+        self.assertEqual([closed.get(timeout=2).get("result", "-") for _ in range(3)],
+                         ["cancel", None, "-"])
+        for call in (lambda: host.press_dialog_button("ask", "close"),
+                     lambda: host.press_dialog_button("plain", "ok"),
+                     lambda: host.press_dialog_button("main", "ok"),
+                     lambda: host.close_view("ask", result="yes"),
+                     lambda: host.close_view("plain", result=None),
+                     lambda: host.close_view("main", result="ok")):
+            with self.subTest(), self.assertRaises(ValueError):
+                call()
 
     def test_feature_sets(self):
         testing = self.testing

@@ -322,6 +322,25 @@ TEST_CASE( "E17f layout containers: tabs, splitter, form, grid, separators and s
     // A grid's places are part of the shape: a patch cannot move a cell.
     fixture.patch( { QJsonObject{ { "id", "g2" }, { "set", QJsonObject{ { "span", 3 } } } } } );
     REQUIRE( place( "g2" ) == QList<int>{ 0, 2, 1, 1 } );
+
+    // A spacer without a size takes the free space: its row adds no stretch of its own, so the
+    // last button sits at the right edge. A patch of other keys keeps the spacer's size hints.
+    View pushed( column( QJsonArray{ element(
+        "row", "nav",
+        { { "children", QJsonArray{ element( "button", "back", { { "label", "Back" } } ),
+                                    element( "spacer", "push", { { "min_width", 40 } } ),
+                                    element( "button", "next", { { "label", "Next" } } ) } } } ) } ) );
+    auto* nav = pushed.view.element( "nav" )->findChild<QHBoxLayout*>();
+    REQUIRE( nav );
+    REQUIRE( nav->count() == 3 ); // the three children and no trailing stretch
+    auto* push = pushed.view.element( "push" );
+    REQUIRE( nav->stretch( nav->indexOf( push ) ) == 1 );
+    REQUIRE( push->minimumWidth() == 40 );
+    pushed.patch( { QJsonObject{ { "id", "push" }, { "set", QJsonObject{ { "visible", true } } } } } );
+    REQUIRE( push->minimumWidth() == 40 );
+    pushed.patch( { QJsonObject{ { "id", "push" }, { "set", QJsonObject{ { "stretch", 2 } } } } } );
+    REQUIRE( nav->stretch( nav->indexOf( push ) ) == 2 );
+    REQUIRE( push->minimumWidth() == 40 );
 }
 
 TEST_CASE( "E17f the user's splitter sizes are kept per view", "[ui][workbench][E17]" )
@@ -363,6 +382,17 @@ TEST_CASE( "E17f the user's splitter sizes are kept per view", "[ui][workbench][
         const auto sizes = restored->sizes();
         return sizes.size() == 2 && sizes.at( 0 ) > 0 && sizes.at( 0 ) < sizes.at( 1 );
     } ) );
+
+    // An id-less splitter keeps nothing: there is no id to read its sizes back by.
+    View anonymous( column( QJsonArray{ element(
+        "splitter", {},
+        { { "children", QJsonArray{ element( "label", "c", { { "text", "C" } } ),
+                                    element( "label", "d", { { "text", "D" } } ) } } } ) } ) );
+    auto* unnamed = anonymous.view.findChild<QSplitter*>();
+    REQUIRE( unnamed );
+    Q_EMIT unnamed->splitterMoved( 10, 1 );
+    QTest::qWait( 700 ); // past the save delay of a named splitter
+    REQUIRE( anonymous.kept.isEmpty() );
 }
 
 TEST_CASE( "E17f text views: plain text, Markdown, appends, limits, links and find",
@@ -579,6 +609,36 @@ TEST_CASE( "E17f buttons: icons, styles, checkable, drop-down menus, shortcuts a
         REQUIRE_FALSE( toggle->isChecked() );
         REQUIRE( toggled.countOf( "changed" ) == 1 ); // the plugin's values are never echoed
     }
+    {
+        // A root of another shape builds the view again: the old button's shortcut goes with
+        // the old tree, so the new one is the only one with its keys (two would both stay silent).
+        const auto keyed = []( const QJsonArray& more ) {
+            QJsonArray children{ element( "button", "go", { { "label", "Go" }, { "event", true },
+                                                           { "shortcut", "Ctrl+Alt+G" } } ) };
+            for ( const auto& child : more ) {
+                children.append( child );
+            }
+            return column( children );
+        };
+        View rebuilt( keyed( {} ) );
+        const QKeySequence keys( "Ctrl+Alt+G" );
+        const auto withKeys = [ & ] {
+            int count = 0;
+            for ( const auto* each : rebuilt.view.findChildren<QShortcut*>() ) {
+                count += each->key() == keys ? 1 : 0;
+            }
+            return count;
+        };
+        REQUIRE( withKeys() == 1 );
+        rebuilt.view.setRoot( keyed( { element( "label", "note", { { "text", "x" } } ) } ) );
+        REQUIRE( withKeys() == 1 );
+        auto* fresh = rebuilt.view.findChild<QShortcut*>( nameOf( "go" ) + "_shortcut" );
+        REQUIRE( fresh );
+        Q_EMIT fresh->activated();
+        REQUIRE( rebuilt.lastOf( "clicked" ).value( "element_id" ) == "go" );
+        rebuilt.view.setRoot( column( QJsonArray{ element( "label", "only", { { "text", "y" } } ) } ) );
+        REQUIRE( withKeys() == 0 );
+    }
 
     // A drop-down menu: the element menu with the button as the element and no row.
     auto* more = fixture.get<QPushButton>( "more" );
@@ -642,6 +702,36 @@ TEST_CASE( "E17f buttons: icons, styles, checkable, drop-down menus, shortcuts a
     // A menu button never runs: no `clicked`.
     more->click();
     REQUIRE( fixture.countOf( "clicked" ) == clicks + 1 );
+}
+
+TEST_CASE( "E17f a button shortcut gives way to CILogg's shortcuts, not to another view's",
+           "[ui][workbench][E17]" )
+{
+    // Two views in one CILogg window, as two docks of plugins are: each button shortcut acts
+    // only while the focus is in its own view, so the same keys in both are no conflict.
+    QWidget window;
+    const QShortcut own( QKeySequence( "Ctrl+Alt+K" ), &window ); // one of CILogg's shortcuts
+    auto* first = new PluginView( PluginId, "first", {}, &window );
+    auto* second = new PluginView( PluginId, "second", {}, &window );
+    const auto root = []( const QString& keys ) {
+        return column( QJsonArray{ element( "button", "run", { { "label", "Run" }, { "event", true },
+                                                              { "shortcut", keys } } ) } );
+    };
+    const auto shortcutOf = []( const PluginView* view, const QString& viewId ) {
+        return view->findChild<QShortcut*>( PluginView::objectNameFor( PluginId, viewId, "run" )
+                                            + "_shortcut" );
+    };
+    for ( auto* view : { first, second } ) {
+        view->setDialogParent( &window );
+        view->setRoot( root( "Ctrl+Alt+R" ) );
+    }
+    REQUIRE( shortcutOf( first, "first" ) );
+    REQUIRE( shortcutOf( second, "second" ) );
+    REQUIRE( shortcutOf( second, "second" )->key() == QKeySequence( "Ctrl+Alt+R" ) );
+    // CILogg's own keys are still refused.
+    second->setRoot( root( "Ctrl+Alt+K" ) );
+    REQUIRE( shortcutOf( second, "second" ) == nullptr );
+    REQUIRE( shortcutOf( first, "first" ) );
 }
 
 TEST_CASE( "E17f the busy overlay covers a container, and Cancel sends cancel",
@@ -727,6 +817,9 @@ TEST_CASE( "E17f modified roots and focus patches", "[ui][workbench][E17]" )
     focus.patch( { QJsonObject{ { "id", "a" }, { "focus", true } } } );
     QCoreApplication::processEvents();
     REQUIRE( QApplication::activeWindow() == &other );
+    // setFocus() in an inactive window would still move the focus that window gives back when
+    // it is activated again; the refused patch leaves it on "b".
+    REQUIRE( focus.view.window()->focusWidget() == focus.view.element( "b" ) );
 }
 
 namespace {

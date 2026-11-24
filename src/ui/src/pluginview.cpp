@@ -43,6 +43,7 @@
 #include <QScopedValueRollback>
 #include <QScrollArea>
 #include <QScrollBar>
+#include <QShortcut>
 #include <QSortFilterProxyModel>
 #include <QStyledItemDelegate>
 #include <QTableView>
@@ -835,6 +836,11 @@ void PluginView::clear()
     detachTables();
     if ( auto* old = scroll_->takeWidget() ) {
         old->deleteLater();
+    }
+    // Button shortcuts belong to the view (they act while the focus is anywhere in it), not to
+    // the old body, so they go with the old tree here.
+    for ( const auto& node : nodes_ ) {
+        delete node->shortcut;
     }
     nodes_.clear();
     paths_.clear();
