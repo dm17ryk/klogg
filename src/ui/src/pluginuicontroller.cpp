@@ -259,8 +259,8 @@ PluginUiController::PluginUiController( MainWindow* window, cilogg::plugins::Plu
     sourceLayout->setContentsMargins( 8, 2, 8, 2 );
     auto* sourceLabel = new QLabel( tr( "Run actions on" ), sourceRow );
     sourcePicker_ = new AnalysisSourcePicker(
-        [ window = QPointer<MainWindow>( window ) ] {
-            return window ? window->toolSources() : QVariantList{};
+        [ owner = QPointer<MainWindow>( window ) ] {
+            return owner ? owner->toolSources() : QVariantList{};
         },
         SourceRules{}, sourceRow );
     sourcePicker_->setObjectName( "pluginSourcePicker" );
@@ -347,16 +347,16 @@ PluginUiController::PluginUiController( MainWindow* window, cilogg::plugins::Plu
     // Plugin views (docks, windows, dialogs) and message boxes of this window.
     viewHost_ = new PluginViewHost(
         window, windowId,
-        [ window = QPointer<MainWindow>( window ) ] {
-            return window ? window->pluginContext( {} ) : QVariantMap{};
+        [ owner = QPointer<MainWindow>( window ) ] {
+            return owner ? owner->pluginContext( {} ) : QVariantMap{};
         },
         manager, executor_ );
     viewHost_->setSourceProviders(
-        [ window = QPointer<MainWindow>( window ) ] {
-            return window ? window->toolSources() : QVariantList{};
+        [ owner = QPointer<MainWindow>( window ) ] {
+            return owner ? owner->toolSources() : QVariantList{};
         },
-        [ window = QPointer<MainWindow>( window ) ]( const QString& source, QString* error ) {
-            return window ? window->pluginContextForSource( source, error ) : QVariantMap{};
+        [ owner = QPointer<MainWindow>( window ) ]( const QString& source, QString* error ) {
+            return owner ? owner->pluginContextForSource( source, error ) : QVariantMap{};
         } );
     // E17b: plugin menus, context menu sections and shortcuts of this window.
     menus_ = new PluginMenus(
