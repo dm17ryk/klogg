@@ -164,6 +164,9 @@ public:
     bool emitDialogButton( const QString& name );
     // The plugin's registered images changed: every `image` element resolves its source again.
     void refreshImages();
+    // Whether Enter presses a default button now: not where the focused control uses Enter
+    // itself (multi-line text, tables, trees, lists, buttons, an open drop-down).
+    bool enterPressesDefault() const;
     // The element id dialog button events come from (never an element: ids starting with # are
     // reserved).
     static constexpr char DialogButtonsId[] = "#buttons";
@@ -219,7 +222,7 @@ private:
     void focusElement( Node& node );
     bool focusAllowed() const;
     QPushButton* defaultButton() const;
-    bool enterPressesDefault() const;
+    void updateRowStretch( Node& row );
     void saveSplitter( const QString& id );
     QImage pictureFor( const QJsonValue& reference, const QSize& size ) const;
     QString currentParentId_;   // the container whose children build() is creating

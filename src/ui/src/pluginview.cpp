@@ -1931,6 +1931,16 @@ void PluginView::apply( Node& node, const QJsonObject& incoming, bool fromRoot )
     applyLayout( node, props, previous, fromRoot );
     applyContent( node, props, fromRoot );
     applySizeHints( node, props );
+    if ( fromRoot && ( previous.contains( "stretch" ) || previous.contains( "align" ) ) ) {
+        applyPlacement( node ); // a root that no longer sends them returns them to the default
+    }
+    // A child's stretch (or a spacer's size) decides its row's own stretch after the children.
+    if ( !previous.isEmpty() && node.parentType == QLatin1String( "row" )
+         && ( fromRoot || props.contains( "stretch" ) || props.contains( "size" ) ) ) {
+        if ( const auto parent = nodes_.value( node.parentId ) ) {
+            updateRowStretch( *parent );
+        }
+    }
     if ( props.contains( "label" ) && node.parentType == "form" && type != "field"
          && type != "button" ) {
         if ( node.formCaption ) {

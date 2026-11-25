@@ -70,4 +70,5 @@ struct PluginView::Node {
     QPointer<QMenu> menu;                   // a button's drop-down
     QPointer<QShortcut> shortcut;           // a button's shortcut
     QPointer<QTimer> saveTimer;             // a splitter's kept sizes
+    bool trailingStretch = false;           // a row's own stretch after its children
 };

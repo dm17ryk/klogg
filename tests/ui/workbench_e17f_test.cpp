@@ -23,6 +23,9 @@
 #include <QFrame>
 #include <QGridLayout>
 #include <QHBoxLayout>
+#include <QHelpEvent>
+#include <QTabBar>
+#include <QToolTip>
 #include <QJsonDocument>
 #include <QLabel>
 #include <QLineEdit>
@@ -83,6 +86,7 @@ struct View {
     QJsonObject kept;
     QImage picture;
     QList<QSize> pictureSizes; // the sizes the view asked pictures for
+    QList<QJsonObject> tooltipQueries; // tooltip/resolve parameters
 
     explicit View( const QJsonObject& root )
         : view( PluginId, "main", {} )
@@ -113,6 +117,12 @@ struct View {
         };
         queries.saveState = [ this ]( const QString& elementId, const QJsonObject& state ) {
             kept.insert( elementId, state );
+        };
+        queries.resolveTooltip = [ this ]( const QJsonObject& params, int, bool,
+                                           std::function<void( bool, const QJsonObject& )> done ) {
+            tooltipQueries.append( params );
+            done( true, QJsonObject{ { "text", "about " + params.value( "element_id" ).toString() } } );
+            return QString( "t:%1" ).arg( tooltipQueries.size() );
         };
         view.setQueries( queries );
         view.setExtendedEvents( true );
@@ -261,6 +271,22 @@ TEST_CASE( "E17f layout containers: tabs, splitter, form, grid, separators and s
     REQUIRE( tabs->currentIndex() == 0 );
     REQUIRE_FALSE( tabs->widget( 1 )->isVisible() );
 #endif
+    // A disabled tab cannot be chosen: its header follows `enabled`.
+    fixture.patch( { QJsonObject{ { "id", "logs" }, { "set", QJsonObject{ { "enabled", false } } } } } );
+    REQUIRE_FALSE( tabs->isTabEnabled( 1 ) );
+    fixture.patch( { QJsonObject{ { "id", "logs" }, { "set", QJsonObject{ { "enabled", true } } } } } );
+    REQUIRE( tabs->isTabEnabled( 1 ) );
+    // A tab's tooltip is asked for where the pointer is: over its header in the tab bar.
+    fixture.patch( { QJsonObject{ { "id", "logs" }, { "set", QJsonObject{ { "tooltip_provider", true } } } } } );
+    {
+        auto* bar = tabs->tabBar();
+        const auto point = bar->tabRect( 1 ).center();
+        QHelpEvent help( QEvent::ToolTip, point, bar->mapToGlobal( point ) );
+        QApplication::sendEvent( bar, &help );
+        REQUIRE( waitFor( [ & ] { return !fixture.tooltipQueries.isEmpty(); } ) );
+        REQUIRE( fixture.tooltipQueries.last().value( "element_id" ) == "logs" );
+        QToolTip::hideText();
+    }
     {
         // A root of another shape replaces the tabs. The old tab widget is deleted later and may
         // change its current tab as its pages go: that speaks neither for the new tree nor at all.
@@ -377,6 +403,17 @@ TEST_CASE( "E17f layout containers: tabs, splitter, form, grid, separators and s
     pushed.patch( { QJsonObject{ { "id", "push" }, { "set", QJsonObject{ { "stretch", 2 } } } } } );
     REQUIRE( nav->stretch( nav->indexOf( push ) ) == 2 );
     REQUIRE( push->minimumWidth() == 40 );
+    // Patches that change who stretches change the row's own stretch after its children too.
+    pushed.patch( { QJsonObject{ { "id", "push" },
+                                 { "set", QJsonObject{ { "stretch", 0 }, { "size", 10 } } } } } );
+    REQUIRE( nav->count() == 4 ); // nothing stretches: the row adds its own stretch
+    REQUIRE( nav->stretch( 3 ) == 1 );
+    pushed.patch( { QJsonObject{ { "id", "next" }, { "set", QJsonObject{ { "stretch", 1 } } } } } );
+    REQUIRE( nav->count() == 3 );
+    pushed.patch( { QJsonObject{ { "id", "next" }, { "set", QJsonObject{ { "stretch", 0 } } } } } );
+    REQUIRE( nav->count() == 4 );
+    pushed.patch( { QJsonObject{ { "id", "push" }, { "set", QJsonObject{ { "size", QJsonValue() } } } } } );
+    REQUIRE( nav->count() == 3 ); // a spacer without a size stretches again
 }
 
 TEST_CASE( "E17f the user's splitter sizes are kept per view", "[ui][workbench][E17]" )
@@ -1156,6 +1193,51 @@ TEST_CASE( "E17f a modified view marks its title and asks before closing; button
     REQUIRE( waitFor( [ & ] { return fixture.host()->container( PluginId, "layouts" ) == nullptr; } ) );
     REQUIRE( waitFor( [ & ] { return !closedOf( fixture.folder, "layouts" ).isEmpty(); } ) );
     REQUIRE_FALSE( closedOf( fixture.folder, "layouts" ).contains( "result" ) );
+}
+
+TEST_CASE( "E17f Enter in a dialog presses an element default, else the declared default",
+           "[ui][workbench][E17]" )
+{
+    LayoutsWindow fixture;
+    fixture.open( "ask" ); // buttons ok, cancel, apply; default ok
+    auto* dialog = qobject_cast<QDialog*>( fixture.host()->container( PluginId, "ask" ) );
+    REQUIRE( dialog );
+    REQUIRE( waitFor( [ & ] { return dialog->isVisible() && fixture.button( "ask", "ok" )->isEnabled(); } ) );
+    const auto root = []( bool elementDefault ) {
+        return element( "column", "d_body",
+                        { { "children", QJsonArray{ element( "field", "d_name", { { "kind", "text" } } ),
+                                                    element( "button", "pick",
+                                                             { { "label", "Pick" }, { "event", true },
+                                                               { "default", elementDefault } } ) } } } );
+    };
+    const auto send = [ & ]( const QJsonObject& rootValue ) {
+        Q_EMIT fixture.manager->viewRequest( PluginId, "view/update",
+                                             QJsonObject{ { "view_id", "ask" }, { "root", rootValue } } );
+        fixture.host()->flush();
+    };
+    const auto picked = [ & ] {
+        const auto events = recorded( fixture.folder, "view/event" );
+        return std::count_if( events.begin(), events.end(), []( const QJsonObject& event ) {
+            return event.value( "element_id" ) == "pick" && event.value( "type" ) == "clicked";
+        } );
+    };
+    send( root( true ) );
+    auto* field = fixture.host()->view( PluginId, "ask" )->element( "d_name" );
+    REQUIRE( field );
+    dialog->activateWindow();
+    REQUIRE( QTest::qWaitForWindowActive( dialog ) );
+    field->setFocus();
+    REQUIRE( waitFor( [ & ] { return field->hasFocus(); } ) );
+    // The element default takes Enter.
+    QTest::keyClick( field, Qt::Key_Return );
+    REQUIRE( waitFor( [ & ] { return picked() == 1; } ) );
+    REQUIRE( fixture.host()->container( PluginId, "ask" ) == dialog );
+    // Without it again, Enter presses the declared default (ok), which closes the dialog.
+    send( root( false ) );
+    QTest::keyClick( field, Qt::Key_Return );
+    REQUIRE( waitFor( [ & ] { return fixture.host()->container( PluginId, "ask" ) == nullptr; } ) );
+    REQUIRE( waitFor( [ & ] { return closedOf( fixture.folder, "ask" ).value( "result" ) == "ok"; } ) );
+    REQUIRE( picked() == 1 );
 }
 
 TEST_CASE( "E17f a root does not drop the appends queued before it", "[ui][workbench][E17]" )

@@ -212,6 +212,19 @@ QWidget* PluginView::buildContainer( Node& node, const QJsonObject& element, QWi
                                { { "index", index } } );
                 }
             } );
+            // A tab's tooltip (static or asked from the plugin) belongs to its header in the tab
+            // bar, where the pointer is: the tab's page never sees the hover.
+            auto* bar = tabs->tabBar();
+            tooltips_->watch( bar, [ this, id, bar ]( const QPoint& position ) {
+                const auto index = bar->tabAt( position );
+                const auto tabId = index >= 0 ? tabIdOf( id, index ) : QString{};
+                if ( tabId.isEmpty() ) {
+                    return PluginTooltips::Target{};
+                }
+                auto target = tooltipTarget( tabId, {}, {} );
+                target.rect = bar->tabRect( index );
+                return target;
+            } );
             content = tabs;
             node.widget = tabs;
         }
@@ -260,8 +273,6 @@ QWidget* PluginView::buildContainer( Node& node, const QJsonObject& element, QWi
     // Children know their container while they are built (tab, separator and spacer depend on it).
     const auto parentId = std::exchange( currentParentId_, id );
     const auto parentType = std::exchange( currentParentType_, type );
-    bool natural = true;
-    bool stretched = false;
     const auto children = element.value( "children" ).toArray();
     for ( int index = 0; index < children.size(); ++index ) {
         const auto child = children.at( index ).toObject();
@@ -278,15 +289,40 @@ QWidget* PluginView::buildContainer( Node& node, const QJsonObject& element, QWi
             continue;
         }
         placeChild( node, *childNode, child, childWidget, cursor );
-        natural = natural && NaturalTypes.contains( childType );
-        stretched = stretched || stretchOf( childType, child ) > 0;
     }
     currentParentId_ = parentId;
     currentParentType_ = parentType;
-    if ( type == "row" && natural && !stretched ) {
-        qobject_cast<QBoxLayout*>( content->layout() )->addStretch( 1 );
-    }
+    updateRowStretch( node );
     return outer;
+}
+
+void PluginView::updateRowStretch( Node& row )
+{
+    auto* box = row.content ? qobject_cast<QBoxLayout*>( row.content->layout() ) : nullptr;
+    if ( row.type != QLatin1String( "row" ) || !box ) {
+        return;
+    }
+    // A row of natural-size children keeps them at the start with a stretch of its own after
+    // them, unless one of them stretches (section 29.1); patches and roots can change that.
+    bool natural = true;
+    bool stretched = false;
+    for ( const auto& child : std::as_const( nodes_ ) ) {
+        if ( child && child->parentId == row.id ) {
+            natural = natural && NaturalTypes.contains( child->type );
+            stretched = stretched || stretchOf( child->type, child->props ) > 0;
+        }
+    }
+    const bool wanted = natural && !stretched;
+    if ( wanted == row.trailingStretch ) {
+        return;
+    }
+    if ( wanted ) {
+        box->addStretch( 1 );
+    }
+    else if ( box->count() > 0 && box->itemAt( box->count() - 1 )->spacerItem() ) {
+        delete box->takeAt( box->count() - 1 );
+    }
+    row.trailingStretch = wanted;
 }
 
 void PluginView::placeChild( Node& container, Node& child, const QJsonObject& element,
@@ -465,6 +501,8 @@ void PluginView::updateTabHeader( Node& tab )
     tabs->setTabText( index, label.replace( QLatin1Char( '&' ), QStringLiteral( "&&" ) ) );
     tabs->setTabIcon( index, iconFor( tab.props.value( "icon" ) ) );
     tabs->setTabToolTip( index, plainToolTip( text( tab.props, "tooltip" ) ) );
+    // A disabled tab cannot be chosen: its header follows `enabled`, as its page does.
+    tabs->setTabEnabled( index, tab.props.value( "enabled" ).toBool( true ) );
     // `visible` hides the tab itself: its page is the tab widget's to show (apply() never
     // shows a tab's page, which would cover the current one).
 #if QT_VERSION >= QT_VERSION_CHECK( 5, 15, 0 )
@@ -511,7 +549,8 @@ void PluginView::applyLayout( Node& node, const QJsonObject& props, const QJsonO
     }
     else if ( type == "tab" ) {
         if ( props.contains( "title" ) || props.contains( "badge" ) || props.contains( "icon" )
-             || props.contains( "tooltip" ) || props.contains( "visible" ) ) {
+             || props.contains( "tooltip" ) || props.contains( "visible" )
+             || props.contains( "enabled" ) ) {
             updateTabHeader( node );
         }
     }

@@ -1760,7 +1760,9 @@ follows.
   for a tab without an id) and `index`. A `current` set by the plugin sends nothing.
 - **`tab`.** `title`, `icon`, `badge` (at most 64 characters, shown after the title in
   parentheses) and `children`, laid out as a column. `visible: false` hides the tab itself (Qt
-  5.15 and later); the tab widget shows only the current tab's page.
+  5.15 and later) and `enabled: false` disables its header as well as its page; the tab widget
+  shows only the current tab's page. A tab's `tooltip` and `tooltip_provider` apply to its header
+  in the tab bar.
 - **`splitter`.** `orientation` is `horizontal` (children side by side, the default) or
   `vertical`; each child is a pane. `sizes` are pixels per pane. When the user drags a handle, the
   sizes are kept per plugin, view and element (half a second later, in the store of section 27's
@@ -1781,8 +1783,9 @@ follows.
   `column`, `row`, `tab`, `group` or `splitter`), `min_width`, `max_width`, `min_height`,
   `max_height` (0 to 10,000 pixels; a maximum of 0 means none) and `align` (`left`, `center`,
   `right`, `top`, `bottom`, or `fill`, the default). A row whose children include one with
-  `stretch`, or a spacer without a size, adds no stretch of its own at its end. A value out of
-  range is clamped; a value of the
+  `stretch`, or a spacer without a size, adds no stretch of its own at its end; patches and
+  same-shaped roots that change this add or remove it. A value out of range is clamped; a value
+  of the
   wrong type is ignored with a warning.
 - **Same-shaped roots.** The new containers are part of a view's shape, as `column` and `row` are:
   a root that changes their children rebuilds the view; one with the same shape applies in place.
@@ -1812,7 +1815,8 @@ follows.
   fetched. Links are never opened by the host: a click sends `link` with `value` `{href}`. On Qt
   older than 5.14 the text shows as plain text.
 - **`image`.** `source` (an icon reference: a plugin file, `builtin:`, `status:`, `image:<id>` of a
-  registered picture, or the light/dark form), `width` and `height` (1 to 4,096 pixels), `scale`
+  registered picture, or the light/dark form, whose one variant serves both themes when the other
+  is missing, as for icons), `width` and `height` (1 to 4,096 pixels), `scale`
   (`fit`, the default: inside the box with its aspect ratio; `fill`: stretched to the box; `none`:
   its own size, cut by the box) and `alt` (its accessible name, also shown when the source cannot be
   shown). Without `width` and `height` the image takes its own size (at most 4,096 pixels): a
@@ -1879,7 +1883,9 @@ follows.
   carries `result` (the button that closed it; null when it closed otherwise) and `inputs` (the
   view's inputs at that moment). The buttons are disabled while the view is (before the plugin's
   first root and while it is stopped). `default` is the button Enter presses when no element button
-  of the view is the default; without `default`, Enter presses none of the dialog buttons.
+  of the view is the default (also once an element button stops being the default), except where
+  the focused control uses Enter itself; without `default`, Enter presses none of the dialog
+  buttons.
 - **Focus.** The patch entry `{"id", "focus": true}` gives the element the keyboard focus only while
   the view is active: its own window (a window, a dialog or a floating dock) is the active window,
   or the focus already is inside the view. Otherwise it is ignored.

@@ -16,6 +16,7 @@
 #include <QElapsedTimer>
 #include <QEvent>
 #include <QHBoxLayout>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QMainWindow>
 #include <QMessageBox>
@@ -77,8 +78,26 @@ public:
     // E17f: the declared buttons and the one Enter presses (none when no `default` is declared).
     QPointer<QDialogButtonBox> buttonBox;
     QPointer<QPushButton> declaredDefault;
+    QPointer<PluginView> view;
 
 protected:
+    void keyPressEvent( QKeyEvent* event ) override
+    {
+        // Enter that no element button took (the view presses an element `default` first) presses
+        // the declared `default`, or nothing: never a button Qt made the default by itself, and
+        // not where the focused control uses Enter itself (section 29.3).
+        if ( ( event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter )
+             && ( event->modifiers() & ~Qt::KeypadModifier ) == Qt::NoModifier ) {
+            event->accept();
+            if ( declaredDefault && declaredDefault->isEnabled() && declaredDefault->isVisible()
+                 && ( !view || view->enterPressesDefault() ) ) {
+                declaredDefault->click();
+            }
+            return;
+        }
+        QDialog::keyPressEvent( event );
+    }
+
     void showEvent( QShowEvent* event ) override
     {
         QDialog::showEvent( event );
@@ -692,6 +711,7 @@ bool PluginViewHost::openView( const QString& pluginId, const QString& viewId,
     }
     else if ( open->kind == "dialog" ) {
         auto* dialog = new PluginViewDialog( window_ );
+        dialog->view = view;
         // Modal to its CILogg window only; shown with show(), never a blocking exec().
         dialog->setWindowModality( def.value( "modal" ).toBool( false ) ? Qt::WindowModal
                                                                         : Qt::NonModal );

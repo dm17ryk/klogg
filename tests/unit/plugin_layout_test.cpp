@@ -212,6 +212,12 @@ TEST_CASE( "E17f pictures of plugin files take their own size without a box", "[
                  .isNull() );
     REQUIRE( registry.pictureFor( "org.test.layout.pictures", folder.path(), "image:none", QSize{} )
                  .isNull() );
+    // A themed reference with only one variant uses it in either theme, as icons do.
+    for ( const auto* theme : { "light", "dark" } ) {
+        const QJsonObject themed{ { QLatin1String( theme ), "photo.png" } };
+        REQUIRE( registry.pictureFor( "org.test.layout.pictures", folder.path(), themed, QSize{} ).size()
+                 == QSize( 300, 200 ) );
+    }
 }
 
 TEST_CASE( "E17f images are placed by their scale", "[plugins][E17]" )

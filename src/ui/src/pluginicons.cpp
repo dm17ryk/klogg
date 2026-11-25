@@ -341,7 +341,11 @@ QImage PluginIconRegistry::pictureFor( const QString& pluginId, const QString& d
 {
     auto value = reference;
     if ( value.isObject() ) {
-        value = value.toObject().value( darkTheme() ? "dark" : "light" );
+        // This theme's variant, else the other one, as icon() chooses.
+        const auto themed = value.toObject();
+        const auto first = QLatin1String( darkTheme() ? "dark" : "light" );
+        const auto second = QLatin1String( darkTheme() ? "light" : "dark" );
+        value = themed.contains( first ) ? themed.value( first ) : themed.value( second );
     }
     const auto text = value.toString();
     if ( text.startsWith( QLatin1String( "image:" ) ) ) {
