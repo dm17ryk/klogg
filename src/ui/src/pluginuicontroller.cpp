@@ -850,13 +850,25 @@ void PluginUiController::openGuide()
     }
 }
 
-void PluginUiController::openPluginsWindow( PluginsTab tab )
+void PluginUiController::openPacks( QWidget* parent )
+{
+    openPluginsWindow( PluginsTab::Installed, parent );
+}
+
+void PluginUiController::openPluginsWindow( PluginsTab tab, QWidget* parent )
 {
     if ( !manager_ || !window_ ) {
         return;
     }
+    QWidget* owner = parent ? parent : window_.data();
+    // A window of a modal dialog takes input while that dialog is open; one of the main window
+    // would not. A window open under another parent is made again under this one.
+    if ( pluginsWindow_ && pluginsWindow_->parentWidget() != owner ) {
+        pluginsWindow_->close(); // deleted on close
+        delete pluginsWindow_.data();
+    }
     if ( !pluginsWindow_ ) {
-        auto* dialog = new QDialog( window_ );
+        auto* dialog = new QDialog( owner );
         dialog->setAttribute( Qt::WA_DeleteOnClose );
         dialog->setObjectName( "pluginsAndPacksDialog" );
         dialog->setWindowTitle( tr( "Plugins and Packs" ) );

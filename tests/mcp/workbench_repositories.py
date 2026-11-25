@@ -59,8 +59,8 @@ def update_check(job):
 # E16a1: the public example configuration pack, installed from its folder.
 PACK_ID = "org.cilogg.example.protocol-pack"
 PACK_FOLDER = Path(__file__).resolve().parents[2] / "plugins/examples/protocol-pack"
-PACK_FIELDS = ("id", "kind", "version", "enabled", "error", "contents", "previews", "luaFiles",
-               "pythonDecoders")
+PACK_FIELDS = ("id", "kind", "version", "enabled", "error", "contents", "previews", "filters",
+               "luaFiles", "pythonDecoders")
 # E16a2: the example pack's preview in the store's canonical form ("Demo frame", encoded).
 PACK_PREVIEW = "previews/%44emo%20frame.json"
 PACK_EDITED = [{"path": PACK_PREVIEW, "kind": "preview", "item": "Demo frame", "state": "edited"}]
@@ -248,8 +248,8 @@ def exercise_repositories(cli, command, catalog, artifacts, run_python):
     compare_json("completed", installed["state"], "$.pack.install")
     command("plugin_manage", {"plugin_operation": "enable", "plugin_id": PACK_ID})
     expected_pack = {"id": PACK_ID, "kind": "config-pack", "version": "1.0.0", "enabled": True,
-                     "error": "", "contents": ["previews", "lua"], "previews": 1, "luaFiles": 2,
-                     "pythonDecoders": 0}
+                     "error": "", "contents": ["previews", "filters", "lua"], "previews": 1,
+                     "filters": 2, "luaFiles": 2, "pythonDecoders": 0}
     compare_json(expected_pack, pack_fields(cli("get_plugins")["plugins"]), "$.pack.cli")
     compare_json(expected_pack, pack_fields(command("get_plugins", {})["plugins"]), "$.pack.mcp")
     for name, refused in (
@@ -266,7 +266,8 @@ def exercise_repositories(cli, command, catalog, artifacts, run_python):
             row[0] == "Example protocol pack" for row in table.get("items", [])) else None)(
             ui_object(command, "pluginManagerTable")), 20, "gui_pack_row_missing")
     pack_row = next(row for row in installed_table["items"] if row[0] == "Example protocol pack")
-    compare_json("Previewers", pack_row[1], "$.pack.gui.kind")
+    # Previews and filters (E16c): more than one kind of content.
+    compare_json("Configuration pack", pack_row[1], "$.pack.gui.kind")
     report["gui"].append({"objectName": "pluginManagerTable", "pack": pack_row[1]})
 
     # E16a2: pack items are edited in place through the same operations on every surface, and

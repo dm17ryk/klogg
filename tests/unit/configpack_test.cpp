@@ -1,28 +1,37 @@
 // Configuration packs, slice E16a1 (docs/plugin-repositories.md sections 4.1-4.4).
 #include <catch2/catch.hpp>
 
+#include <QDialogButtonBox>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
-#include <QTemporaryDir>
+#include <QPushButton>
+#include <QSignalSpy>
+#include <QStandardItemModel>
 #include <QTableView>
+#include <QTableWidget>
+#include <QTemporaryDir>
 #include <QTemporaryFile>
 #include <QTest>
 #include <QToolButton>
 #include <algorithm>
+#include <tuple>
 
 #include "configpack.h"
 #include "importpreviewsdialog.h"
-#include "pluginrepository.h"
-#include "pluginsandpacks.h"
 #include "plugincatalog.h"
 #include "pluginmanager.h"
 #include "pluginmanifest.h"
+#include "pluginrepository.h"
+#include "pluginsandpacks.h"
+#include "predefinedfilters.h"
+#include "predefinedfilterscombobox.h"
+#include "predefinedfiltersdialog.h"
 #include "previewconfigparser.h"
-#include "previewdecodeutils.h"
 #include "previewdecodersettings.h"
+#include "previewdecodeutils.h"
 #include "previewmanager.h"
 #include "previewpackregistry.h"
 #include "previewservice.h"
@@ -249,6 +258,20 @@ TEST_CASE( "Configuration pack manifests follow the pack rules", "[plugins][E16]
         const auto aliased = withContent( withContent( valid, "actions", "defs/Rules.json" ),
                                           "filters", "defs/rules.json" );
         CHECK( manifestError( aliased ).contains( "differ only in case" ) );
+        // CILogg writes the filters file from the pack's filters (E16c): a file carried as it is
+        // may not be the same file, or it would replace them (Codex review of #165).
+        const auto filtersFile = QStringLiteral( "is the pack's filters file" );
+        CHECK( manifestError( withContent( withContent( valid, "actions", "defs/rules.conf" ),
+                                           "filters", "defs/rules.conf" ) )
+                   .contains( filtersFile ) );
+        CHECK( manifestError( withContent( withContent( valid, "highlights", "f.conf" ), "filters",
+                                           "f.conf" ) )
+                   .contains( filtersFile ) );
+        CHECK( manifestError( withContent( valid, "filters", "python/summary.py" ) )
+                   .contains( filtersFile ) );
+        CHECK( manifestError( withContent( withContent( valid, "actions", "a.json" ), "highlights",
+                                           "a.json" ) )
+                   .isEmpty() );
     }
     SECTION( "Python decoders need an id and a .py module" )
     {
@@ -292,9 +315,30 @@ TEST_CASE( "Configuration pack files are checked when the pack is read", "[plugi
     CHECK( summary.value( "previews" ).toInt() == 1 );
     CHECK( summary.value( "luaFiles" ).toInt() == 2 );
     CHECK( summary.value( "pythonDecoders" ).toInt() == 1 );
+    CHECK( summary.value( "filters" ).toInt() == 0 );
     CHECK( summary.value( "contents" ).toStringList()
            == QStringList{ "previews", "lua", "python_decoders" } );
 
+    SECTION( "a pack's predefined filters are counted (E16c)" )
+    {
+        auto withFilters = packManifest();
+        auto content = withFilters[ "content" ].toObject();
+        content[ "filters" ] = "filters.conf";
+        withFilters[ "content" ] = content;
+        writeFile( folder + "/plugin.json", QJsonDocument( withFilters ).toJson() );
+        writeFile( folder + "/filters.conf", "[PredefinedFiltersCollection]\nversion=3\n"
+                                             "filters\\size=2\n"
+                                             "filters\\1\\id=a\nfilters\\1\\name=A\n"
+                                             "filters\\1\\filter=a\nfilters\\1\\regex=true\n"
+                                             "filters\\2\\id=b\nfilters\\2\\name=B\n"
+                                             "filters\\2\\filter=b\nfilters\\2\\regex=false\n" );
+        const auto read = Manifest::read( folder );
+        REQUIRE( read.valid() );
+        const auto counted = packSummary( read.json, folder );
+        CHECK( counted.value( "filters" ).toInt() == 2 );
+        CHECK( counted.value( "contents" ).toStringList()
+               == QStringList{ "previews", "filters", "lua", "python_decoders" } );
+    }
     SECTION( "every Lua file of the folder is listed" )
     {
         writeFile( folder + "/lua/extra.lua", "-- not listed\n" );
@@ -332,6 +376,13 @@ TEST_CASE( "The example pack is a valid configuration pack", "[plugins][E16]" )
     CHECK( pack.previewRoutes.contains( "Demo frame" ) );
     const auto renamed = PreviewManager::namespaced( pack.previews );
     CHECK( !PreviewService::definitionsFor( renamed.previews, renamed.blocks ).isEmpty() );
+    // Its predefined filters (E16c), in the pack's order, with the pack's name.
+    REQUIRE( pack.filters.size() == 2 );
+    CHECK( pack.filters.first().filter.id == "cilogg-demo-frames" );
+    CHECK( pack.filters.first().filter.useRegex );
+    CHECK( !pack.filters.last().filter.useRegex );
+    CHECK( pack.filters.last().packName == "Example protocol pack" );
+    CHECK( packSummary( manifest.json, folder ).value( "filters" ).toInt() == 2 );
 }
 
 TEST_CASE( "Configuration packs have no process", "[plugins][E16]" )
@@ -949,4 +1000,217 @@ TEST_CASE( "The pack check refuses shared names and merged limits", "[previewdec
     CHECK( !findIn( PreviewManager::instance().effective(), "Pack frame" ) );
     CHECK( PreviewDecoderSettings::instance().packs().lua.isEmpty() );
     registry.attach( nullptr );
+}
+
+namespace {
+// A predefined filters file as CILogg exports it, with regex filters (id, name, pattern).
+QByteArray filtersFile( const QVector<std::tuple<QString, QString, QString>>& rows )
+{
+    QByteArray text = "[PredefinedFiltersCollection]\nversion=3\nfilters\\size="
+                      + QByteArray::number( rows.size() ) + "\n";
+    int index = 1;
+    for ( const auto& [ id, name, pattern ] : rows ) {
+        const auto prefix = "filters\\" + QByteArray::number( index++ ) + "\\";
+        text += prefix + "id=" + id.toUtf8() + "\n" + prefix + "name=" + name.toUtf8() + "\n"
+                + prefix + "filter=" + pattern.toUtf8() + "\n" + prefix + "regex=true\n";
+    }
+    return text;
+}
+
+// An installed pack with predefined filters only (E16c).
+QString writeFilterPack( const QString& root, const QString& id, const QByteArray& filters )
+{
+    auto manifest = packManifest( id, 0 );
+    for ( const auto* key : { "previews", "decoder_routes", "python_decoders" } ) {
+        manifest = withContent( manifest, QLatin1String( key ), QJsonValue::Undefined );
+    }
+    manifest = withContent( manifest, "filters", "filters.conf" );
+    const auto folder = QDir( root ).filePath( "plugins/" + id );
+    writeFile( folder + "/plugin.json", QJsonDocument( manifest ).toJson() );
+    writeFile( folder + "/filters.conf", filters );
+    return folder;
+}
+} // namespace
+
+TEST_CASE( "Pack filters join the predefined filters with the pack's name", "[plugins][E16]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    auto& collection = PredefinedFiltersCollection::getSynced();
+    const auto saved = collection.getFilters();
+    collection.saveToStorage(
+        { { "mine", "Mine", "mine", false }, { "f-two", "My reset", "my reset", true } } );
+    writeFilterPack(
+        root.path(), "a.pack",
+        filtersFile( { { "f-one", "Errors", "ERROR" }, { "f-two", "Reset", "reset" } } ) );
+    PluginManager manager( root.path(), QDir( root.path() ).filePath( "none" ) );
+    manager.discover();
+    auto& registry = PreviewPackRegistry::instance();
+    registry.attach( &manager );
+    QSignalSpy changed( &PackFilters::instance(), &PackFilters::changed );
+    REQUIRE( manager.manage( "enable", "a.pack", {} ).ok() );
+    CHECK( changed.count() >= 1 );
+    REQUIRE( registry.contributions().size() == 1 );
+    CHECK( registry.contributions().first().filters.size() == 2 );
+
+    // Yours first, then the pack's; your filter with a pack filter's id replaces it.
+    const auto effective = effectivePredefinedFilters( collection.getFilters() );
+    REQUIRE( effective.size() == 3 );
+    CHECK( effective.at( 0 ).filter.id == "mine" );
+    CHECK( effective.at( 1 ).filter.name == "My reset" );
+    CHECK( effective.at( 1 ).packId.isEmpty() );
+    CHECK( effective.at( 2 ).filter.id == "f-one" );
+    CHECK( effective.at( 2 ).packId == "a.pack" );
+    CHECK( effective.at( 2 ).packName == "Pack a.pack" );
+    // Your filters, saved and exported, never hold the pack's.
+    CHECK( PredefinedFiltersCollection::getSynced().getFilters().size() == 2 );
+
+    // The filter list offers them with the pack's name; Commander finds them by id and index.
+    {
+        PredefinedFiltersComboBox combo( nullptr );
+        REQUIRE( combo.filters().size() == 3 );
+        const auto listed = combo.commanderFilters();
+        REQUIRE( listed.size() == 3 );
+        CHECK( listed.at( 2 ).toMap().value( "packId" ) == "a.pack" );
+        CHECK( listed.at( 2 ).toMap().value( "packName" ) == "Pack a.pack" );
+        CHECK( !listed.at( 0 ).toMap().contains( "packId" ) );
+        CHECK( combo.commanderFilterById( "f-one" ).has_value() );
+        CHECK( combo.commanderFilterByIndex( 2 )->id == "f-one" );
+        auto* model = qobject_cast<QStandardItemModel*>( combo.model() );
+        REQUIRE( model );
+        REQUIRE( model->rowCount() == 4 ); // the title, then the filters
+        CHECK( model->item( 3 )->text() == "Errors (Pack a.pack)" );
+        CHECK( model->item( 1 )->text() == "Mine" );
+        // A list reloaded (a pack enabled, edited or updated) while the search uses its filters
+        // shows them ticked again when it opens (Codex review of #165).
+        combo.updateSearchPattern( "ERROR", false );
+        combo.showPopup();
+        CHECK( model->item( 3 )->checkState() == Qt::Checked );
+        combo.hidePopup();
+        combo.populatePredefinedFilters();
+        CHECK( model->item( 3 )->checkState() == Qt::Unchecked );
+        combo.showPopup();
+        CHECK( model->item( 3 )->checkState() == Qt::Checked );
+        combo.hidePopup();
+    }
+
+    // Two enabled packs never share a filter id, and your filters and the packs' together stay
+    // within 4,096.
+    const auto other
+        = writeFilterPack( root.path(), "b.pack", filtersFile( { { "f-one", "Other", "E" } } ) );
+    CHECK(
+        registry.check( "b.pack", other, Manifest::read( other ).json )
+            .contains(
+                "\"Pack b.pack\" and \"Pack a.pack\" both have a filter with the id \"f-one\"" ) );
+    {
+        QVector<std::tuple<QString, QString, QString>> many;
+        for ( int index = 0; index < 4093; ++index ) {
+            many.append( { QStringLiteral( "m%1" ).arg( index ), "M", "m" } );
+        }
+        const auto large = writeFilterPack( root.path(), "c.pack", filtersFile( many ) );
+        CHECK( registry.check( "c.pack", large, Manifest::read( large ).json )
+                   .contains( "would make 4097 predefined filters (at most 4096" ) );
+        many.removeLast();
+        const auto fits = writeFilterPack( root.path(), "c.pack", filtersFile( many ) );
+        CHECK( registry.check( "c.pack", fits, Manifest::read( fits ).json ).isEmpty() );
+    }
+
+    // The Filters dialog: your filters, then the pack's with its name, read only and never saved.
+    {
+        PredefinedFiltersDialog dialog;
+        auto* table = dialog.findChild<QTableWidget*>( "filtersTableWidget" );
+        REQUIRE( table );
+        REQUIRE( table->rowCount() == 4 );
+        CHECK( table->item( 2, 0 )->text() == "Errors" );
+        CHECK( table->item( 2, 3 )->text() == "Pack a.pack" );
+        CHECK( table->item( 3, 3 )->text() == "Pack a.pack (replaced by your filter)" );
+        CHECK( !( table->item( 2, 0 )->flags() & Qt::ItemIsEditable ) );
+        CHECK( !( table->item( 2, 1 )->flags() & Qt::ItemIsEditable ) );
+        auto* copy = dialog.findChild<QToolButton*>( "copyPackFilterButton" );
+        auto* edit = dialog.findChild<QToolButton*>( "editPackFilterButton" );
+        auto* packs = dialog.findChild<QToolButton*>( "packsButton" );
+        auto* remove = dialog.findChild<QToolButton*>( "removeFilterButton" );
+        REQUIRE( ( copy && edit && packs && remove ) );
+        // Edit... and Packs... appear once the main window gives them something to open.
+        CHECK( edit->isHidden() );
+        CHECK( packs->isHidden() );
+        QString editedPack;
+        QString editedPath;
+        dialog.setPackItemEditor( [ & ]( QWidget*, const QString& pack, const QString& path ) {
+            editedPack = pack;
+            editedPath = path;
+        } );
+        int packsOpened = 0;
+        dialog.setPacksOpener( [ &packsOpened ] { ++packsOpened; } );
+        CHECK( !edit->isHidden() );
+        CHECK( !packs->isHidden() );
+        packs->click();
+        CHECK( packsOpened == 1 );
+
+        table->setCurrentCell( 2, 0 );
+        CHECK( copy->isEnabled() );
+        CHECK( edit->isEnabled() );
+        CHECK( !remove->isEnabled() );
+        edit->click();
+        CHECK( editedPack == "a.pack" );
+        CHECK( editedPath == "filters/f-one.json" );
+        // A pack filter your filter replaces is neither copied nor edited.
+        table->setCurrentCell( 3, 0 );
+        CHECK( !copy->isEnabled() );
+        CHECK( !edit->isEnabled() );
+        table->setCurrentCell( 0, 0 );
+        CHECK( remove->isEnabled() );
+        CHECK( !copy->isEnabled() );
+
+        // Copy to My Filters: your filter with the pack filter's id, which replaces it.
+        table->setCurrentCell( 2, 0 );
+        copy->click();
+        REQUIRE( table->rowCount() == 5 );
+        CHECK( table->item( 2, 0 )->text() == "Errors" );
+        CHECK( table->item( 2, 3 )->text().isEmpty() );
+        CHECK( table->item( 3, 3 )->text() == "Pack a.pack (replaced by your filter)" );
+        dialog.findChild<QDialogButtonBox*>( "buttonBox" )
+            ->button( QDialogButtonBox::Apply )
+            ->click();
+        const auto mine = PredefinedFiltersCollection::getSynced().getFilters();
+        REQUIRE( mine.size() == 3 );
+        CHECK( mine.at( 2 ).id == "f-one" );
+        CHECK( mine.at( 2 ).pattern == "ERROR" );
+        CHECK( mine.at( 2 ).useRegex );
+    }
+
+    // Your own filters are not limited: grown past 4,096 with the packs' (enabling was checked),
+    // the packs' filters give way in the lists, never yours (Codex review of #165).
+    {
+        const auto before = collection.getFilters();
+        QList<PredefinedFilter> many;
+        for ( int index = 0; index < MaxListedFilters - 1; ++index ) {
+            many.append( { QStringLiteral( "u%1" ).arg( index ), "U", "u", false } );
+        }
+        collection.saveToStorage( many ); // 4,095 of yours and the pack's 2: 4,097
+        CHECK( packFiltersGiveWay( many ) );
+        CHECK( effectivePredefinedFilters( many ).size() == MaxListedFilters - 1 );
+        PredefinedFiltersComboBox combo( nullptr );
+        CHECK( combo.filters().size() == MaxListedFilters - 1 );
+        PredefinedFiltersDialog dialog;
+        auto* table = dialog.findChild<QTableWidget*>( "filtersTableWidget" );
+        REQUIRE( table->rowCount() == MaxListedFilters + 1 );
+        CHECK( table->item( MaxListedFilters - 1, 3 )->text()
+               == "Pack a.pack (not listed: more than 4096 filters)" );
+        many.removeLast(); // 4,094 and 2: they fit again
+        CHECK( !packFiltersGiveWay( many ) );
+        CHECK( effectivePredefinedFilters( many ).size() == MaxListedFilters );
+        collection.saveToStorage( before );
+    }
+
+    // Disabled, the pack's filters are gone from the list.
+    changed.clear();
+    REQUIRE( manager.manage( "disable", "a.pack", {} ).ok() );
+    CHECK( changed.count() >= 1 );
+    CHECK( PackFilters::instance().filters().isEmpty() );
+    CHECK(
+        effectivePredefinedFilters( PredefinedFiltersCollection::getSynced().getFilters() ).size()
+        == 3 );
+    registry.attach( nullptr );
+    collection.saveToStorage( saved );
 }

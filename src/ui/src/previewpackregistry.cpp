@@ -11,6 +11,7 @@
 
 #include "configpack.h"
 #include "log.h"
+#include "packcanonical.h"
 #include "pluginmanager.h"
 #include "previewconfigparser.h"
 #include "previewdecodersettings.h"
@@ -152,6 +153,35 @@ PreviewPackRegistry::Contribution PreviewPackRegistry::read( const QString& id,
         pack.previews.previews = parsed.previews;
         pack.previews.blocks = parsed.blocks;
     }
+    if ( !content.filters.isEmpty() ) {
+        QFile file( QDir( directory ).filePath( content.filters ) );
+        QString error;
+        const auto items = file.open( QIODevice::ReadOnly )
+                               ? cilogg::plugins::packcanonical::fromFilters(
+                                     file.read( cilogg::plugins::MaxPackFileBytes ), &error )
+                               : cilogg::plugins::PackFiles{};
+        if ( !error.isEmpty() || !file.isOpen() ) {
+            pack.error = QObject::tr( "The pack's filters cannot be read: %1" )
+                             .arg( error.isEmpty() ? file.errorString() : error );
+            return pack;
+        }
+        // In the pack's order (filters/order.txt lists every filter once).
+        const auto order = QString::fromUtf8( items.value( QStringLiteral( "filters/order.txt" ) ) )
+                               .split( '\n', Qt::SkipEmptyParts );
+        for ( const auto& filterId : order ) {
+            const auto item
+                = QJsonDocument::fromJson(
+                      items.value(
+                          QStringLiteral( "filters/%1.json" )
+                              .arg( cilogg::plugins::packcanonical::encodeName( filterId ) ) ) )
+                      .object();
+            pack.filters.append( { { filterId, item.value( "name" ).toString(),
+                                     item.value( "filter" ).toString(),
+                                     item.value( "regex" ).toBool( true ) },
+                                   id,
+                                   packLabel( pack ) } );
+        }
+    }
     pack.luaFiles = content.luaFiles( directory );
     pack.previewRoutes = content.previewRoutes.toVariantMap();
     pack.protocolRoutes = content.protocolRoutes.toVariantMap();
@@ -200,6 +230,8 @@ void PreviewPackRegistry::refresh()
     cache_.clear();
     QVector<PreviewPackSource> previews;
     PreviewDecoderPacks decoder;
+    QList<ListedFilter> filters;
+    QSet<QString> filterIds;
     for ( const auto& pack : packs ) {
         cache_.insert( pack.id, pack );
         if ( !pack.error.isEmpty() ) {
@@ -208,6 +240,14 @@ void PreviewPackRegistry::refresh()
             continue;
         }
         previews.append( pack.previews );
+        // Between packs there is no precedence; the pack check refuses a shared filter id, so a
+        // repeated one (a check bypassed) keeps the first pack's filter only.
+        for ( const auto& listed : pack.filters ) {
+            if ( !filterIds.contains( listed.filter.id ) ) {
+                filterIds.insert( listed.filter.id );
+                filters.append( listed );
+            }
+        }
         if ( !pack.luaFiles.isEmpty() ) {
             decoder.lua.append( QVariantMap{ { "id", pack.id }, { "files", pack.luaFiles } } );
         }
@@ -241,6 +281,7 @@ void PreviewPackRegistry::refresh()
     // The decoder first, so the preview definitions rebuilt next carry its new revision.
     PreviewDecoderSettings::instance().setPacks( decoder );
     PreviewManager::instance().setPackPreviews( previews );
+    PackFilters::instance().setFilters( filters );
 }
 
 QString PreviewPackRegistry::copyPreview( const QString& name, const QString& copyName )
@@ -413,6 +454,31 @@ QString PreviewPackRegistry::check( const QString& id, const QString& directory,
                     .arg( packLabel( candidate ), packLabel( other ), preview.name );
             }
         }
+    }
+    // Filters: no id shared with another enabled pack, and the user's filters and every enabled
+    // pack's together within the limit (design 4.5).
+    auto filterCount
+        = PredefinedFiltersCollection::getSynced().getFilters().size() + candidate.filters.size();
+    QHash<QString, const Contribution*> filterOwners; // id -> the enabled pack that has it
+    for ( const auto& other : others ) {
+        for ( const auto& listed : other.filters ) {
+            filterOwners.insert( listed.filter.id, &other );
+        }
+        filterCount += other.filters.size();
+    }
+    for ( const auto& listed : candidate.filters ) {
+        if ( const auto* owner = filterOwners.value( listed.filter.id ) ) {
+            return tr( "The packs \"%1\" and \"%2\" both have a filter with the id \"%3\". "
+                       "Disable one of them first." )
+                .arg( packLabel( candidate ), packLabel( *owner ), listed.filter.id );
+        }
+    }
+    if ( filterCount > FilterLimit ) {
+        return tr( "Enabling \"%1\" would make %2 predefined filters (at most %3, your own "
+                   "included)." )
+            .arg( packLabel( candidate ) )
+            .arg( filterCount )
+            .arg( FilterLimit );
     }
     // Routes: the same key in two packs, and the merged lists within the decoder's limits.
     const auto user = PreviewDecoderSettings::instance().configuration();

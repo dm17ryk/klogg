@@ -31,6 +31,9 @@ public:
     QString actionSource() const;
     // The text editor of one item of a configuration pack (design 4.6).
     void editPackItem( QWidget* parent, const QString& packId, const QString& path );
+    // Packs... in a window of pack items (E16c): the Plugins and Packs window at its Installed
+    // tab, over `parent` (a modal dialog would otherwise keep it from taking input).
+    void openPacks( QWidget* parent );
     // E17b: this window's plugin menus, context menu sections and shortcuts.
     PluginMenus* menus() const
     {
@@ -60,8 +63,9 @@ private:
     void refreshUpdates();
     QIcon iconFor( const QVariantMap& plugin, const QJsonObject& item,
                    QStyle::StandardPixmap fallback );
-    // Opens (or raises) the one Plugins and Packs window at `tab`.
-    void openPluginsWindow( PluginsTab tab );
+    // Opens (or raises) the one Plugins and Packs window at `tab`, a window of `parent` (the main
+    // window when null; an open window of another parent is closed and made again).
+    void openPluginsWindow( PluginsTab tab, QWidget* parent = nullptr );
     QWidget* createInstalledTab( QWidget* parent );
     void openGuide();
     void invoke( const QString& pluginId, const QJsonObject& action );
