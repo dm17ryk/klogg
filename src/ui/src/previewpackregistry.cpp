@@ -646,8 +646,13 @@ QString PreviewPackRegistry::check( const QString& id, const QString& directory,
         actionCount += other.actions.size();
         responseCount += other.responses.size();
     }
-    if ( actionCount > MaxListedActionItems || responseCount > MaxListedActionItems ) {
-        const bool actions = actionCount > MaxListedActionItems;
+    // A pack that brings none of a kind is not refused over it (the user's own may pass the limit,
+    // and then the packs' give way).
+    const bool tooManyActions = !candidate.actions.isEmpty() && actionCount > MaxListedActionItems;
+    const bool tooManyResponses
+        = !candidate.responses.isEmpty() && responseCount > MaxListedActionItems;
+    if ( tooManyActions || tooManyResponses ) {
+        const bool actions = tooManyActions;
         return tr( "Enabling \"%1\" would make %2 %3 (at most %4, your own included)." )
             .arg( packLabel( candidate ) )
             .arg( actions ? actionCount : responseCount )

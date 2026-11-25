@@ -872,10 +872,15 @@ points a pack response's links at its own pack's run-time ids, and sets whether 
 `responses()` stay the user's own (saved, exported, put in project snapshots); `findActionById`,
 `findResponseById` and `findResponseByName` look at the user's first, then the packs';
 `effectiveResponses()` (the user's, then the packs') is what a session matches lines against and
-counts. The user's items cannot be created or imported with an id from 1,000,000, and an update,
-delete or move of a pack's item is refused with its `<pack-id>/<local-id>`. The pack check refuses
-more than 4,096 actions or responses with the user's; when the user's grow past that, the packs'
-give way (not listed). The Actions and Responses windows list the packs' items after the user's
+counts. The user's items cannot be created or imported with an id from 1,000,000 (a new one takes
+a free id below it), a pack item's run-time id is never one of the user's (an older CILogg let
+those reach the range), and an update, delete or move of a pack's item is refused with its
+`<pack-id>/<local-id>`. A step of the user's response that runs a pack action also names it
+(`pack_action`: `<pack-id>/<local-id>`), so the user's file, Actions exports and project
+snapshots keep that response and an import runs that pack's action under its run-time id there;
+while no enabled pack has it, the step runs nothing and keeps the name (an import says so). The
+pack check refuses more than 4,096 actions or responses with the user's, only for a pack that
+brings items of that kind; when the user's grow past that, the packs' give way (not listed). The Actions and Responses windows list the packs' items after the user's
 as "<name> (<pack name>)", read only (Duplicate, Delete and Move disabled), with the pack and its
 `<pack-id>/<local-id>` in the tooltip: **Edit** opens the pack item editor on `actions/<id>.json`
 or `responses/<id>.json`, **Copy to My Actions** and **Copy to My Responses** call

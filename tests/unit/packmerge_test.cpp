@@ -842,6 +842,16 @@ TEST_CASE( "Pack actions and responses have a canonical one-item-per-file form",
         { "a step running an action of another file",
           linking( QJsonObject{ { "steps", QJsonArray{ QJsonObject{ { "action_id", 9 } } } } } ) },
         { "a link that is not a number", linking( QJsonObject{ { "action_id", "7" } } ) },
+        // Only -1 (no action) is not an action of the file, and only as the response's own link:
+        // CILogg drops a step that runs none, so the pack would change (Codex review of #176).
+        { "a link below -1", linking( QJsonObject{ { "action_id", -2 }, { "comment", "x" } } ) },
+        { "a step that runs no action",
+          linking( QJsonObject{ { "steps", QJsonArray{ QJsonObject{ { "action_id", -1 } } } },
+                                { "comment", "x" } } ) },
+        { "a step naming another pack's action",
+          linking( QJsonObject{
+              { "steps", QJsonArray{ QJsonObject{ { "action_id", 7 },
+                                                  { "pack_action", "b.pack/1" } } } } } ) },
     };
     for ( const auto& [ why, bytes ] : bad ) {
         INFO( why );

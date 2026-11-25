@@ -1216,7 +1216,9 @@ packs](plugin-repositories.md) section 4). The example is
 - `actions` (E16c3) is the JSON file **Export** in the Actions window writes: `version` 1, 3 or 4
   (or none), an `actions` and a `responses` list, nothing else and no comments. Every action and
   every response needs a whole-number `id` from 0, unique in its list (actions and responses have
-  ids of their own), and a name, and a response runs only actions of the same file; at most 4,096
+  ids of their own), and a name, and a response runs only actions of the same file (its
+  `action_id` may be -1 for none; every step names an action of the file, and none has a
+  `pack_action`); at most 4,096
   actions and 4,096 responses, and each must be one CILogg would accept as yours. In CILogg each
   item gets a run-time id from 1,000,000 (assigned once and kept in your settings) and is named
   `<pack-id>/<local-id>` on every PC: Commander's `entityId` (or `entityKey`), the CLI's `--id` and
@@ -1229,7 +1231,10 @@ packs](plugin-repositories.md) section 4). The example is
   responses and all enabled packs' stay within 4,096 of each kind: enabling or updating a pack past
   that is refused, and when your own grow past it the packs' are not listed. `get_actions` and
   `get_responses` list pack items after yours with `packId`, `packName`, `localId` and
-  `namespacedId`. Exports and project snapshots contain your items only.
+  `namespacedId`. Exports and project snapshots contain your items only; a step of your response
+  that runs a pack action carries its name (`"pack_action": "<pack-id>/<local-id>"`) next to the
+  run-time `action_id`, so an import on another PC runs that pack's action there (or nothing,
+  with a warning, until that pack is enabled).
 - A filters, highlighters or actions file that is not exactly what Export writes is refused when a
   pack is installed, updated or enabled. A pack enabled before E16c may still carry one: its other
   content applies, that file's items are left out, and `get_plugins` says why in

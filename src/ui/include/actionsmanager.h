@@ -114,10 +114,17 @@ class ActionsManager : public QObject {
     // range), or an empty string.
     QString packItemRefusal( int id, bool response ) const;
     bool validateResponseLinks( const ResponseDefinition& response, QString* errorMessage ) const;
+    // A response of the user's that runs pack actions: each such step names its action
+    // ("<pack-id>/<local-id>") and runs that action's run-time id here, or nothing while no
+    // enabled pack has it. Returns the names it could not find.
+    QStringList linkPackSteps( ResponseDefinition* response ) const;
+    // Gives the enabled packs' items their run-time ids (never one of the user's).
+    void applyPackItems();
 
     ActionsRepository repository_;
     QVector<ActionDefinition> actions_;
     QVector<ResponseDefinition> responses_;
+    QVector<PackActionItems> packSources_;
     QVector<ListedAction> packActions_;
     QVector<ListedResponse> packResponses_;
     bool autoResponsesEnabled_ = true;

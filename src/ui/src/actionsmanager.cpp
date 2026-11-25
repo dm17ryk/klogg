@@ -1,6 +1,7 @@
 #include "actionsmanager.h"
 
 #include <QHash>
+#include <QSet>
 #include <QSettings>
 #include <algorithm>
 #include <utility>
@@ -11,15 +12,30 @@
 #include "startupprogress.h"
 
 namespace {
+// The next id of the user's: after the highest, or the lowest free one once that would reach the
+// ids kept for configuration packs (PackItemIdBase when there is none).
 template <typename Definition>
 int nextDefinitionId( const QVector<Definition>& definitions )
 {
     int maxId = 0;
+    QSet<int> used;
     for ( const auto& definition : definitions ) {
         maxId = qMax( maxId, definition.id );
+        used.insert( definition.id );
     }
-    return maxId + 1;
+    if ( maxId + 1 < PackItemIdBase ) {
+        return maxId + 1;
+    }
+    for ( int id = 1; id < PackItemIdBase; ++id ) {
+        if ( !used.contains( id ) ) {
+            return id;
+        }
+    }
+    return PackItemIdBase;
 }
+
+// The run-time id of a step whose pack action no enabled pack has: it runs nothing.
+constexpr int UnresolvedPackAction = -2;
 
 void setError( QString* errorMessage, const QString& message )
 {
@@ -38,19 +54,26 @@ QString packKey( const QString& packId, const char* what, int localId )
 
 // A pack item's run-time id: the one kept in the settings, else the next free one, kept from now
 // on, so a scenario or a response of the user's that names it finds it after a restart, an update
-// or a disable and enable.
-int packItemId( QSettings& settings, const QString& packId, bool response, int localId )
+// or a disable and enable. Never one in `taken` (the user's ids of that kind, as an older CILogg
+// let them reach the range, and the ids given in this pass): such a kept id is given again.
+int packItemId( QSettings& settings, const QString& packId, bool response, int localId,
+                QSet<int>* taken )
 {
     const auto key = packKey( packId, response ? "responses" : "actions", localId );
     bool ok = false;
     const auto kept = settings.value( key ).toInt( &ok );
-    if ( ok && kept >= PackItemIdBase ) {
+    if ( ok && kept >= PackItemIdBase && !taken->contains( kept ) ) {
+        taken->insert( kept );
         return kept;
     }
-    const auto next
+    auto next
         = qMax( settings.value( QStringLiteral( "PackActions/nextId" ) ).toInt(), PackItemIdBase );
+    while ( taken->contains( next ) ) {
+        ++next;
+    }
     settings.setValue( key, next );
     settings.setValue( QStringLiteral( "PackActions/nextId" ), next + 1 );
+    taken->insert( next );
     return next;
 }
 
@@ -87,6 +110,12 @@ bool ActionsManager::validateResponseLinks( const ResponseDefinition& response,
 {
     // The user's actions and the listed packs' (a response of the user's may run a pack action).
     for ( const auto& step : response.response.steps ) {
+        if ( !step.packAction.isEmpty() && step.actionId == UnresolvedPackAction ) {
+            setError( errorMessage, QObject::tr( "Response runs the pack action %1, which no "
+                                                 "enabled pack has." )
+                                        .arg( step.packAction ) );
+            return false;
+        }
         if ( findActionById( step.actionId ) == nullptr ) {
             setError( errorMessage,
                       QObject::tr( "Response linked action id %1 was not found." ).arg( step.actionId ) );
@@ -103,6 +132,28 @@ bool ActionsManager::validateResponseLinks( const ResponseDefinition& response,
     }
 
     return true;
+}
+
+QStringList ActionsManager::linkPackSteps( ResponseDefinition* response ) const
+{
+    QStringList missing;
+    auto& run = response->response;
+    for ( auto& step : run.steps ) {
+        if ( !step.packAction.isEmpty() ) {
+            const auto id = resolvePackAction( step.packAction );
+            step.actionId = id.value_or( UnresolvedPackAction );
+            if ( !id ) {
+                missing.append( step.packAction );
+            }
+        }
+        else if ( const auto* listed = packAction( step.actionId ) ) {
+            step.packAction = namespacedItemId( listed->packId, listed->localId );
+        }
+    }
+    if ( !run.steps.isEmpty() ) {
+        run.actionId = run.steps.front().actionId;
+    }
+    return missing;
 }
 
 QString ActionsManager::packItemRefusal( int id, bool response ) const
@@ -143,6 +194,8 @@ void ActionsManager::loadFromRepository()
     responses_ = result.responses;
     normalizeActionDefinitions( &actions_ );
     normalizeResponseDefinitions( &responses_ );
+    // An older CILogg let the user's ids reach the packs' range: the packs' never take them.
+    applyPackItems();
     for ( const auto& action : actions_ ) {
         StartupProgress::advance( QObject::tr( "Loading action" ), action.name );
     }
@@ -186,6 +239,16 @@ ActionsImportResult ActionsManager::importFromDefinitions(
     }
     normalizeActionDefinitions( &actions );
     normalizeResponseDefinitions( &responses );
+    // A response that runs a pack action names it: it runs that action of the pack here (another
+    // PC gives it another run-time id), or nothing while no enabled pack has it.
+    for ( auto& response : responses ) {
+        for ( const auto& missing : linkPackSteps( &response ) ) {
+            result.warnings.push_back( tr( "Response \"%1\" runs the pack action %2, which no "
+                                           "enabled pack has: it runs nothing until that pack is "
+                                           "enabled." )
+                                           .arg( response.name, missing ) );
+        }
+    }
     if ( !repository_.save( actions, responses ) ) {
         result.errors.push_back( tr( "Failed to save actions to settings." ) );
         return result;
@@ -212,7 +275,7 @@ ActionsImportResult ActionsManager::importFromFile( const QString& path )
 
     auto imported = importFromDefinitions( std::move( parsed.actions ),
                                            std::move( parsed.responses ) );
-    imported.warnings = result.warnings;
+    imported.warnings = result.warnings + imported.warnings;
     return imported;
 }
 
@@ -444,6 +507,7 @@ bool ActionsManager::createResponse( ResponseDefinition response, QString* error
         return false;
     }
     response.order = static_cast<int>( responses_.size() );
+    linkPackSteps( &response );
     if ( !validateResponseDefinition( response, errorMessage ) ) {
         return false;
     }
@@ -486,6 +550,7 @@ bool ActionsManager::updateResponse( int id, ResponseDefinition response, QStrin
 
     response.id = id;
     response.order = it->order;
+    linkPackSteps( &response );
     if ( !validateResponseDefinition( response, errorMessage ) ) {
         return false;
     }
@@ -620,14 +685,28 @@ void ActionsManager::setAutoResponsesEnabled( bool enabled )
 
 void ActionsManager::setPackItems( const QVector<PackActionItems>& packs )
 {
+    packSources_ = packs;
+    applyPackItems();
+}
+
+void ActionsManager::applyPackItems()
+{
     auto& settings = PersistentInfo::getSettings( app_settings{} );
     QVector<ListedAction> actions;
     QVector<ListedResponse> responses;
-    for ( const auto& pack : packs ) {
+    QSet<int> actionIds; // the user's and those given: a pack item never takes one
+    QSet<int> responseIds;
+    for ( const auto& action : actions_ ) {
+        actionIds.insert( action.id );
+    }
+    for ( const auto& response : responses_ ) {
+        responseIds.insert( response.id );
+    }
+    for ( const auto& pack : packSources_ ) {
         QHash<int, int> runtime; // the pack's action id -> its run-time id
         for ( const auto& action : pack.actions ) {
             ListedAction listed{ action, pack.packId, pack.packName, action.id };
-            listed.action.id = packItemId( settings, pack.packId, false, action.id );
+            listed.action.id = packItemId( settings, pack.packId, false, action.id, &actionIds );
             runtime.insert( action.id, listed.action.id );
             actions.append( listed );
         }
@@ -636,13 +715,15 @@ void ActionsManager::setPackItems( const QVector<PackActionItems>& packs )
         const auto relink = [ &runtime ]( int localId ) { return runtime.value( localId, -1 ); };
         for ( const auto& response : pack.responses ) {
             ListedResponse listed{ response, pack.packId, pack.packName, response.id };
-            listed.response.id = packItemId( settings, pack.packId, true, response.id );
+            listed.response.id
+                = packItemId( settings, pack.packId, true, response.id, &responseIds );
             auto& run = listed.response.response;
             if ( run.hasActionId && run.actionId >= 0 ) {
                 run.actionId = relink( run.actionId );
             }
             for ( auto& step : run.steps ) {
                 step.actionId = relink( step.actionId );
+                step.packAction.clear();
             }
             // Every pack response starts off: it sends to a device without a click.
             listed.response.enabled
@@ -652,6 +733,11 @@ void ActionsManager::setPackItems( const QVector<PackActionItems>& packs )
     }
     packActions_ = std::move( actions );
     packResponses_ = std::move( responses );
+    // The user's responses that run pack actions follow (the packs' run-time ids, or nothing while
+    // a pack is disabled); what is saved keeps their names.
+    for ( auto& response : responses_ ) {
+        linkPackSteps( &response );
+    }
     LOG_INFO << "Pack actions applied actions=" << packActions_.size()
              << " responses=" << packResponses_.size();
     if ( actions_.size() + packActions_.size() > MaxListedActionItems
@@ -792,7 +878,7 @@ std::optional<int> ActionsManager::copyPackResponse( int id, QString* errorMessa
     }
     // The pack actions it runs become the user's too, so the copy runs the user's own actions.
     auto updatedActions = actions_;
-    auto nextAction = nextActionId();
+    bool idsLeft = true;
     QHash<int, int> copies; // pack action run-time id -> its copy's id
     const auto copyLink = [ & ]( int actionId ) {
         const auto* action = actionId >= 0 ? packAction( actionId ) : nullptr;
@@ -801,7 +887,8 @@ std::optional<int> ActionsManager::copyPackResponse( int id, QString* errorMessa
         }
         if ( !copies.contains( actionId ) ) {
             auto copy = action->action;
-            copy.id = nextAction++;
+            copy.id = nextDefinitionId( updatedActions );
+            idsLeft = idsLeft && copy.id < PackItemIdBase;
             copy.order = static_cast<int>( updatedActions.size() );
             updatedActions.push_back( copy );
             copies.insert( actionId, copy.id );
@@ -815,12 +902,13 @@ std::optional<int> ActionsManager::copyPackResponse( int id, QString* errorMessa
     }
     for ( auto& step : run.steps ) {
         step.actionId = copyLink( step.actionId );
+        step.packAction.clear();
     }
     response.id = nextResponseId();
     response.order = static_cast<int>( responses_.size() );
     // The copy starts off, as the pack's response did: while both are on, both would answer.
     response.enabled = false;
-    if ( nextAction > PackItemIdBase || response.id >= PackItemIdBase ) {
+    if ( !idsLeft || response.id >= PackItemIdBase ) {
         setError( errorMessage, tr( "There is no free id below %1." ).arg( PackItemIdBase ) );
         return std::nullopt;
     }

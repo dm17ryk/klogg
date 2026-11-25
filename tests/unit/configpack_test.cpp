@@ -30,9 +30,11 @@
 
 #include "actionsconfigparser.h"
 #include "actionsmanager.h"
+#include "actionsrepository.h"
 #include "actionsresponseswindow.h"
 #include "actionstablemodel.h"
 #include "configpack.h"
+#include "configurationexport.h"
 #include "highlightersdialog.h"
 #include "highlighterset.h"
 #include "highlightersmenu.h"
@@ -1900,6 +1902,22 @@ TEST_CASE( "A pack's actions must be ones CILogg runs, within the action limits"
     CHECK( actions.packActions().isEmpty() );
     CHECK( actions.findActionById( fits ) == nullptr );
     CHECK( actions.effectiveResponses().isEmpty() );
+    actions.setPackItems( {} );
+
+    // Past the limit with the user's own, a pack that brings no actions is not refused over them
+    // (Codex review of #176); one that brings some is.
+    many.append( userAction( MaxListedActionItems ) );
+    many.append( userAction( MaxListedActionItems + 1 ) );
+    REQUIRE( actions.importFromDefinitions( many, {} ).ok );
+    QTemporaryDir other;
+    REQUIRE( other.isValid() );
+    const auto previewsOnly = writePack( other.path(), packManifest() );
+    CHECK( PreviewPackRegistry::instance()
+               .check( PackId, previewsOnly, Manifest::read( previewsOnly ).json )
+               .isEmpty() );
+    CHECK( PreviewPackRegistry::instance()
+               .check( "a.pack", folder, Manifest::read( folder ).json )
+               .contains( "actions" ) );
 }
 
 namespace {
@@ -2006,4 +2024,95 @@ TEST_CASE( "The Actions window lists pack items read only, copies them and turns
     responsesTable->selectRow( 2 );
     button( "editResponseButton" )->click();
     CHECK( edited.last() == "a.pack:responses/3.json" );
+}
+
+TEST_CASE( "Pack run-time ids never take the user's, and the user's ids stay below them",
+           "[plugins][E16]" )
+{
+    // Codex review of #176: an older CILogg let the user's ids reach 1,000,000.
+    ScopedPackActions restore;
+    auto& actions = ActionsManager::instance();
+    REQUIRE( ActionsRepository{}.save( { userAction( PackItemIdBase, "Mine, old" ),
+                                         userAction( PackItemIdBase - 1, "Mine, high" ) },
+                                       {} ) );
+    actions.loadFromRepository();
+    REQUIRE( actions.actions().size() == 2 );
+    // A run-time id kept from before that a user's item has now is given again.
+    PersistentInfo::getSettings( app_settings{} )
+        .setValue( "PackActions/a.pack/actions/7", PackItemIdBase );
+    actions.setPackItems( { { "a.pack", "Pack A", { userAction( 7, "Pack seven" ) }, {} } } );
+    REQUIRE( actions.packActions().size() == 1 );
+    const auto seven = actions.packActions().first().action.id;
+    CHECK( seven > PackItemIdBase );
+    CHECK( actions.findActionById( PackItemIdBase )->name == "Mine, old" );
+    CHECK( actions.findActionById( seven )->name == "Pack seven" );
+    CHECK( actions.resolvePackAction( "a.pack/7" ) == seven );
+    // The user's next id is a free one below the packs' range.
+    CHECK( actions.nextActionId() == 1 );
+    QString error;
+    REQUIRE( actions.createAction( userAction( 0, "New" ), &error ) );
+    CHECK( actions.findActionById( 1 )->name == "New" );
+    const auto copy = actions.copyPackAction( seven, &error );
+    REQUIRE( copy );
+    CHECK( *copy == 2 );
+}
+
+TEST_CASE( "A response of the user's that runs a pack action names it, so it is exported and "
+           "imported",
+           "[plugins][E16]" )
+{
+    // Codex review of #176: the export kept only responses whose actions were exported with them.
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    ScopedPackActions restore;
+    auto& actions = ActionsManager::instance();
+    REQUIRE( actions.importFromDefinitions( { userAction( 1 ) }, {} ).ok );
+    const auto parsed = ActionsConfigParser().parseJson( PackActionsJson );
+    REQUIRE( parsed.errors.isEmpty() );
+    const PackActionItems pack{ "a.pack", "Pack A", parsed.actions, parsed.responses };
+    actions.setPackItems( { pack } );
+    const auto status = actions.resolvePackAction( "a.pack/7" );
+    REQUIRE( status );
+    QString error;
+    REQUIRE( actions.createResponse( userResponse( 2, *status ), &error ) );
+    REQUIRE( actions.findResponseById( 2 ) != nullptr );
+    CHECK( actions.findResponseById( 2 )->response.steps.first().packAction == "a.pack/7" );
+
+    // The export keeps it, with the name of the pack action it runs.
+    const auto path = root.filePath( "mine.json" );
+    REQUIRE( ConfigurationExport::exportSelected( ConfigurationExportKind::Actions, { 0 }, path,
+                                                  &error ) );
+    const auto exported = ActionsConfigParser().parseFile( path );
+    REQUIRE( exported.responses.size() == 1 );
+    CHECK( exported.responses.first().response.steps.first().packAction == "a.pack/7" );
+
+    // Elsewhere (other run-time ids) the name finds the pack's action, also for the user's own.
+    PersistentInfo::getSettings( app_settings{} ).remove( "PackActions" );
+    PersistentInfo::getSettings( app_settings{} )
+        .setValue( "PackActions/nextId", PackItemIdBase + 500 );
+    actions.setPackItems( { pack } );
+    const auto elsewhere = actions.resolvePackAction( "a.pack/7" );
+    REQUIRE( elsewhere );
+    CHECK( *elsewhere != *status );
+    CHECK( actions.findResponseById( 2 )->response.steps.first().actionId == *elsewhere );
+    const auto imported = actions.importFromFile( path );
+    REQUIRE( imported.ok );
+    CHECK( imported.warnings.isEmpty() );
+    CHECK( actions.findResponseById( 2 )->response.steps.first().actionId == *elsewhere );
+
+    // Without the pack it runs nothing, keeps the name, and says so on import.
+    actions.setPackItems( {} );
+    CHECK( actions.findActionById( actions.findResponseById( 2 )->response.steps.first().actionId )
+           == nullptr );
+    CHECK( actions.findResponseById( 2 )->response.steps.first().packAction == "a.pack/7" );
+    const auto without = actions.importFromFile( path );
+    REQUIRE( without.ok );
+    REQUIRE( without.warnings.size() == 1 );
+    CHECK( without.warnings.first().contains( "a.pack/7" ) );
+    auto runsPack = userResponse( 3, 1 );
+    runsPack.response.steps.first().packAction = "a.pack/7";
+    CHECK( !actions.createResponse( runsPack, &error ) );
+    CHECK( error.contains( "no enabled pack has" ) );
+    actions.setPackItems( { pack } );
+    CHECK( actions.findResponseById( 2 )->response.steps.first().actionId == *elsewhere );
 }

@@ -149,10 +149,17 @@ bool configurationBytes( ConfigurationExportKind kind, const QVector<int>& rows,
         }
         QVector<ResponseDefinition> responses;
         for ( const auto& response : sourceResponses ) {
+            // A step that runs a configuration pack's action names it ("pack_action", E16c3): the
+            // file carries the name, and an import runs that pack's action there.
+            const auto linked = [ &ids ]( const ResponseActionStep& step ) {
+                return ids.contains( step.actionId ) || !step.packAction.isEmpty();
+            };
             bool complete
-                = !response.response.hasActionId || ids.contains( response.response.actionId );
+                = response.response.steps.isEmpty()
+                      ? !response.response.hasActionId || ids.contains( response.response.actionId )
+                      : true;
             for ( const auto& step : response.response.steps ) {
-                complete = complete && ids.contains( step.actionId );
+                complete = complete && linked( step );
             }
             if ( complete ) {
                 responses.append( response );

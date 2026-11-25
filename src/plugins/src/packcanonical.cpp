@@ -244,26 +244,37 @@ std::optional<QVector<std::pair<int, QJsonObject>>> actionList( const QJsonArray
     return items;
 }
 
-// Why a response runs an action that is not in `actions`, or an empty string: its "action_id" and
-// the "action_id" of each step, where they are numbers from 0 (-1 runs no action).
+// Why a response runs an action that is not in `actions`, or an empty string: its "action_id" (an
+// action of the file, or -1 for none) and the "action_id" of each step (an action of the file:
+// CILogg drops a step that runs none, so the pack would change). A pack's response runs its own
+// pack's actions, so no step names another's ("pack_action").
 QString responseLinkError( int id, const QJsonObject& response, const QSet<int>& actions )
 {
     const auto run = response.value( "response" ).toObject();
-    QVector<QJsonValue> links;
+    QVector<std::pair<QJsonValue, bool>> links; // the link, and whether -1 (none) may be it
     if ( run.contains( "action_id" ) ) {
-        links.append( run.value( "action_id" ) );
+        links.append( { run.value( "action_id" ), true } );
     }
     for ( const auto& step : run.value( "steps" ).toArray() ) {
-        if ( step.toObject().contains( "action_id" ) ) {
-            links.append( step.toObject().value( "action_id" ) );
+        const auto object = step.toObject();
+        if ( object.contains( "pack_action" ) ) {
+            return QStringLiteral( "response %1 names a pack action (pack_action): a pack's "
+                                   "response runs its own pack's actions." )
+                .arg( id );
+        }
+        if ( object.contains( "action_id" ) ) {
+            links.append( { object.value( "action_id" ), false } );
         }
     }
-    for ( const auto& link : links ) {
+    for ( const auto& [ link, noneAllowed ] : links ) {
         if ( !link.isDouble() ) {
             return QStringLiteral( "response %1 has an action_id that is not a number." ).arg( id );
         }
+        if ( noneAllowed && link.toDouble() == -1 ) {
+            continue;
+        }
         const auto action = wholeId( link );
-        if ( link.toDouble() >= 0 && ( !action || !actions.contains( *action ) ) ) {
+        if ( !action || !actions.contains( *action ) ) {
             return QStringLiteral( "response %1 runs action %2, which is not in the file." )
                 .arg( id )
                 .arg( QString::number( link.toDouble(), 'g', 17 ) );
