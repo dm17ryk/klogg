@@ -410,6 +410,8 @@ class FakeHost:
         self.panels: List[JsonObject] = []
         self.progress: List[JsonObject] = []
         self.initialization: Optional[JsonObject] = None
+        # The host_features the last initialize() offered (None: not initialized yet).
+        self.offered_features: Optional[List[str]] = None
         self._transport = transport
         self._condition = threading.Condition()
         self._frames_lock = threading.Lock()
@@ -532,6 +534,9 @@ class FakeHost:
             if value is not None:
                 params[key] = value
         params.update(extra_params or {})
+        offered = params.get("host_features")
+        self.offered_features = ([name for name in offered if isinstance(name, str)]
+                                 if isinstance(offered, list) else [])
         result = self.request("initialize", params, timeout, identifier="initialize")
         if not isinstance(result, dict):
             raise RpcError(-32603, "Initialize result is not an object")
@@ -597,9 +602,17 @@ class FakeHost:
                    inputs: Optional[Mapping[str, Any]] = None) -> None:
         """Send view/closed. For a dialog that declares `buttons`, CILogg adds `result` (the
         name of the button that closed it: one of DIALOG_CLOSING_BUTTONS the dialog declares;
-        None when it closed otherwise) and `inputs` (the view's inputs); each goes out only when
+        None when it closed otherwise) and `inputs` (the view's inputs). When the manifest
+        declares the dialog's buttons and this host offered view_dialogs, both always go out
+        (None and {} unless given), as CILogg sends them; otherwise each goes out only when
         given. When the manifest describes the view, a result it could not send is refused."""
         params: JsonObject = {"view_id": view_id, "window_id": window_id}
+        if self._declared_dialog_buttons(view_id) \
+                and "view_dialogs" in (self.offered_features or []):
+            if result is _NOT_GIVEN:
+                result = None
+            if inputs is None:
+                inputs = {}
         if result is not _NOT_GIVEN:
             if result is not None and result not in DIALOG_CLOSING_BUTTONS:
                 raise ValueError("A dialog result is None or one of "

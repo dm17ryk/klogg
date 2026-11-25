@@ -1845,7 +1845,8 @@ follows.
   `set: {checked}` sends nothing, and a same-shaped root that sends the `checked` the plugin last
   set keeps the user's toggle), `shortcut` (a key sequence that presses the button while the
   focus is in the view; refused with a warning when it is a reserved key of section 7.6, a
-  shortcut of the CILogg window, or the shortcut of another button of the view) and `default`
+  shortcut of the CILogg window, or the shortcut another button of the view has at that moment,
+  in element order, so two buttons swap keys in two patches) and `default`
   (Enter in the view presses it, unless the focused control uses Enter itself: multi-line text,
   tables, trees, lists, buttons and open drop-downs).
 - **Busy overlay.** `busy`, `busy_text` and `busy_cancel` apply to the root and to every container
@@ -1874,7 +1875,7 @@ follows.
   carries `result` (the button that closed it; null when it closed otherwise) and `inputs` (the
   view's inputs at that moment). The buttons are disabled while the view is (before the plugin's
   first root and while it is stopped). `default` is the button Enter presses when no element button
-  of the view is the default.
+  of the view is the default; without `default`, Enter presses none of the dialog buttons.
 - **Focus.** The patch entry `{"id", "focus": true}` gives the element the keyboard focus only while
   the view is active: its own window (a window, a dialog or a floating dock) is the active window,
   or the focus already is inside the view. Otherwise it is ignored.
@@ -1892,9 +1893,13 @@ follows.
   `focus_element()`, TypedDicts for the elements, events and `view/closed`, and `FakeHost` helpers.
   Its `update()` and `patch()` convert for an older host: without `layout`, `tabs` become a
   `column` of `group`s titled like the tabs, `splitter`, `form` and `grid` a `column` of `row`s, and
-  `separator` and `spacer` are left out, with the size hints removed (a form caption becomes a
-  label of its own, shown and enabled as its element is in the root; later patches of `label`,
-  `visible` or `enabled` reach only the element); without `view_dialogs` the
+  `separator` and `spacer` are left out, with the size hints removed (a form caption, on any
+  element but a field or a button, becomes a label of its own, shown and enabled as its element
+  is in the root; later `label` patches of that element are left out, and `visible` or `enabled`
+  patches reach only the element); without `view_dialogs` the
   button keys, the busy keys, `modified`, `close_confirm` and focus patches are removed; `text_view`,
   `image`, `sparkline` and `chart` go as they are (an older host skips them with a warning), and
-  their `append`, `append_points` and `clear` patches are left out. The C++ SDK needs nothing new.
+  their `append`, `append_points` and `clear` patches are left out. The builders raise
+  `ValueError` for what the host would refuse or cut, such as more than 1,024 sparkline values,
+  10,000 points in a series or 1 MiB of text, so a plugin learns of it where it builds the view;
+  the host's own trimming covers the dicts a plugin writes itself. The C++ SDK needs nothing new.

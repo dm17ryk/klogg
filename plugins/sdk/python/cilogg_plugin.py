@@ -3163,6 +3163,11 @@ def _compatible_props(props: Any, rules: _StripRules, element_type: Optional[str
     if not isinstance(props, dict):
         return props
     result = _without(props, rules.element)
+    if not rules.layout and not whole and element_type not in (None, "field", "button"):
+        # A form caption (`label` on any element but a field or a button, which own the key)
+        # became a label element of its own on this host, without an id: it keeps its first
+        # text, and the key would only be warned about. Trees and content elements too.
+        result = _without(result, _FORM_CAPTION_KEYS)
     if element_type in _TREE_TYPES or element_type in _CONTENT_TYPES:
         # Trees and content elements are never converted: an older host skips them, and their
         # columns, nodes, cells, text, values and series belong to their features.
@@ -3173,11 +3178,6 @@ def _compatible_props(props: Any, rules: _StripRules, element_type: Optional[str
         if whole:
             return _layout_as_column(result, element_type, rules)
         result = _without(result, _LAYOUT_CONVERTED[element_type])
-    if not rules.layout and not whole and element_type not in (None, "field", "button"):
-        # A form caption (`label` on another element) became a label element of its own on
-        # this host, without an id: it keeps its first text, and the key would only be warned
-        # about.
-        result = _without(result, _FORM_CAPTION_KEYS)
     if element_type in _TOGGLE_FIELDS and not rules.toggles:
         result = _toggle_as_field(result, element_type, whole)
         element_type, kind = "field", _TOGGLE_FIELDS[element_type][0]

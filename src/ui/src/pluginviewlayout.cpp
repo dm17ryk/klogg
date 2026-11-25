@@ -634,6 +634,9 @@ void PluginView::applyContent( Node& node, const QJsonObject& props, bool fromRo
         if ( props.contains( "width" ) || props.contains( "height" ) ) {
             image->setBox( boundedInt( node.props.value( "width" ), 0, MaxImageSide, 0 ),
                            boundedInt( node.props.value( "height" ), 0, MaxImageSide, 0 ) );
+            // The box resets the minimum and maximum size: the element's size hints apply over
+            // it again, as when it was built.
+            applySizeHints( node, node.props );
         }
         if ( props.contains( "scale" ) ) {
             const auto scale = props.value( "scale" ).toString( "fit" );

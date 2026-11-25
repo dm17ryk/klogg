@@ -497,6 +497,11 @@ TEST_CASE( "E17f text views: plain text, Markdown, appends, limits, links and fi
     REQUIRE( waitFor( [ & ] { return view->findBar()->isVisible(); } ) );
     REQUIRE( windowFinds == 0 );
     REQUIRE( view->findBar()->objectName() == nameOf( "log" ) + "_find" );
+    // Again in the find bar: the key is still the text's, so the window's Find takes nothing.
+    REQUIRE( waitFor( [ & ] { return view->findBar()->hasFocus(); } ) );
+    QTest::keyClick( view->findBar(), Qt::Key_F, Qt::ControlModifier );
+    REQUIRE( windowFinds == 0 );
+    REQUIRE( view->findBar()->isVisible() );
     view->findBar()->setText( "docs" );
     QTest::keyClick( view->findBar(), Qt::Key_Escape );
     REQUIRE_FALSE( view->findBar()->isVisible() );
@@ -535,6 +540,13 @@ TEST_CASE( "E17f images, sparklines and charts", "[ui][workbench][E17]" )
     REQUIRE( picture->size() == QSize( 40, 30 ) );
     REQUIRE( picture->scale() == PluginImage::Scale::Fill );
     REQUIRE( fixture.pictureSizes.back() == QSize( 40, 30 ) );
+    // A new box keeps the element's size hints (as built, they apply over the box).
+    auto* missing = fixture.get<PluginImage>( "missing" );
+    fixture.patch( { QJsonObject{ { "id", "missing" }, { "set", QJsonObject{ { "max_width", 300 } } } } } );
+    REQUIRE( missing->maximumWidth() == 300 );
+    fixture.patch( { QJsonObject{ { "id", "missing" }, { "set", QJsonObject{ { "height", 50 } } } } } );
+    REQUIRE( missing->maximumHeight() == 50 );
+    REQUIRE( missing->maximumWidth() == 300 );
 
     auto* spark = fixture.get<PluginSparkline>( "spark" );
     REQUIRE( spark->values().size() == 4 );
@@ -1033,6 +1045,16 @@ TEST_CASE( "E17f dialog buttons send clicked, close the dialog and give view/clo
     // confirm_by_plugin: ok only sends the event; the plugin closes the dialog (result null).
     fixture.open( "confirm" );
     REQUIRE( waitFor( [ & ] { return fixture.button( "confirm", "ok" )->isEnabled(); } ) );
+    // It declares no `default`: Enter presses no button (a shown button box would make ok the
+    // default by itself).
+    auto* confirm = qobject_cast<QDialog*>( fixture.host()->container( PluginId, "confirm" ) );
+    REQUIRE( confirm );
+    REQUIRE( waitFor( [ & ] { return confirm->isVisible(); } ) );
+    REQUIRE_FALSE( fixture.button( "confirm", "ok" )->isDefault() );
+    QTest::keyClick( confirm, Qt::Key_Return );
+    QTest::qWait( 300 );
+    REQUIRE_FALSE( clickedWith( fixture.folder, "confirm", "ok" ) );
+    REQUIRE( fixture.host()->container( PluginId, "confirm" ) == confirm );
     fixture.button( "confirm", "ok" )->click();
     REQUIRE( waitFor( [ & ] { return clickedWith( fixture.folder, "confirm", "ok" ); } ) );
     REQUIRE( waitFor( [ & ] { return fixture.host()->container( PluginId, "confirm" ) == nullptr; }, 10000 ) );

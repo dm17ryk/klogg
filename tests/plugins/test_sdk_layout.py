@@ -500,6 +500,21 @@ class Downgrades(LayoutCase):
                 plugin.patch("main", changes)
                 self.assertEqual(host.wait_for("view/update")["patch"], expected or changes)
 
+    def test_form_caption_patch_of_a_tree_on_a_host_without_layout(self):
+        # Trees and content elements are passed through unconverted, but their form caption
+        # became a label element too, so a `label` patch goes the same way.
+        sdk = self.sdk
+        plugin = self.plugin()
+        host = self.host(plugin, **self.without("layout"))
+        plugin.update("main", sdk.column(sdk.form(sdk.tree("t", [], label="Boards"), id="f"),
+                                         id="body"))
+        rows = by_id(host.wait_for("view/update")["root"])["f"]["children"]
+        self.assertEqual(rows[0]["children"][0], {"type": "label", "text": "Boards"})
+        self.assertNotIn("label", rows[0]["children"][1])
+        plugin.patch("main", [sdk.set_props("t", label="Benches", selection="single")])
+        self.assertEqual(host.wait_for("view/update")["patch"],
+                         [{"id": "t", "set": {"selection": "single"}}])
+
     def test_form_caption_is_shown_and_enabled_as_its_element_on_a_host_without_layout(self):
         sdk = self.sdk
         plugin = self.plugin()
@@ -654,11 +669,21 @@ class Events(LayoutCase):
         host.press_dialog_button("other", "close")  # not described: nothing to check against
         host.press_dialog_button("confirmed", "ok")  # the plugin decides, then hides it
         host.close_view("confirmed", result=None)
+        # CILogg always sends result and inputs for a dialog with buttons; a host without
+        # view_dialogs knows no buttons and sends neither.
+        host.close_view("ask")
         self.assertEqual([(event["view_id"], event["value"]) for event in
                           (events.get(timeout=2) for _ in range(3))],
                          [("ask", "apply"), ("other", "close"), ("confirmed", "ok")])
-        self.assertEqual([closed.get(timeout=2).get("result", "-") for _ in range(4)],
+        received = [closed.get(timeout=2) for _ in range(5)]
+        self.assertEqual([params.get("result", "-") for params in received[:4]],
                          ["cancel", None, "-", None])
+        self.assertEqual(received[4], {"view_id": "ask", "window_id": "w1", "result": None,
+                                       "inputs": {}})
+        host.offered_features = [name for name in host.offered_features or []
+                                 if name != "view_dialogs"]
+        host.close_view("ask")
+        self.assertEqual(closed.get(timeout=2), {"view_id": "ask", "window_id": "w1"})
         for call in (lambda: host.press_dialog_button("ask", "close"),
                      lambda: host.press_dialog_button("plain", "ok"),
                      lambda: host.press_dialog_button("main", "ok"),

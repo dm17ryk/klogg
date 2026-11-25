@@ -251,7 +251,9 @@ bool PluginTextView::findNext( bool backward )
 
 bool PluginTextView::eventFilter( QObject* watched, QEvent* event )
 {
-    if ( watched == browser_
+    // Ctrl+F belongs to the text and its find bar while either has the focus (again in the bar:
+    // its text is selected).
+    if ( ( watched == browser_ || watched == find_ )
          && ( event->type() == QEvent::ShortcutOverride || event->type() == QEvent::KeyPress )
          && static_cast<QKeyEvent*>( event )->matches( QKeySequence::Find ) ) {
         event->accept();

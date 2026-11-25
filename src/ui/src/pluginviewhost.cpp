@@ -74,6 +74,26 @@ class PluginViewDialog final : public QDialog {
 public:
     using QDialog::QDialog;
     std::function<void()> onReject;
+    // E17f: the declared buttons and the one Enter presses (none when no `default` is declared).
+    QPointer<QDialogButtonBox> buttonBox;
+    QPointer<QPushButton> declaredDefault;
+
+protected:
+    void showEvent( QShowEvent* event ) override
+    {
+        QDialog::showEvent( event );
+        // A shown QDialogButtonBox makes its first accept button the default when no button is;
+        // Enter presses only the declared `default` (section 29.3).
+        if ( buttonBox ) {
+            for ( auto* button : buttonBox->buttons() ) {
+                if ( auto* push = qobject_cast<QPushButton*>( button ) ) {
+                    push->setDefault( push == declaredDefault.data() );
+                }
+            }
+        }
+    }
+
+public:
     void reject() override
     {
         if ( onReject ) {
@@ -663,8 +683,12 @@ bool PluginViewHost::openView( const QString& pluginId, const QString& viewId,
                 button->setObjectName( name + "_button_" + buttonName );
                 button->setProperty( DialogButtonProperty, buttonName );
                 button->setAutoDefault( false );
-                button->setDefault( buttonName == def.value( "default" ).toString() );
+                if ( buttonName == def.value( "default" ).toString() ) {
+                    button->setDefault( true );
+                    dialog->declaredDefault = button;
+                }
             }
+            dialog->buttonBox = box;
             connect( box, &QDialogButtonBox::clicked, this,
                      [ this, key ]( QAbstractButton* button ) {
                          dialogButton( key, button->property( DialogButtonProperty ).toString() );

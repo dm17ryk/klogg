@@ -1930,7 +1930,8 @@ void PluginView::apply( Node& node, const QJsonObject& incoming, bool fromRoot )
         if ( node.formCaption ) {
             node.formCaption->setText( pluginlayout::captionText( text( props, "label" ) ) );
         }
-        else if ( !text( props, "label" ).isEmpty() ) {
+        else if ( !previous.isEmpty() && !text( props, "label" ).isEmpty() ) {
+            // Built, the caption cell comes next (placeChild); later, only a root makes one.
             warnOnce( "caption:" + node.id,
                       "a form row gets its caption cell from a root: " + node.id );
         }

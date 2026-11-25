@@ -972,8 +972,10 @@ with FakeHost.start_package("path/to/my-plugin") as host:   # its plugin.json, e
   window_id="w1", inputs=None)` a dialog button's `clicked` from `"#buttons"` (a name from
   `DIALOG_BUTTONS`; it does not close the dialog). `close_view(view_id, window_id="w1", *,
   result=…, inputs=None)` adds `result` (a `DIALOG_CLOSING_BUTTONS` name, that is any but
-  `apply`, or None) and `inputs` to `view/closed`, each only when given, as CILogg does for a
-  dialog with `buttons`. When the plugin's manifest is known (`start`, `start_package`, or a
+  `apply`, or None) and `inputs` to `view/closed`, as CILogg does for a dialog with `buttons`:
+  when the manifest declares the dialog's buttons and the host offered `view_dialogs`, both
+  always go out (None and `{}` unless given); otherwise each only when given. When the plugin's
+  manifest is known (`start`, `start_package`, or a
   `manifest` attribute for `in_process`) and describes the view, a button the dialog does not
   declare, a `result` for a view that is not a dialog with `buttons`, or `ok`/`yes` as the result
   of a `confirm_by_plugin` dialog (the plugin hides it, so the result is None) raises ValueError,
