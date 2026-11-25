@@ -36,13 +36,15 @@ QString packLabel( const PreviewPackRegistry::Contribution& pack )
     return pack.name.isEmpty() ? pack.id : pack.name;
 }
 
-// Two preview routes that decode alike (a saved one has `protocol` "" when it had none).
+// Two preview routes that decode alike (a saved one has `protocol` "" when it had none). A route
+// goes to a TShark dissector or to a pack's Python decoder (`python`, MD03b).
 bool sameRoute( const QVariant& a, const QVariant& b )
 {
     const auto left = a.toMap();
     const auto right = b.toMap();
     return left.value( "dissector" ).toString() == right.value( "dissector" ).toString()
-           && left.value( "protocol" ).toString() == right.value( "protocol" ).toString();
+           && left.value( "protocol" ).toString() == right.value( "protocol" ).toString()
+           && left.value( "python" ).toString() == right.value( "python" ).toString();
 }
 
 enum class CopyRoute {
@@ -184,6 +186,10 @@ PreviewPackRegistry::Contribution PreviewPackRegistry::read( const QString& id,
     pack.previewRoutes = content.previewRoutes.toVariantMap();
     pack.protocolRoutes = content.protocolRoutes.toVariantMap();
     pack.pythonDecoders = static_cast<int>( content.pythonDecoders.size() );
+    pack.root = QDir::cleanPath( QDir( directory ).absolutePath() );
+    for ( const auto& decoder : content.pythonDecoders ) {
+        pack.pythonModules.append( QVariantMap{ { "id", decoder.id }, { "module", decoder.module } } );
+    }
     return pack;
 }
 
@@ -245,6 +251,11 @@ void PreviewPackRegistry::refresh()
         if ( !pack.luaFiles.isEmpty() ) {
             decoder.lua.append( QVariantMap{ { "id", pack.id }, { "files", pack.luaFiles } } );
         }
+        // MD03b: the worker copies and hashes these modules when a session starts.
+        if ( !pack.pythonModules.isEmpty() ) {
+            decoder.python.append( QVariantMap{
+                { "id", pack.id }, { "root", pack.root }, { "decoders", pack.pythonModules } } );
+        }
         // Between packs there is no precedence; the pack check refuses a shared route key, so
         // this keeps the first pack's route only if a check was bypassed.
         for ( const auto* key : { "previewRoutes", "protocolRoutes" } ) {
@@ -266,7 +277,7 @@ void PreviewPackRegistry::refresh()
     // TShark sessions.
     decoder.key = keys.join( '\n' );
     LOG_INFO << "Configuration packs applied packs=" << packs.size()
-             << " lua_packs=" << decoder.lua.size();
+             << " lua_packs=" << decoder.lua.size() << " python_packs=" << decoder.python.size();
     // The decoder first, so the preview definitions rebuilt next carry its new revision.
     PreviewDecoderSettings::instance().setPacks( decoder );
     PreviewManager::instance().setPackPreviews( previews );
@@ -510,6 +521,18 @@ QString PreviewPackRegistry::check( const QString& id, const QString& directory,
             .arg( packLabel( candidate ) )
             .arg( luaFiles )
             .arg( PreviewDecoderSettings::ProfileLuaLimit );
+    }
+    // Python: every enabled pack's decoder modules within the session's limit (MD03b).
+    auto pythonModules = candidate.pythonModules.size();
+    for ( const auto& other : others ) {
+        pythonModules += other.pythonModules.size();
+    }
+    if ( pythonModules > PreviewDecoderSettings::ProfilePythonLimit ) {
+        return tr( "Enabling \"%1\" would make %2 Python decoders in the enabled packs (at most "
+                   "%3)." )
+            .arg( packLabel( candidate ) )
+            .arg( pythonModules )
+            .arg( PreviewDecoderSettings::ProfilePythonLimit );
     }
     // The pack's block namespace `<pack-id>/` belongs to the pack: a block of the user's in it
     // would meet the pack's blocks.

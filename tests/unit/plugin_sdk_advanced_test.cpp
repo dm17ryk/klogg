@@ -504,8 +504,9 @@ TEST_CASE( "E17 host features, versions and limits are announced in initialize",
     REQUIRE( features
              == QJsonArray{ "views", "view_edit", "queries", "tooltips", "icons", "menus",
                             "shortcuts", "choices", "toggles", "field_kinds", "validation",
-                            "rich_tables", "element_menus", "tree", "file_tree", "layout",
-                            "text_view", "images", "charts", "view_dialogs" } );
+                            "rich_tables", "element_menus", "tree", "file_tree",
+                            "python_decoders", "layout", "text_view", "images", "charts",
+                            "view_dialogs" } );
     REQUIRE( hostFeatureVersions().value( "views" ).toInt() == 2 );
     REQUIRE( hostLimits().value( "max_elements" ).toInt() == 512 );
     REQUIRE( hostLimits().value( "max_message_bytes" ).toInt() == MaxMessageBytes );

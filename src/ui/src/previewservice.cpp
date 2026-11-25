@@ -4,6 +4,7 @@
 #include "previewdecodersettings.h"
 #include "previewmanager.h"
 #include "previewtree.h"
+#include "pythondecoderclient.h"
 #include "tsharkpreviewclient.h"
 #include <QCoreApplication>
 #include <QCryptographicHash>
@@ -16,6 +17,7 @@
 #include <QPointer>
 #include <QProcess>
 #include <QRegularExpression>
+#include <QSet>
 #include <QTimer>
 #include <QTreeWidget>
 #include <QUuid>
@@ -47,6 +49,23 @@ QByteArray frame( const QVariantMap& value )
     char header[ 4 ];
     qToBigEndian<quint32>( static_cast<quint32>( bytes.size() ), header );
     return QByteArray( header, 4 ) + bytes;
+}
+// The input encoding of a preview's buffer type, as a Python decoder's context reports it.
+QString carrierEncoding( PreviewBufferType type )
+{
+    switch ( type ) {
+    case PreviewBufferType::HexString:
+        return QStringLiteral( "hex" );
+    case PreviewBufferType::Base64:
+        return QStringLiteral( "base64" );
+    case PreviewBufferType::Bin:
+        return QStringLiteral( "bin" );
+    case PreviewBufferType::Bytes:
+        return QStringLiteral( "bytes" );
+    case PreviewBufferType::String:
+        break;
+    }
+    return QStringLiteral( "utf8" );
 }
 QByteArray readExact( QFile& input, int count )
 {
@@ -147,10 +166,43 @@ QByteArray PreviewService::definitionsFor( const QVector<PreviewDefinition>& pre
 namespace {
 class EvaluationState;
 QHash<QProcess*, EvaluationState*> evaluations;
+const QString PythonBackend = QStringLiteral( "python_decoder" );
+const QString TsharkBackend = QStringLiteral( "tshark_lua" );
+
+// The routes that can decode now (MD03b): TShark routes while the TShark decoder is enabled, and
+// Python routes whose decoder is in an enabled pack (the snapshot's `packPython`). A route to a
+// decoder that is not loaded does not apply, so its preview decodes as if it had no route.
+QVariantMap applicableRoutes( const QVariantMap& config )
+{
+    const bool tshark = config.value( "enabled" ).toBool();
+    QSet<QString> loaded;
+    for ( const auto& pack : config.value( "packPython" ).toList() ) {
+        const auto entry = pack.toMap();
+        for ( const auto& decoder : entry.value( "decoders" ).toList() )
+            loaded.insert( entry.value( "id" ).toString() + '/'
+                           + decoder.toMap().value( "id" ).toString() );
+    }
+    auto result = config;
+    for ( const auto* key : { "previewRoutes", "protocolRoutes" } ) {
+        QVariantMap kept;
+        const auto routes = config.value( key ).toMap();
+        for ( auto route = routes.cbegin(); route != routes.cend(); ++route ) {
+            const auto entry = route.value().toMap();
+            if ( entry.contains( "python" ) ? loaded.contains( entry.value( "python" ).toString() )
+                                            : tshark )
+                kept.insert( route.key(), route.value() );
+        }
+        result[ key ] = kept;
+    }
+    return result;
+}
+// The route for preview `name` (or the assembled protocol): `{python, inputEncoding}` for a pack's
+// Python decoder, `{dissector, protocol, inputEncoding}` for TShark, or empty for JSON.
+// `config` holds the applicable routes only.
 QVariantMap routeFor( const QVariantMap& config, const QVariantMap& options, const QString& name )
 {
     const auto decoder = options.value( "decoder", "auto" ).toString();
-    if ( decoder == "json" || ( decoder == "auto" && !config.value( "enabled" ).toBool() ) )
+    if ( decoder == "json" )
         return {};
     QVariantMap route;
     if ( options.value( "previewName" ).toString().isEmpty() && decoder == "auto"
@@ -163,6 +215,19 @@ QVariantMap routeFor( const QVariantMap& config, const QVariantMap& options, con
                     .toMap();
     else
         route = config.value( "previewRoutes" ).toMap().value( name ).toMap();
+    // Explicit TShark, or a dissector named in the request, never uses a Python route.
+    if ( route.contains( "python" )
+         && ( decoder == "tshark" || !options.value( "dissector" ).toString().isEmpty() ) )
+        route.clear();
+    if ( route.contains( "python" ) ) {
+        route[ "inputEncoding" ] = options.value( "inputEncoding" ).toString().isEmpty()
+                                       ? route.value( "inputEncoding", config.value( "inputEncoding" ) )
+                                       : options.value( "inputEncoding" );
+        return route;
+    }
+    // The default dissector, and so any remaining route, is TShark's.
+    if ( decoder == "auto" && !config.value( "enabled" ).toBool() )
+        return {};
     if ( route.isEmpty() && decoder != "tshark"
          && config.value( "defaultDissector" ).toString().isEmpty() )
         return {};
@@ -192,6 +257,7 @@ public:
         , receiver_( receiver )
         , sessionOwner_( request_.sessionOwner ? request_.sessionOwner : receiver )
         , snapshot_( PreviewDecoderSettings::instance().snapshot() )
+        , config_( applicableRoutes( snapshot_.configuration ) )
         , done_( std::move( done ) )
         , process_( new QProcess( QCoreApplication::instance() ) )
     {
@@ -266,7 +332,7 @@ public:
     {
         output_.clear();
         diagnostics_ = 0;
-        const auto config = snapshot_.configuration;
+        const auto& config = config_;
         QVariantMap descriptor{ { "enabled", config.value( "enabled" ) },
                                 { "defaultDissector", config.value( "defaultDissector" ) },
                                 { "inputEncoding", config.value( "inputEncoding" ) },
@@ -317,7 +383,7 @@ public:
         LOG_DEBUG << "Preview request stop id=" << id_ << " reason=" << stopReason_
                   << " external=" << external_;
         if ( external_ )
-            TsharkPreviewClient::instance().cancel( id_, stopReason_ );
+            client()->cancel( id_, stopReason_ );
         if ( completed_ )
             return;
         if ( process_ && process_->state() != QProcess::NotRunning )
@@ -341,20 +407,28 @@ public:
             // A native success callback has already consumed its pending completion.
             // Retire by the channel's last request identity, including that idle interval.
             if ( external_ )
-                TsharkPreviewClient::instance().cancel( id_, stopReason_ );
+                client()->cancel( id_, stopReason_ );
         }
+        // The engine of this result: the worker's, or the selector's for a carrier it could not
+        // prepare for a route; explicit TShark reports TShark.
+        auto engine = external_ ? externalBackend_ : result.value( "backend" ).toString();
+        if ( engine != PythonBackend && request_.decoder == "tshark" )
+            engine = TsharkBackend;
         if ( !stopReason_.isEmpty() ) {
             // Apply authoritative failure flags without discarding already-known metadata.
             const auto stopped = failure( stopReason_ );
             for ( auto item = stopped.cbegin(); item != stopped.cend(); ++item )
                 result[ item.key() ] = item.value();
         }
-        if ( external_ || request_.decoder == "tshark"
-             || result.value( "backend" ) == "tshark_lua" ) {
-            result[ "backend" ] = "tshark_lua";
-            result[ "offsetSpace" ] = "engine_data_source_unresolved";
-            result[ "messageCompleteness" ] = "not_reported";
-            result[ "messageIntegrity" ] = "not_reported";
+        if ( engine == TsharkBackend || engine == PythonBackend ) {
+            const bool python = engine == PythonBackend;
+            result[ "backend" ] = engine;
+            result[ "offsetSpace" ] = python ? "decoder_payload" : "engine_data_source_unresolved";
+            // TShark never reports message states; a Python decoder does on a completed result.
+            if ( !python || result.value( "state" ) != "completed" ) {
+                result[ "messageCompleteness" ] = "not_reported";
+                result[ "messageIntegrity" ] = "not_reported";
+            }
             if ( result.value( "state" ) == "failed" ) {
                 result[ "fields" ] = QVariantList{};
                 result[ "previewName" ] = selectedPreviewName_.isEmpty()
@@ -372,9 +446,9 @@ public:
         result[ "decoderRevision" ] = snapshot_.revision;
         result[ "elapsedMs" ] = elapsed_.elapsed();
         if ( fallback_ ) {
-            result[ "preferredBackend" ] = "tshark_lua";
-            result[ "decoderAttempts" ] = QVariantList{ "tshark_lua", "json_preview" };
-            result[ "fallbackReason" ] = "dissector_not_dispatched";
+            result[ "preferredBackend" ] = fallbackFrom_;
+            result[ "decoderAttempts" ] = QVariantList{ fallbackFrom_, "json_preview" };
+            result[ "fallbackReason" ] = fallbackReason_;
         }
         else if ( request_.decoder == "auto" && snapshot_.configuration.value( "enabled" ).toBool()
                   && result.value( "backend" ) == "json_preview"
@@ -449,8 +523,10 @@ public:
         }
         external_ = true;
         const auto carrierName = result.value( "carrierName" );
-        const auto route
-            = routeFor( snapshot_.configuration, optionsFor( request_ ), carrierName.toString() );
+        const auto route = routeFor( config_, optionsFor( request_ ), carrierName.toString() );
+        // The route's engine names every result from here on, an early timeout's too.
+        const bool python = route.contains( "python" );
+        externalBackend_ = python ? PythonBackend : TsharkBackend;
         const auto encoded = result.value( "payloadBase64" );
         const auto payload = QByteArray::fromBase64( encoded.toString().toLatin1() );
         if ( carrierName.userType() != QMetaType::QString || route.isEmpty()
@@ -466,40 +542,63 @@ public:
             finish( failure( "timeout" ) );
             return;
         }
+        const auto name = result.value( "previewName" ).toString();
+        // Automatic mode falls back to JSON only when the engine says it did not dispatch.
+        const auto notDispatched = python ? QStringLiteral( "decoder_not_dispatched" )
+                                          : QStringLiteral( "dissector_not_dispatched" );
+        QPointer<EvaluationState> guard( this );
+        LOG_DEBUG << "Preview selector completed id=" << id_ << " carrier_bytes=" << payload.size()
+                  << " direct=" << carrierName.toString().isEmpty()
+                  << " backend=" << externalBackend_ << " remaining_ms=" << remaining;
+        auto delivered = [ guard, name, notDispatched ]( QVariantMap response ) {
+            if ( !guard )
+                return;
+            if ( !name.isEmpty() )
+                response[ "previewName" ] = name;
+            if ( guard->request_.decoder == "auto" && !guard->fallback_
+                 && response.value( "reason" ) == notDispatched && guard->stopReason_.isEmpty() ) {
+                guard->fallback_ = true;
+                guard->fallbackFrom_ = guard->externalBackend_;
+                guard->fallbackReason_ = notDispatched;
+                guard->external_ = false;
+                LOG_DEBUG << "Preview automatic JSON fallback id=" << guard->id_
+                          << " reason=" << notDispatched << " remaining_ms="
+                          << guard->request_.timeoutMs - guard->elapsed_.elapsed();
+                if ( guard->elapsed_.elapsed() >= guard->request_.timeoutMs )
+                    guard->stop( "timeout" );
+                else
+                    guard->begin();
+                return;
+            }
+            guard->finish( std::move( response ) );
+        };
+        if ( python ) {
+            // MD03b: the routed pack decoder with the session's pack modules (design 4.4).
+            // `direction` is reserved: the preview does not know it yet.
+            static const QStringList encodings{ "utf8", "hex", "base64", "bin", "bytes" };
+            const auto encoding = result.value( "inputEncoding" ).toString();
+            if ( !encodings.contains( encoding ) ) {
+                finish( failure( "worker_protocol_error" ) );
+                return;
+            }
+            const QVariantMap context{ { "preview", carrierName.toString() },
+                                       { "protocol", request_.assemblyProtocol },
+                                       { "inputEncoding", encoding },
+                                       { "direction", "unknown" } };
+            PythonDecoderClient::instance().decode(
+                sessionOwner_, { { "packs", snapshot_.configuration.value( "packPython" ) } },
+                route.value( "python" ).toString(), context, payload, remaining, id_,
+                std::move( delivered ) );
+            return;
+        }
         QVariantMap profile;
         // `packLua`: the enabled packs' Lua, loaded before the user's scripts (design 4.3).
         for ( const auto* key : { "tshark", "text2pcap", "lua", "packLua" } )
             profile[ key ] = snapshot_.configuration.value( key );
         profile[ "dissector" ] = route.value( "dissector" );
         profile[ "protocol" ] = route.value( "protocol" );
-        const auto name = result.value( "previewName" ).toString();
-        QPointer<EvaluationState> guard( this );
-        LOG_DEBUG << "Preview selector completed id=" << id_ << " carrier_bytes=" << payload.size()
-                  << " direct=" << carrierName.toString().isEmpty()
-                  << " remaining_ms=" << remaining;
-        TsharkPreviewClient::instance().evaluate(
-            sessionOwner_, profile, payload, remaining, id_,
-            [ guard, name ]( QVariantMap response ) {
-                if ( !guard )
-                    return;
-                if ( !name.isEmpty() )
-                    response[ "previewName" ] = name;
-                if ( guard->request_.decoder == "auto" && !guard->fallback_
-                     && response.value( "reason" ) == "dissector_not_dispatched"
-                     && guard->stopReason_.isEmpty() ) {
-                    guard->fallback_ = true;
-                    guard->external_ = false;
-                    LOG_DEBUG << "Preview automatic JSON fallback id=" << guard->id_
-                              << " reason=dissector_not_dispatched remaining_ms="
-                              << guard->request_.timeoutMs - guard->elapsed_.elapsed();
-                    if ( guard->elapsed_.elapsed() >= guard->request_.timeoutMs )
-                        guard->stop( "timeout" );
-                    else
-                        guard->begin();
-                    return;
-                }
-                guard->finish( std::move( response ) );
-            } );
+        TsharkPreviewClient::instance().evaluate( sessionOwner_, profile, payload, remaining, id_,
+                                                  std::move( delivered ) );
     }
 
 private:
@@ -514,15 +613,27 @@ private:
         if ( overflow || diagnostics_ > 65536 )
             stop( "diagnostic_limit" );
     }
+    // The worker client of the engine stage, once the selector chose a route.
+    PreviewWorkerClient* client() const
+    {
+        if ( externalBackend_ == PythonBackend )
+            return &PythonDecoderClient::instance();
+        return &TsharkPreviewClient::instance();
+    }
     PreviewEvaluationRequest request_;
     QPointer<QObject> receiver_, sessionOwner_;
     PreviewDecoderSnapshot snapshot_;
+    // The snapshot's configuration with the routes that can decode now (applicableRoutes).
+    QVariantMap config_;
     PreviewService::Completion done_;
     QPointer<QProcess> process_;
     QTimer timer_;
     QMetaObject::Connection started_;
     QElapsedTimer elapsed_;
     QString id_, digest_, stopReason_, selectedPreviewName_;
+    // The engine that decoded or was tried (tshark_lua or python_decoder) and, after an
+    // automatic JSON fallback, the engine's reason.
+    QString externalBackend_, fallbackFrom_, fallbackReason_;
     QByteArray output_;
     qint64 diagnostics_ = 0;
     bool completed_ = false, external_ = false, fallback_ = false;
@@ -627,6 +738,9 @@ QString PreviewService::tooltipHtml( const QVariantMap& result )
     QString html;
     if ( result.value( "backend" ) == "tshark_lua" )
         html = "<b>TShark / Lua</b><br>";
+    else if ( result.value( "backend" ) == "python_decoder" )
+        html = "<b>Python decoder</b> " + result.value( "decoder" ).toString().toHtmlEscaped()
+               + "<br>";
     else if ( result.value( "backend" ) == "json_preview"
               && ( result.value( "available" ).toBool()
                    || ( !result.value( "reason" ).toString().isEmpty()
@@ -654,6 +768,9 @@ QString PreviewService::tooltipHtml( const QVariantMap& result )
         const auto reason = result.value( "reason" ).toString();
         if ( !reason.isEmpty() && reason != "no_match" )
             html += "<br>Preview unavailable: " + reason.toHtmlEscaped();
+        // A Python decoder's failure names its place (exception type and file:line).
+        if ( !result.value( "detail" ).toString().isEmpty() )
+            html += " (" + result.value( "detail" ).toString().toHtmlEscaped() + ")";
         return html;
     }
     html += "<b>" + result.value( "previewName" ).toString().toHtmlEscaped() + "</b><table>";
@@ -727,11 +844,12 @@ int PreviewService::workerMain( int argc, char* argv[] )
             options[ "previewName" ] = name;
             const auto decoderConfig
                 = object.value( "decoderConfiguration" ).toObject().toVariantMap();
+            // The configuration holds the applicable routes only (TShark ones while TShark is
+            // enabled, Python ones whose decoder is loaded), so a route decides by being there.
             bool direct
                 = name.isEmpty()
                   && ( options.value( "decoder" ) == "tshark"
                        || ( options.value( "decoder", "auto" ) == "auto"
-                            && decoderConfig.value( "enabled" ).toBool()
                             && decoderConfig.value( "protocolRoutes" )
                                    .toMap()
                                    .contains( options.value( "assemblyProtocol" ).toString() ) ) );
@@ -741,7 +859,7 @@ int PreviewService::workerMain( int argc, char* argv[] )
             };
             auto definition = parsed.previews.cend();
             if ( !direct && name.isEmpty() && options.value( "decoder", "auto" ) == "auto"
-                 && decoderConfig.value( "enabled" ).toBool() ) {
+                 && !decoderConfig.value( "previewRoutes" ).toMap().isEmpty() ) {
                 const auto mapped = decoderConfig.value( "previewRoutes" ).toMap();
                 definition = std::find_if( parsed.previews.cbegin(), parsed.previews.cend(),
                                            [ & ]( const PreviewDefinition& preview ) {
@@ -762,7 +880,8 @@ int PreviewService::workerMain( int argc, char* argv[] )
             if ( definition != parsed.previews.cend() )
                 name = definition->name;
             const auto route = routeFor( decoderConfig, options, name );
-            if ( !route.isEmpty() && route.value( "dissector" ).toString().isEmpty() ) {
+            const bool python = route.contains( "python" );
+            if ( !route.isEmpty() && !python && route.value( "dissector" ).toString().isEmpty() ) {
                 result = failure( "invalid_dissector" );
                 result[ "backend" ] = "tshark_lua";
             }
@@ -779,11 +898,19 @@ int PreviewService::workerMain( int argc, char* argv[] )
                     result = failure(
                         !prepared.ok ? ( prepared.reason.isEmpty() ? "no_match" : prepared.reason )
                                      : "input_limit" );
-                    result[ "backend" ] = "tshark_lua";
+                    result[ "backend" ] = python ? "python_decoder" : "tshark_lua";
                     LOG_DEBUG << "Preview carrier failed reason="
                               << result.value( "reason" ).toString();
                 }
                 else {
+                    // How the log text became the payload bytes (a Python decoder's context):
+                    // the route's encoding for direct input, the request's override, or the
+                    // preview's buffer type.
+                    const auto encoding
+                        = direct ? route.value( "inputEncoding" ).toString()
+                          : !options.value( "inputEncoding" ).toString().isEmpty()
+                              ? options.value( "inputEncoding" ).toString()
+                              : carrierEncoding( definition->type );
                     result = {
                         { "version", 1 },
                         { "backend", "tshark_carrier" },
@@ -795,6 +922,7 @@ int PreviewService::workerMain( int argc, char* argv[] )
                         { "previewName",
                           direct ? options.value( "assemblyProtocol" ).toString() : name },
                         { "route", route },
+                        { "inputEncoding", encoding },
                         { "payloadBase64", QString::fromLatin1( payload.toBase64() ) }
                     };
                     LOG_DEBUG << "Preview carrier selected direct=" << direct

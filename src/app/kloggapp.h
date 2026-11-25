@@ -76,6 +76,7 @@
 #include "labqueuewindow.h"
 #include "mainwindow.h"
 #include "messagereceiver.h"
+#include "pluginfeatures.h"
 #include "pluginmanager.h"
 #include "pluginsourceruns.h"
 #include "pluginupdatechecker.h"
@@ -615,9 +616,14 @@ class KloggApp : public QApplication {
                       { QStringLiteral( "error" ), report.error } } );
         }
         if ( request.action == CommanderAction::GetPlugins ) {
-            return commanderSuccess( {}, { { "plugins", pluginManager_.plugins() },
-                                           { "storage", pluginManager_.storageStatus() },
-                                           { "jobs", pluginManager_.jobs() } } );
+            // `hostFeatures`: what this CILogg supports, with versions, such as
+            // `python_decoders` for configuration packs' Python decoders (MD03b).
+            return commanderSuccess(
+                {}, { { "plugins", pluginManager_.plugins() },
+                      { "storage", pluginManager_.storageStatus() },
+                      { "jobs", pluginManager_.jobs() },
+                      { "hostFeatures",
+                        cilogg::plugins::hostFeatureVersions().toVariantMap() } } );
         }
         if ( request.action == CommanderAction::PluginManage ) {
             return pluginResult( pluginManager_.manage( request.pluginOperation, request.pluginId,

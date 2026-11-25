@@ -2293,7 +2293,7 @@
       ],
       "limitations": [
         "Design accepted by the user on 2026-11-17 with every decision approved (decision D16, docs/plugin-repositories.md section 10). E16a1 is merged (PR #128, 6fbb75c0) and E16a2 is merged (PR #133, a9608fbc); E16c ships as three PRs (decided by the user on 2026-11-24): E16c1 predefined filters is in review in https://github.com/dm17ryk/klogg/pull/165, E16c2 highlighter sets and E16c3 actions with automatic responses are planned; E16b, E16d and E16e are planned.",
-        "Python decoders in packs stay inactive until a decoder contract runs them: MD03 is planned and not started, and on 2026-11-24 the user chose a narrow MD03b slice (a Python preview backend, issue https://github.com/dm17ryk/klogg/issues/159) for E16b (issue https://github.com/dm17ryk/klogg/issues/146) to build on.",
+        "Python decoders in packs run once MD03b (the Python preview backend, plan change approved on 2026-11-24, issue https://github.com/dm17ryk/klogg/issues/159) is merged; E16b (issue https://github.com/dm17ryk/klogg/issues/146) follows it.",
         "E16a1 accepted limits: actions, highlights and filters in packs are validated as files only until E16c; automatic updates of an enabled pack with Lua ask nothing (the same trust decision as for process plugins, design 4.3); a pack's Lua cannot `require` another file (list shared files first); TShark itself was not run with the example pack locally (the JSON fallback, the worker's pack profile and the loader text are tested); the link case of the file checks runs on Linux and macOS only; a user's own block name containing `/` now also gets the generic block fallback; pack routes past the merged limits at session start are dropped with a debug log.",
         "E16a2 accepted limits: the merge runs in process (packmerge) instead of a merge driver registered through .gitattributes, with the same outcome and history; a damaged store is kept aside as <pack-id>.git.damaged-<time> instead of being exported as a patch and a pack (Export arrives with E16d); edits change or delete a pack's own previews and blocks and change its listed files and preview order, but add no items (Copy to My Previews makes the user's own); a whole-pack Revert stays within the installed version; the merge window lists conflicts only (clean merges are applied without a review page), shows field values as JSON text and edits them as one JSON value; Keep Both applies to previews and copies the user's version before Apply, so the copy stays if the update then fails; an automatic update that needs a merge is not installed, is reported once per version and is tried again at the next check; removing a pack removes its store and edit history (the GUI asks first when the pack has edits); highlighters, actions and filters in packs (E16c) and Export as Pack (E16d) are not part of this slice; the external merge tool was run locally with cmd/cp stand-ins, not with Beyond Compare, KDiff3, WinMerge, Meld or P4Merge.",
         "E16c1 accepted limits: a pack's filters file must be exactly what Export writes (every filter with a unique id, a name and a pattern; nothing else), so an older export without ids is refused at install; the filter order merges as text, so a local reordering next to a filter the new version adds is a conflict of the order; pack filters are edited, removed or reset in place but not added (Copy to My Filters makes the user's own); the merge window names a filter by its id; a filter of the user's with a pack filter's id replaces it, while equal names are allowed (as among the user's own); the example pack, now with previews and filters, is listed as a Configuration pack instead of Previewers; highlighters and actions in packs are still carried as files until E16c2 and E16c3."
@@ -2301,7 +2301,7 @@
       "slices": [
         "E16a1: configuration pack kind and content validation, JSON previews with the pack's name (namespaced blocks, user precedence, collisions between packs refused, merged quotas, Copy to My Previews), Lua and routes for TShark in the session snapshot (one Lua environment per pack, 32 files per profile), inactive Python decoders, the public example pack, get_plugins pack fields and the Lua confirmations, PR https://github.com/dm17ryk/klogg/pull/128, merged as 6fbb75c0",
         "E16a2: local pack store (libgit2 built without network, canonical form, in-process merge, history, rebuild), edit in place (Edit... in the previews dialog, Pack Files... on the Installed tab), the item merge window, the three-pane text merge, the external merge tool, Revert and Reset to Pack Version, the automation strategies and resolutions, automatic updates that need a merge reported, PR https://github.com/dm17ryk/klogg/pull/133, merged as a9608fbc",
-        "E16b: Python decoders through the MD03 decoder contract, planned",
+        "E16b: Python decoders, run by the MD03b Python preview backend (plan change approved on 2026-11-24, issue https://github.com/dm17ryk/klogg/issues/159); E16b itself (issue https://github.com/dm17ryk/klogg/issues/146) follows MD03b, planned",
         "E16c1: predefined filters from packs (the filters file CILogg exports, one item per filter in the store, field merge with the id as identity, the pack's filters after the user's with the pack's name, Copy to My Filters, Edit... and Packs... in the Predefined Filters dialog, a shared filter id between packs and more than 4,096 filters together refused), part of issue https://github.com/dm17ryk/klogg/issues/147, PR https://github.com/dm17ryk/klogg/pull/165, in review",
         "E16c2: highlighter sets from packs, with their canonical form, local edits and merge, part of issue https://github.com/dm17ryk/klogg/issues/147, planned",
         "E16c3: actions with automatic responses (off until enabled) from packs, with their canonical forms, local edits and merge, issue https://github.com/dm17ryk/klogg/issues/147, planned",
@@ -2806,7 +2806,7 @@
         "../../docs/workbench/tshark-preview.md"
       ],
       "limitations": [
-        "MD03a is a preview integration slice; the generic MD03 dataset contract and decoder milestone remain open."
+        "MD03a and MD03b are preview slices (TShark/Lua and pack Python decoders); the generic MD03 dataset contract and decoder milestone remain open."
       ],
       "slices": [
         {
@@ -2820,6 +2820,25 @@
           "limitations": [
             "Local Windows evidence is distinct from hosted CI, other platforms and release qualification.",
             "Initial EHCI pane availability failure remains unexplained despite a clean passing rerun; performance gate remains open."
+          ]
+        },
+        {
+          "id": "MD03b",
+          "status": "implemented_pending_gates",
+          "scope": "Python preview backend for configuration pack decoders (plan change approved by Dmitry on 2026-11-24, issue https://github.com/dm17ryk/klogg/issues/159): decode(payload, context) on PreviewService result v1, a supervised Python decoder worker per preview session on the MD03a transport, Python decoder routes with the JSON fallback only when not dispatched, pack modules copied and hashed per session in one import namespace per pack, the pack Lua confirmations extended to Python, and the python_decoders host feature with get_plugins hostFeatures and pythonDecodersActive",
+          "pullRequest": "https://github.com/dm17ryk/klogg/pull/163",
+          "evidence": [
+            "slices/MD03b-python-preview.md",
+            "../../docs/plugin-repositories.md",
+            "../../tests/unit/pythondecoder_test.cpp",
+            "../../tests/plugins/test_message_decoder_python_worker.py",
+            "../../plugins/examples/python-decoder-pack"
+          ],
+          "limitations": [
+            "The generic MD03 dataset contract, decoder scans, conversations and embedded payloads stay planned; MD03b uses PreviewService result v1 only.",
+            "Python decoders run with the standard library (-I -S) and the user's permissions; the process group or job object ends descendants but is not an OS sandbox, and a Unix descendant that leaves the group is not ended.",
+            "context.direction is reported as unknown: the preview service does not know a message's direction yet.",
+            "Local Windows evidence is distinct from hosted CI, other platforms and release qualification."
           ]
         }
       ]

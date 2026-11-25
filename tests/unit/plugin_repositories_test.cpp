@@ -104,6 +104,44 @@ QByteArray fixturePackage( const QString& root, const QString& id, const QString
     return archive.readAll();
 }
 
+// A ZIP of a configuration pack with a preview and a Python decoder (MD03b).
+QByteArray pythonPackPackage( const QString& root, const QString& id )
+{
+    const auto folder = QDir( root ).filePath( id );
+    REQUIRE( QDir().mkpath( folder + "/python" ) );
+    const QJsonObject manifest{
+        { "id", id },
+        { "name", "Python pack" },
+        { "version", "1.0.0" },
+        { "protocol_version", 1 },
+        { "kind", "config-pack" },
+        { "pack_format", 1 },
+        { "content",
+          QJsonObject{ { "previews", "previews.json" },
+                       { "python_decoders",
+                         QJsonArray{ QJsonObject{ { "id", "summary" },
+                                                  { "module", "python/summary.py" } } } } } }
+    };
+    const QList<QPair<QString, QByteArray>> files{
+        { "plugin.json", QJsonDocument( manifest ).toJson() },
+        { "previews.json", R"({"version": 1, "previews": []})" },
+        { "python/summary.py", "def decode(payload, context):\n    return None\n" }
+    };
+    for ( const auto& file : files ) {
+        QFile out( QDir( folder ).filePath( file.first ) );
+        REQUIRE( out.open( QIODevice::WriteOnly ) );
+        out.write( file.second );
+    }
+    const auto zipPath = folder + ".zip";
+    KZip zip( zipPath );
+    REQUIRE( zip.open( QIODevice::WriteOnly ) );
+    REQUIRE( zip.addLocalDirectory( folder, "" ) );
+    REQUIRE( zip.close() );
+    QFile archive( zipPath );
+    REQUIRE( archive.open( QIODevice::ReadOnly ) );
+    return archive.readAll();
+}
+
 QVariantMap pluginInfo( const PluginManager& manager, const QString& id )
 {
     for ( const auto& value : manager.plugins() ) {
@@ -644,6 +682,60 @@ TEST_CASE( "Updates come only from the install source; another repository needs 
     QSettings settings( QDir( QDir( temp.path() ).filePath( "data" ) ).filePath( "settings.ini" ),
                         QSettings::IniFormat );
     REQUIRE_FALSE( settings.contains( "plugins/org.test.fixture/sourceRepository" ) );
+#endif
+}
+
+TEST_CASE( "A pack whose catalog entry leaves out its code is refused when it is staged",
+           "[plugins][workbench][E15][https][pythondecoder]" )
+{
+#ifndef CILOGG_TEST_HTTPS_SERVER
+    WARN( "This Qt build has no TLS server" );
+    return;
+#else
+    testhttps::CatalogServer server;
+    if ( !server.listening() ) {
+        WARN( "No TLS backend is available" );
+        return;
+    }
+    QTemporaryDir temp;
+    const auto package = pythonPackPackage( temp.path(), "org.test.pythonpack" );
+    server.route( "/p/pack.zip", { 200, package, "application/zip", 0 } );
+    // The GUI asks about pack code from the entry's `contents` (design 4.3, 4.4): an entry that
+    // hides the package's Python would skip that question.
+    const auto entry = [ & ]( const QJsonArray& contents ) {
+        auto value = entryFor( "org.test.pythonpack", "1.0.0", server.url( "/p/pack.zip" ), package );
+        value[ "kind" ] = "config-pack";
+        value[ "os" ] = "any";
+        value[ "arch" ] = "any";
+        value[ "contents" ] = contents;
+        return value;
+    };
+    server.route( "/p/plugins.json",
+                  { 200, catalogBytes( { entry( { "previews" } ) } ), "application/json", 0 } );
+    testhttps::TrustingNetwork network;
+    PluginManager manager( QDir( temp.path() ).filePath( "data" ),
+                           QDir( temp.path() ).filePath( "none" ), nullptr, &network );
+    REQUIRE( manager.manage( "repository_remove", {}, { { "repository", "default" } } ).ok() );
+    REQUIRE( manager
+                 .manage( "repository_add", {},
+                          { { "name", "P" }, { "url", server.url( "/p/plugins.json" ) } } )
+                 .ok() );
+    REQUIRE( finishedJob( manager, manager.manage( "catalog", {}, {} ) )[ "state" ] == "completed" );
+    const auto hidden
+        = finishedJob( manager, manager.manage( "install", "org.test.pythonpack", {} ) );
+    REQUIRE( hidden[ "state" ] == "failed" );
+    CHECK( hidden[ "error" ].toString().contains( "python_decoders" ) );
+    CHECK( pluginInfo( manager, "org.test.pythonpack" ).isEmpty() );
+    // The same package with an honest entry installs.
+    server.route( "/p/plugins.json",
+                  { 200, catalogBytes( { entry( { "previews", "python_decoders" } ) } ),
+                    "application/json", 0 } );
+    REQUIRE( finishedJob( manager, manager.manage( "catalog", {}, {} ) )[ "state" ] == "completed" );
+    const auto listed
+        = finishedJob( manager, manager.manage( "install", "org.test.pythonpack", {} ) );
+    INFO( listed[ "error" ].toString().toStdString() );
+    CHECK( listed[ "state" ] == "completed" );
+    CHECK( pluginInfo( manager, "org.test.pythonpack" )[ "pythonDecoders" ].toInt() == 1 );
 #endif
 }
 

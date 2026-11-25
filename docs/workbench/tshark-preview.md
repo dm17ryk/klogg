@@ -20,6 +20,14 @@ session starts and are never written into these settings, their exports or proje
 disabling or updating a pack starts new TShark sessions. Without TShark, pack previews use
 their JSON definitions.
 
+**Python decoders** of enabled packs (MD03b, [section 4.4](../plugin-repositories.md)) use the
+same routes: a route whose decoder column reads `python:<pack-id>/<decoder-id>` sends its preview
+or assembled protocol to that decoder's `decode(payload, context)` in a supervised Python worker
+(backend `python_decoder`). A Python route applies while its pack is enabled, also when TShark is
+disabled or not configured, and has a TShark route's place in Automatic mode. Automatic falls back
+to JSON only when the decoder returns `None` (`decoder_not_dispatched`); explicit TShark ignores
+Python routes.
+
 Configure preview routes by existing preview definition name, and protocol
 routes by assembled protocol name. Each selects a named dissector and may
 specify its expected protocol; protocol routes also select input encoding.

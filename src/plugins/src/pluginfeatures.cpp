@@ -85,9 +85,12 @@ const std::vector<std::pair<QString, int>>& hostFeatures()
         { QStringLiteral( "toggles" ), 1 }, { QStringLiteral( "field_kinds" ), 1 },
         { QStringLiteral( "validation" ), 1 }, { QStringLiteral( "rich_tables" ), 1 },
         { QStringLiteral( "element_menus" ), 1 }, { QStringLiteral( "tree" ), 1 },
-        { QStringLiteral( "file_tree" ), 1 }, { QStringLiteral( "layout" ), 1 },
-        { QStringLiteral( "text_view" ), 1 }, { QStringLiteral( "images" ), 1 },
-        { QStringLiteral( "charts" ), 1 }, { QStringLiteral( "view_dialogs" ), 1 },
+        { QStringLiteral( "file_tree" ), 1 },
+        // MD03b: configuration packs' Python decoders run (docs/plugin-repositories.md 4.4).
+        { QStringLiteral( "python_decoders" ), 1 },
+        { QStringLiteral( "layout" ), 1 }, { QStringLiteral( "text_view" ), 1 },
+        { QStringLiteral( "images" ), 1 }, { QStringLiteral( "charts" ), 1 },
+        { QStringLiteral( "view_dialogs" ), 1 },
     };
     return features;
 }
