@@ -207,8 +207,9 @@ For several packages, list them in a `sources.json` file and pass `--sources sou
 **Configuration packs** are packages without a program: `"kind": "config-pack"` and a `content`
 object that lists preview definitions (`previews.json` format), Lua files for TShark, Python
 decoders and their decoder routes, predefined filters (the file **Export** in the Predefined
-Filters dialog writes) and highlighter sets (the file **Export** in the Highlighters dialog
-writes). They install, update, enable and remove like plugins, from the same repositories; build
+Filters dialog writes), highlighter sets (the file **Export** in the Highlighters dialog writes)
+and actions with automatic responses (the file **Export** in the Actions window writes). They
+install, update, enable and remove like plugins, from the same repositories; build
 them with `--os any --arch any`. Pack previews appear in the previews dialog with the pack's name,
 and **Copy to My Previews** makes your own copy. A preview routed to a pack's Python decoder is
 decoded by that decoder's `decode(payload, context)`; the preview pane shows `python_decoder` and
@@ -218,7 +219,15 @@ the Predefined Filters dialog after yours, read only: **Copy to My Filters** mak
 Plugins and Packs window. Pack highlighter sets work the same way: the Highlighters menu lists
 them as "<name> (<pack>)" and you turn them on and off like your own (which sets are on stays your
 choice, also across pack updates); the Highlighters dialog shows them after yours, read only, with
-**Copy to My Highlighters**, **Edit…** and **Packs…**. CILogg asks before it enables a pack with
+**Copy to My Highlighters**, **Edit…** and **Packs…**. Pack actions and automatic responses follow
+yours in the Actions and Responses windows as "<name> (<pack>)", read only: **Copy to My Actions**
+and **Copy to My Responses** make your own copies (a response's copy brings the actions it runs),
+**Edit** edits the pack's item in place and **Packs…** opens the Plugins and Packs window. Every
+pack response starts **off**, because it sends to your device without a click: turn one on with
+its **Enabled** box, or all of a pack's with **Turn On All…**, which lists them first. Your
+responses are matched first, then the packs'. In scripts, scenarios, the CLI and Commander a pack
+item is also named `<pack-id>/<local-id>` (for example `--id org.cilogg.example.protocol-pack/1`),
+which is the same on every PC. CILogg asks before it enables a pack with
 Lua or Python, because that code runs on your computer. The
 [plugin SDK](docs/plugin-sdk.md#configuration-packs) describes the format;
 [plugins/examples/protocol-pack](plugins/examples/protocol-pack) (Lua) and

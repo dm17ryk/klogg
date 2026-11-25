@@ -1,6 +1,7 @@
 // Configuration packs, slice E16a1 (docs/plugin-repositories.md sections 4.1-4.4).
 #include <catch2/catch.hpp>
 
+#include <QApplication>
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDialogButtonBox>
@@ -11,6 +12,7 @@
 #include <QJsonDocument>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QSettings>
 #include <QSignalSpy>
@@ -20,15 +22,22 @@
 #include <QTemporaryDir>
 #include <QTemporaryFile>
 #include <QTest>
+#include <QTimer>
 #include <QToolButton>
 #include <algorithm>
+#include <memory>
 #include <tuple>
 
+#include "actionsconfigparser.h"
+#include "actionsmanager.h"
+#include "actionsresponseswindow.h"
+#include "actionstablemodel.h"
 #include "configpack.h"
 #include "highlightersdialog.h"
 #include "highlighterset.h"
 #include "highlightersmenu.h"
 #include "importpreviewsdialog.h"
+#include "persistentinfo.h"
 #include "plugincatalog.h"
 #include "pluginmanager.h"
 #include "pluginmanifest.h"
@@ -432,6 +441,15 @@ TEST_CASE( "The example pack is a valid configuration pack", "[plugins][E16]" )
     CHECK( !pack.filters.last().filter.useRegex );
     CHECK( pack.filters.last().packName == "Example protocol pack" );
     CHECK( packSummary( manifest.json, folder ).value( "filters" ).toInt() == 2 );
+    // Its action and automatic response (E16c3), with the pack's own ids.
+    CHECK( pack.warnings.isEmpty() );
+    REQUIRE( pack.actions.size() == 1 );
+    REQUIRE( pack.responses.size() == 1 );
+    CHECK( pack.actions.first().id == 1 );
+    REQUIRE( pack.responses.first().response.steps.size() == 1 );
+    CHECK( pack.responses.first().response.steps.first().actionId == 1 );
+    CHECK( packSummary( manifest.json, folder ).value( "packActions" ).toInt() == 1 );
+    CHECK( packSummary( manifest.json, folder ).value( "packResponses" ).toInt() == 1 );
 }
 
 TEST_CASE( "Configuration packs have no process", "[plugins][E16]" )
@@ -1659,4 +1677,333 @@ TEST_CASE( "A pack whose filters or highlighters file is not an export keeps its
     CHECK( !refused.ok() );
     CHECK( refused.error.contains( "highlighters" ) );
     registry.attach( nullptr );
+}
+
+namespace {
+// An installed pack with actions and automatic responses only (E16c3).
+QString writeActionPack( const QString& root, const QString& id, const QByteArray& actions )
+{
+    auto manifest = packManifest( id, 0 );
+    for ( const auto* key : { "previews", "decoder_routes", "python_decoders" } ) {
+        manifest = withContent( manifest, QLatin1String( key ), QJsonValue::Undefined );
+    }
+    manifest = withContent( manifest, "actions", "actions.json" );
+    const auto folder = QDir( root ).filePath( "plugins/" + id );
+    writeFile( folder + "/plugin.json", QJsonDocument( manifest ).toJson() );
+    writeFile( folder + "/actions.json", actions );
+    return folder;
+}
+
+// Two actions and a response that runs both, as Export writes them (trimmed).
+constexpr auto PackActionsJson = R"json({ "version": 4,
+  "actions": [ { "id": 3, "name": "Reset", "sequence": { "type": "string", "value": "reset\n" } },
+               { "id": 7, "name": "Status", "sequence": { "type": "string", "value": "status\n" } } ],
+  "responses": [ { "id": 3, "name": "After boot", "match": { "type": "string", "value": "boot done" },
+                   "response": { "steps": [ { "action_id": 7, "delay_ms": 0 },
+                                            { "action_id": 3, "delay_ms": 0 } ] } } ] })json";
+
+ActionDefinition userAction( int id, const QString& name = QStringLiteral( "Mine" ) )
+{
+    ActionDefinition action;
+    action.id = id;
+    action.name = name;
+    action.sequence.value = QStringLiteral( "mine" );
+    return action;
+}
+
+ResponseDefinition userResponse( int id, int runs )
+{
+    ResponseDefinition response;
+    response.id = id;
+    response.name = QStringLiteral( "Mine %1" ).arg( id );
+    response.match.value = QStringLiteral( "mine" );
+    response.response.hasActionId = true;
+    response.response.actionId = runs;
+    response.response.steps = { { runs, 0 } };
+    return response;
+}
+
+// Keeps the user's actions and responses, and the packs' run-time ids and states in the settings,
+// as they were.
+class ScopedPackActions {
+public:
+    ScopedPackActions()
+        : actions_( ActionsManager::instance().actions() )
+        , responses_( ActionsManager::instance().responses() )
+    {
+        PersistentInfo::getSettings( app_settings{} ).remove( "PackActions" );
+    }
+    ~ScopedPackActions()
+    {
+        ActionsManager::instance().setPackItems( {} );
+        CHECK( ActionsManager::instance().importFromDefinitions( actions_, responses_ ).ok );
+        PersistentInfo::getSettings( app_settings{} ).remove( "PackActions" );
+    }
+    ScopedPackActions( const ScopedPackActions& ) = delete;
+    ScopedPackActions& operator=( const ScopedPackActions& ) = delete;
+
+private:
+    QVector<ActionDefinition> actions_;
+    QVector<ResponseDefinition> responses_;
+};
+} // namespace
+
+TEST_CASE( "Pack actions and responses join the user's with run-time ids, responses off",
+           "[plugins][E16]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    ScopedPackActions restore;
+    auto& actions = ActionsManager::instance();
+    REQUIRE( actions.importFromDefinitions( { userAction( 1 ) }, { userResponse( 1, 1 ) } ).ok );
+    writeActionPack( root.path(), "a.pack", PackActionsJson );
+    PluginManager manager( root.path(), QDir( root.path() ).filePath( "none" ) );
+    manager.discover();
+    auto& registry = PreviewPackRegistry::instance();
+    registry.attach( &manager );
+    QSignalSpy changed( &actions, &ActionsManager::actionsChanged );
+    REQUIRE( manager.manage( "enable", "a.pack", {} ).ok() );
+    CHECK( changed.count() >= 1 );
+    REQUIRE( registry.contributions().size() == 1 );
+    CHECK( registry.contributions().first().actions.size() == 2 );
+    CHECK( manager.plugins().first().toMap()[ "packActions" ] == 2 );
+
+    // The pack's actions come after the user's, with run-time ids from 1,000,000 and the pack's
+    // name; the user's own list (saved and exported) does not hold them.
+    const auto packActions = actions.packActions();
+    REQUIRE( packActions.size() == 2 );
+    CHECK( packActions.at( 0 ).localId == 3 );
+    CHECK( packActions.at( 0 ).packId == "a.pack" );
+    CHECK( packActions.at( 0 ).packName == "Pack a.pack" );
+    const auto reset = packActions.at( 0 ).action.id;
+    const auto status = packActions.at( 1 ).action.id;
+    CHECK( reset >= PackItemIdBase );
+    CHECK( status >= PackItemIdBase );
+    CHECK( reset != status );
+    REQUIRE( actions.findActionById( status ) != nullptr );
+    CHECK( actions.findActionById( status )->name == "Status" );
+    CHECK( actions.actions().size() == 1 );
+    // "<pack-id>/<local-id>" names it the same on every PC.
+    CHECK( namespacedItemId( "a.pack", 7 ) == "a.pack/7" );
+    CHECK( actions.resolvePackAction( "a.pack/7" ) == status );
+    CHECK( !actions.resolvePackAction( "a.pack/9" ) );
+    CHECK( !actions.resolvePackAction( "b.pack/7" ) );
+    CHECK( !actions.resolvePackAction( "a.pack/07" ) );
+
+    // The pack's response runs its own pack's actions, starts off and is matched after the
+    // user's.
+    const auto packResponses = actions.packResponses();
+    REQUIRE( packResponses.size() == 1 );
+    const auto boot = packResponses.first().response.id;
+    CHECK( boot >= PackItemIdBase );
+    CHECK( !packResponses.first().response.enabled );
+    const auto& steps = packResponses.first().response.response.steps;
+    REQUIRE( steps.size() == 2 );
+    CHECK( steps.at( 0 ).actionId == status );
+    CHECK( steps.at( 1 ).actionId == reset );
+    CHECK( actions.resolvePackResponse( "a.pack/3" ) == boot );
+    CHECK( actions.findResponseByName( "after BOOT" ) == actions.findResponseById( boot ) );
+    const auto effective = actions.effectiveResponses();
+    REQUIRE( effective.size() == 2 );
+    CHECK( effective.at( 0 ).id == 1 );
+    CHECK( effective.at( 1 ).id == boot );
+
+    // On or off is the user's, kept per pack and item: a disable and enable (as an update) keeps
+    // it, and keeps the run-time ids.
+    REQUIRE( actions.setResponseEnabled( boot, true ) );
+    CHECK( actions.packResponses().first().response.enabled );
+    REQUIRE( manager.manage( "disable", "a.pack", {} ).ok() );
+    CHECK( actions.packActions().isEmpty() );
+    CHECK( actions.findActionById( status ) == nullptr ); // a user's link to it runs nothing
+    REQUIRE( manager.manage( "enable", "a.pack", {} ).ok() );
+    CHECK( actions.resolvePackAction( "a.pack/7" ) == status );
+    REQUIRE( actions.packResponses().size() == 1 );
+    CHECK( actions.packResponses().first().response.id == boot );
+    CHECK( actions.packResponses().first().response.enabled );
+    CHECK( actions.setPackResponsesEnabled( "a.pack", false ) == 1 );
+    CHECK( !actions.packResponses().first().response.enabled );
+    CHECK( actions.setPackResponsesEnabled( "a.pack", false ) == 0 );
+
+    // A pack's items are not changed as the user's (copy them, or edit the pack's item), and the
+    // packs' id range is not the user's.
+    QString error;
+    CHECK( !actions.updateAction( status, packActions.at( 1 ).action, &error ) );
+    CHECK( error.contains( "a.pack/7" ) );
+    CHECK( !actions.deleteResponse( boot, &error ) );
+    CHECK( error.contains( "a.pack/3" ) );
+    CHECK( !actions.createAction( userAction( PackItemIdBase ), &error ) );
+    CHECK( error.contains( "kept for configuration packs" ) );
+    CHECK( !actions.importFromDefinitions( { userAction( PackItemIdBase + 5 ) }, {} ).ok );
+    // A response of the user's may run a pack action.
+    REQUIRE( actions.createResponse( userResponse( 2, status ), &error ) );
+
+    // Copy to My Actions: the user's own copy, with a new id.
+    const auto copy = actions.copyPackAction( status, &error );
+    REQUIRE( copy );
+    CHECK( *copy < PackItemIdBase );
+    CHECK( actions.findActionById( *copy )->name == "Status" );
+    // A response's copy brings the actions it runs and runs those copies; it starts off.
+    const auto before = actions.actions().size();
+    const auto responseCopy = actions.copyPackResponse( boot, &error );
+    REQUIRE( responseCopy );
+    CHECK( actions.actions().size() == before + 2 );
+    const auto* copied = actions.findResponseById( *responseCopy );
+    REQUIRE( copied != nullptr );
+    CHECK( !copied->enabled );
+    REQUIRE( copied->response.steps.size() == 2 );
+    for ( const auto& step : copied->response.steps ) {
+        CHECK( step.actionId < PackItemIdBase );
+        CHECK( actions.findActionById( step.actionId ) != nullptr );
+    }
+    registry.attach( nullptr );
+    CHECK( actions.packActions().isEmpty() );
+}
+
+TEST_CASE( "A pack's actions must be ones CILogg runs, within the action limits", "[plugins][E16]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    ScopedPackActions restore;
+    auto& actions = ActionsManager::instance();
+    // An action CILogg would not run (no sequence): the pack's actions are left out with the
+    // reason, and enabling the pack is refused with it.
+    const auto folder
+        = writeActionPack( root.path(), "a.pack",
+                           R"({ "actions": [ { "id": 1, "name": "Empty" } ], "responses": [] })" );
+    const auto manifest = Manifest::read( folder );
+    REQUIRE( manifest.valid() );
+    const auto read = PreviewPackRegistry::read( "a.pack", folder, manifest.json );
+    CHECK( read.error.isEmpty() );
+    CHECK( read.actions.isEmpty() );
+    REQUIRE( read.warnings.size() == 1 );
+    CHECK( read.warnings.first().contains( "Missing sequence" ) );
+    CHECK( PreviewPackRegistry::instance()
+               .check( "a.pack", folder, manifest.json )
+               .contains( "Missing sequence" ) );
+
+    // The user's actions and every enabled pack's within 4,096 together.
+    writeFile( folder + "/actions.json", PackActionsJson );
+    QVector<ActionDefinition> many;
+    for ( int id = 1; id < MaxListedActionItems; ++id ) {
+        many.append( userAction( id ) );
+    }
+    REQUIRE( actions.importFromDefinitions( many, {} ).ok );
+    CHECK( PreviewPackRegistry::instance()
+               .check( "a.pack", folder, Manifest::read( folder ).json )
+               .contains( "would make 4097 actions" ) );
+    // When the user's grow past it, the packs' give way.
+    actions.setPackItems( { { "a.pack", "A", { userAction( 1 ) }, {} } } );
+    REQUIRE( actions.packActions().size() == 1 );
+    const auto fits = actions.packActions().first().action.id;
+    CHECK( actions.findActionById( fits ) != nullptr );
+    actions.setPackItems( { { "a.pack", "A", { userAction( 1 ), userAction( 2 ) }, {} } } );
+    CHECK( actions.packActions().isEmpty() );
+    CHECK( actions.findActionById( fits ) == nullptr );
+    CHECK( actions.effectiveResponses().isEmpty() );
+}
+
+namespace {
+// Answers the next modal message box with `answer` once it shows.
+void answerNextQuestion( QMessageBox::StandardButton answer )
+{
+    auto* timer = new QTimer;
+    auto tries = std::make_shared<int>( 0 );
+    timer->setInterval( 10 );
+    QObject::connect( timer, &QTimer::timeout, [ timer, answer, tries ] {
+        auto* box = qobject_cast<QMessageBox*>( QApplication::activeModalWidget() );
+        if ( box != nullptr || ++*tries > 500 ) {
+            timer->stop();
+            timer->deleteLater();
+        }
+        if ( box != nullptr && box->button( answer ) != nullptr ) {
+            box->button( answer )->click();
+        }
+    } );
+    timer->start();
+}
+} // namespace
+
+TEST_CASE( "The Actions window lists pack items read only, copies them and turns responses on",
+           "[plugins][E16]" )
+{
+    ScopedPackActions restore;
+    auto& actions = ActionsManager::instance();
+    REQUIRE( actions.importFromDefinitions( { userAction( 1 ) }, { userResponse( 1, 1 ) } ).ok );
+    const auto parsed = ActionsConfigParser().parseJson( PackActionsJson );
+    REQUIRE( parsed.errors.isEmpty() );
+    actions.setPackItems( { { "a.pack", "Pack A", parsed.actions, parsed.responses } } );
+    ActionsResponsesWindow window;
+    QStringList edited;
+    window.setPackItemEditor( [ &edited ]( QWidget*, const QString& packId, const QString& path ) {
+        edited.append( packId + ':' + path );
+    } );
+    int packsOpened = 0;
+    window.setPacksOpener( [ &packsOpened ] { ++packsOpened; } );
+    auto* actionsTable = window.findChild<QTableView*>( "actionsTableView" );
+    auto* responsesTable = window.findChild<QTableView*>( "responsesTableView" );
+    REQUIRE( actionsTable != nullptr );
+    REQUIRE( responsesTable != nullptr );
+    const auto button = [ &window ]( const char* name ) {
+        auto* found = window.findChild<QPushButton*>( name );
+        REQUIRE( found != nullptr );
+        return found;
+    };
+
+    // Yours first, then the pack's with its name and the name it has on every PC.
+    auto* actionModel = actionsTable->model();
+    REQUIRE( actionModel->rowCount() == 3 );
+    CHECK( actionModel->index( 0, 2 ).data().toString() == "Mine" );
+    CHECK( actionModel->index( 2, 2 ).data().toString() == "Status (Pack A)" );
+    CHECK( actionModel->index( 2, 0 ).data( ActionsTableModel::NamespacedIdRole ).toString()
+           == "a.pack/7" );
+    CHECK( actionModel->index( 2, 0 ).data( Qt::ToolTipRole ).toString().contains( "a.pack/7" ) );
+
+    // A pack's action is read only: Edit opens its store item, Copy to My Actions makes it yours.
+    actionsTable->selectRow( 2 );
+    CHECK( button( "editActionButton" )->isEnabled() );
+    CHECK( !button( "deleteActionButton" )->isEnabled() );
+    CHECK( !button( "duplicateActionButton" )->isEnabled() );
+    CHECK( button( "copyPackActionButton" )->isEnabled() );
+    button( "editActionButton" )->click();
+    CHECK( edited == QStringList{ "a.pack:actions/7.json" } );
+    button( "copyPackActionButton" )->click();
+    REQUIRE( actions.actions().size() == 2 );
+    CHECK( actions.actions().last().name == "Status" );
+    actionsTable->selectRow( 0 );
+    CHECK( button( "deleteActionButton" )->isEnabled() );
+    CHECK( !button( "copyPackActionButton" )->isEnabled() );
+    button( "actionPacksButton" )->click();
+    CHECK( packsOpened == 1 );
+
+    // The pack's response starts off; Turn On All asks first, with the list.
+    auto* responseModel = responsesTable->model();
+    REQUIRE( responseModel->rowCount() == 2 );
+    CHECK( responseModel->index( 1, 2 ).data().toString() == "After boot (Pack A)" );
+    CHECK( responseModel->index( 1, 1 ).data( Qt::CheckStateRole ).toInt() == Qt::Unchecked );
+    responsesTable->selectRow( 1 );
+    CHECK( button( "turnOnPackResponsesButton" )->isEnabled() );
+    CHECK( !button( "deleteResponseButton" )->isEnabled() );
+    answerNextQuestion( QMessageBox::No );
+    button( "turnOnPackResponsesButton" )->click();
+    CHECK( !actions.packResponses().first().response.enabled );
+    answerNextQuestion( QMessageBox::Yes );
+    button( "turnOnPackResponsesButton" )->click();
+    CHECK( actions.packResponses().first().response.enabled );
+    // Its check box turns it off, as for yours.
+    REQUIRE(
+        responseModel->setData( responseModel->index( 1, 1 ), Qt::Unchecked, Qt::CheckStateRole ) );
+    CHECK( !actions.packResponses().first().response.enabled );
+
+    // Copy to My Responses brings copies of the actions it runs.
+    responsesTable->selectRow( 1 );
+    const auto before = actions.actions().size();
+    button( "copyPackResponseButton" )->click();
+    CHECK( actions.responses().size() == 2 );
+    CHECK( actions.actions().size() == before + 2 );
+    // The pack's response follows yours (now two) and opens in the pack item editor.
+    REQUIRE( responseModel->rowCount() == 3 );
+    CHECK( responseModel->index( 2, 2 ).data().toString() == "After boot (Pack A)" );
+    responsesTable->selectRow( 2 );
+    button( "editResponseButton" )->click();
+    CHECK( edited.last() == "a.pack:responses/3.json" );
 }

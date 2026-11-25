@@ -692,6 +692,9 @@ QVariantMap commanderRequestToVariantMap( const CommanderRequest& request )
     if ( request.entityId ) {
         map.insert( QStringLiteral( "entityId" ), *request.entityId );
     }
+    if ( !request.entityKey.isEmpty() ) {
+        map.insert( QStringLiteral( "entityKey" ), request.entityKey );
+    }
     if ( request.timeoutMs ) {
         map.insert( QStringLiteral( "timeoutMs" ), *request.timeoutMs );
     }
@@ -992,15 +995,33 @@ std::optional<CommanderRequest> commanderRequestFromVariantMap( const QVariantMa
         request.filterIndex = value;
     }
 
+    // An entity id is a number, or a configuration pack's "<pack-id>/<local-id>" (E16c3), given
+    // as entityKey or as entityId itself.
     const auto entityIdIt = map.find( QStringLiteral( "entityId" ) );
     if ( entityIdIt != map.end() ) {
         bool ok = false;
         const auto value = entityIdIt->toInt( &ok );
-        if ( !ok ) {
+        if ( ok ) {
+            request.entityId = value;
+        }
+        else if ( entityIdIt->typeId() == QMetaType::QString
+                  && entityIdIt->toString().contains( QLatin1Char( '/' ) ) ) {
+            request.entityKey = entityIdIt->toString();
+        }
+        else {
             setError( errorMessage, QStringLiteral( "Invalid commander entity id." ) );
             return std::nullopt;
         }
-        request.entityId = value;
+    }
+    const auto entityKey = map.value( QStringLiteral( "entityKey" ) ).toString();
+    if ( !entityKey.isEmpty() ) {
+        if ( request.entityId || !request.entityKey.isEmpty() ) {
+            setError(
+                errorMessage,
+                QStringLiteral( "Give a commander entity as entityId or entityKey, not both." ) );
+            return std::nullopt;
+        }
+        request.entityKey = entityKey;
     }
 
     const auto timeoutMsIt = map.find( QStringLiteral( "timeoutMs" ) );

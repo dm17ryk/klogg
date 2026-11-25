@@ -11,6 +11,8 @@
 #include <QTemporaryDir>
 #include <algorithm>
 
+#include "actionsconfigparser.h"
+#include "actionsmanager.h"
 #include "configpack.h"
 #include "log.h"
 #include "packcanonical.h"
@@ -220,6 +222,52 @@ PreviewPackRegistry::Contribution PreviewPackRegistry::read( const QString& id,
             }
         }
     }
+    if ( !content.actions.isEmpty() ) {
+        QFile file( QDir( directory ).filePath( content.actions ) );
+        QString error;
+        const auto bytes = file.open( QIODevice::ReadOnly )
+                               ? file.read( cilogg::plugins::MaxPackFileBytes )
+                               : QByteArray{};
+        // Checked as the store reads it first: exactly an export, every item with its id and a
+        // response running its own pack's actions only.
+        if ( file.isOpen() ) {
+            cilogg::plugins::packcanonical::fromActions( bytes, &error );
+        }
+        // Then read as the user's actions are read, and every item one CILogg would accept as
+        // the user's own (Actions window, import).
+        ActionsParseResult parsed;
+        if ( error.isEmpty() && file.isOpen() ) {
+            parsed = ActionsConfigParser().parseJson( bytes );
+            if ( !parsed.errors.isEmpty() ) {
+                error = parsed.errors.first();
+            }
+        }
+        for ( const auto& action : parsed.actions ) {
+            QString why;
+            if ( error.isEmpty() && !validateActionDefinition( action, &why ) ) {
+                error = QObject::tr( "action %1 (\"%2\"): %3" )
+                            .arg( action.id )
+                            .arg( action.name, why );
+            }
+        }
+        for ( const auto& response : parsed.responses ) {
+            QString why;
+            if ( error.isEmpty() && !validateResponseDefinition( response, &why ) ) {
+                error = QObject::tr( "response %1 (\"%2\"): %3" )
+                            .arg( response.id )
+                            .arg( response.name, why );
+            }
+        }
+        // Only this file's items are left out when it cannot be read (see Contribution::warnings).
+        if ( !error.isEmpty() || !file.isOpen() ) {
+            pack.warnings.append( QObject::tr( "The pack's actions cannot be read: %1" )
+                                      .arg( error.isEmpty() ? file.errorString() : error ) );
+        }
+        else {
+            pack.actions = parsed.actions;
+            pack.responses = parsed.responses;
+        }
+    }
     pack.luaFiles = content.luaFiles( directory );
     pack.previewRoutes = content.previewRoutes.toVariantMap();
     pack.protocolRoutes = content.protocolRoutes.toVariantMap();
@@ -272,6 +320,7 @@ void PreviewPackRegistry::refresh()
     QSet<QString> filterIds;
     QList<ListedHighlighterSet> highlighterSets;
     QSet<QString> setIds;
+    QVector<PackActionItems> actionItems;
     for ( const auto& pack : packs ) {
         cache_.insert( pack.id, pack );
         if ( !pack.error.isEmpty() ) {
@@ -298,6 +347,10 @@ void PreviewPackRegistry::refresh()
                 setIds.insert( listed.set.id() );
                 highlighterSets.append( listed );
             }
+        }
+        // Actions and responses (E16c3) are namespaced by their pack: no two packs share one.
+        if ( !pack.actions.isEmpty() || !pack.responses.isEmpty() ) {
+            actionItems.append( { pack.id, packLabel( pack ), pack.actions, pack.responses } );
         }
         if ( !pack.luaFiles.isEmpty() ) {
             decoder.lua.append( QVariantMap{ { "id", pack.id }, { "files", pack.luaFiles } } );
@@ -334,6 +387,7 @@ void PreviewPackRegistry::refresh()
     PreviewManager::instance().setPackPreviews( previews );
     PackFilters::instance().setFilters( filters );
     PackHighlighters::instance().setSets( highlighterSets );
+    ActionsManager::instance().setPackItems( actionItems );
 }
 
 QString PreviewPackRegistry::copyPreview( const QString& name, const QString& copyName )
@@ -583,6 +637,22 @@ QString PreviewPackRegistry::check( const QString& id, const QString& directory,
             .arg( packLabel( candidate ) )
             .arg( setCount )
             .arg( MaxListedHighlighterSets );
+    }
+    // Actions and responses (E16c3): namespaced by their pack, so never shared, and the user's
+    // and every enabled pack's together within the limit of each kind.
+    auto actionCount = ActionsManager::instance().actions().size() + candidate.actions.size();
+    auto responseCount = ActionsManager::instance().responses().size() + candidate.responses.size();
+    for ( const auto& other : others ) {
+        actionCount += other.actions.size();
+        responseCount += other.responses.size();
+    }
+    if ( actionCount > MaxListedActionItems || responseCount > MaxListedActionItems ) {
+        const bool actions = actionCount > MaxListedActionItems;
+        return tr( "Enabling \"%1\" would make %2 %3 (at most %4, your own included)." )
+            .arg( packLabel( candidate ) )
+            .arg( actions ? actionCount : responseCount )
+            .arg( actions ? tr( "actions" ) : tr( "automatic responses" ) )
+            .arg( MaxListedActionItems );
     }
     // Routes: the same key in two packs, and the merged lists within the decoder's limits.
     const auto user = PreviewDecoderSettings::instance().configuration();

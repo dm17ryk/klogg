@@ -9,7 +9,7 @@ import time
 import traceback
 from collections import deque
 from dataclasses import dataclass
-from typing import Any, Callable, Deque, Dict, List, Mapping, Optional, Tuple
+from typing import Any, Callable, Deque, Dict, List, Mapping, Optional, Tuple, Union
 
 from .exceptions import KloggError
 
@@ -635,6 +635,14 @@ _PANE_DIRECTIONS = ("right", "down")
 _PANE_TABS = ("close", "move")
 
 
+def _entity(value: Union[int, str]) -> Dict[str, Any]:
+    """An action or response id: a number, or an enabled configuration pack's item as
+    "<pack-id>/<local-id>" (the same on every PC; its run-time id may differ)."""
+    if isinstance(value, str) and "/" in value:
+        return {"entityKey": value}
+    return {"entityId": int(value)}
+
+
 def _pane_selector(pane_id: Optional[str], window_index: Optional[int],
                    pane_index: Optional[int]) -> Dict[str, Any]:
     """A pane by id (any window) or by layout-order index in a window (the active one by default)."""
@@ -709,18 +717,18 @@ class TabRef:
         payload.update(extra)
         return _get_client().command(action, **payload)
 
-    def send_action(self, action_id: int,
+    def send_action(self, action_id: Union[int, str],
                     parameters: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
-        request: Dict[str, Any] = {"entityId": int(action_id)}
+        request: Dict[str, Any] = _entity(action_id)
         if parameters is not None:
             request["actionParameters"] = dict(parameters)
         return self._command("send_action", **request)
 
-    def wait_response(self, *, response_id: Optional[int] = None, name: Optional[str] = None,
-                      timeout_ms: int = 1000) -> Dict[str, Any]:
+    def wait_response(self, *, response_id: Optional[Union[int, str]] = None,
+                      name: Optional[str] = None, timeout_ms: int = 1000) -> Dict[str, Any]:
         request: Dict[str, Any] = {"timeoutMs": int(timeout_ms)}
         if response_id is not None:
-            request["entityId"] = int(response_id)
+            request.update(_entity(response_id))
         if name:
             request["entityName"] = name
         return self._command("wait_response", **request)
@@ -743,22 +751,22 @@ class TabRef:
     def add_comment(self, text: str, *, timestamp: bool = False) -> Dict[str, Any]:
         return self._command("add_comment", commentText=text, timestampComment=bool(timestamp))
 
-    def get_response_counter(self, *, response_id: Optional[int] = None,
+    def get_response_counter(self, *, response_id: Optional[Union[int, str]] = None,
                              name: Optional[str] = None, all: bool = False) -> Dict[str, Any]:
         payload: Dict[str, Any] = {}
         if response_id is not None:
-            payload["entityId"] = int(response_id)
+            payload.update(_entity(response_id))
         if name:
             payload["entityName"] = name
         if all:
             payload["allEntities"] = True
         return self._command("get_response_counter", **payload)
 
-    def reset_response_counter(self, *, response_id: Optional[int] = None,
+    def reset_response_counter(self, *, response_id: Optional[Union[int, str]] = None,
                                name: Optional[str] = None, all: bool = False) -> Dict[str, Any]:
         payload: Dict[str, Any] = {}
         if response_id is not None:
-            payload["entityId"] = int(response_id)
+            payload.update(_entity(response_id))
         if name:
             payload["entityName"] = name
         if all:
@@ -1112,22 +1120,24 @@ class Application:
     def create_action(self, definition: Dict[str, Any]) -> Dict[str, Any]:
         return _get_client().command("create_action", definitionPayload=definition)
 
-    def update_action(self, action_id: int, definition: Dict[str, Any]) -> Dict[str, Any]:
-        return _get_client().command("update_action", entityId=int(action_id),
+    def update_action(self, action_id: Union[int, str],
+                      definition: Dict[str, Any]) -> Dict[str, Any]:
+        return _get_client().command("update_action", **_entity(action_id),
                                      definitionPayload=definition)
 
-    def delete_action(self, action_id: int) -> Dict[str, Any]:
-        return _get_client().command("delete_action", entityId=int(action_id))
+    def delete_action(self, action_id: Union[int, str]) -> Dict[str, Any]:
+        return _get_client().command("delete_action", **_entity(action_id))
 
     def create_response(self, definition: Dict[str, Any]) -> Dict[str, Any]:
         return _get_client().command("create_response", definitionPayload=definition)
 
-    def update_response(self, response_id: int, definition: Dict[str, Any]) -> Dict[str, Any]:
-        return _get_client().command("update_response", entityId=int(response_id),
+    def update_response(self, response_id: Union[int, str],
+                        definition: Dict[str, Any]) -> Dict[str, Any]:
+        return _get_client().command("update_response", **_entity(response_id),
                                      definitionPayload=definition)
 
-    def delete_response(self, response_id: int) -> Dict[str, Any]:
-        return _get_client().command("delete_response", entityId=int(response_id))
+    def delete_response(self, response_id: Union[int, str]) -> Dict[str, Any]:
+        return _get_client().command("delete_response", **_entity(response_id))
 
     def run_action_crud(self, operation: str, **kwargs: Any) -> Dict[str, Any]:
         return _get_client().command(f"{operation}_action", **kwargs)

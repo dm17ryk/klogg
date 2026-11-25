@@ -3,6 +3,9 @@
 #include <QWidget>
 #include <QVariantList>
 #include <QVariantMap>
+#include <functional>
+
+#include "actionsconfig.h"
 
 class ActionsTableModel;
 class ActionParametersDialog;
@@ -30,6 +33,13 @@ class ActionsResponsesWindow : public QWidget {
     void setActionTabs( const QVariantList& tabs, const QString& selectedTabId );
     QString selectedActionTabId() const;
 
+    // Configuration packs (E16c3): Edit on a pack's action or response opens this editor on its
+    // store item (actions/<id>.json, responses/<id>.json); Packs... opens the packs.
+    using PackItemEditor
+        = std::function<void( QWidget* parent, const QString& packId, const QString& path )>;
+    void setPackItemEditor( PackItemEditor editor );
+    void setPacksOpener( std::function<void()> opener );
+
   Q_SIGNALS:
     void sendActionRequested( int actionId );
     void sendActionWithParametersRequested( int actionId, const QVariantMap& parameters );
@@ -50,6 +60,9 @@ class ActionsResponsesWindow : public QWidget {
     void deleteSelectedResponse();
     void moveSelectedResponseUp();
     void moveSelectedResponseDown();
+    void copySelectedAction();
+    void copySelectedResponse();
+    void turnOnPackResponses();
     void updateActionParametersPanel();
     void sendSelectedAction();
 
@@ -82,6 +95,19 @@ class ActionsResponsesWindow : public QWidget {
     QPushButton* deleteResponseButton_ = nullptr;
     QPushButton* moveResponseUpButton_ = nullptr;
     QPushButton* moveResponseDownButton_ = nullptr;
+    QPushButton* copyActionButton_ = nullptr;
+    QPushButton* actionPacksButton_ = nullptr;
+    QPushButton* copyResponseButton_ = nullptr;
+    QPushButton* turnOnPackResponsesButton_ = nullptr;
+    QPushButton* responsePacksButton_ = nullptr;
+    PackItemEditor packItemEditor_;
+    std::function<void()> packsOpener_;
+
+    // Edit on a pack's item: its store item in the pack item editor.
+    void editPackItem( const QString& title, const QString& packId, const QString& path );
+    // The actions a response of the user's may run: the user's, then the packs' (named with
+    // their pack).
+    QVector<ActionDefinition> linkableActions() const;
 
     void updateWindowSize();
     void updateActionButtons();

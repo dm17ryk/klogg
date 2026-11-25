@@ -10,7 +10,16 @@ class ResponsesTableModel : public QAbstractTableModel {
     enum Roles {
         ResponseIdRole = Qt::UserRole + 1,
         MatchValueRole,
-        MatchTypeRole
+        MatchTypeRole,
+        PackIdRole,      // the pack's ID, empty for the user's own response
+        NamespacedIdRole // "<pack-id>/<local-id>", empty for the user's own response
+    };
+    // Where a row comes from: the user's (packId empty) or an enabled configuration pack's (E16c3),
+    // read only there and named "<pack-id>/<local-id>".
+    struct Origin {
+        QString packId;
+        QString packName;
+        int localId = -1;
     };
 
     explicit ResponsesTableModel( QObject* parent = nullptr );
@@ -26,10 +35,13 @@ class ResponsesTableModel : public QAbstractTableModel {
 
     void refresh();
     const ResponseDefinition* responseAt( int row ) const;
+    // The pack the row's response comes from (packId empty: the user's own).
+    Origin originAt( int row ) const;
 
   private:
     QString previewMatch( const ResponseMatchDefinition& match ) const;
     QString tooltipForResponse( const ResponseDefinition& response ) const;
 
     QVector<ResponseDefinition> responses_;
+    QVector<Origin> origins_;
 };

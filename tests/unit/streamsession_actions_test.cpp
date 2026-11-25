@@ -12,6 +12,7 @@
 #include "actionruntime.h"
 #include "actionsmanager.h"
 #include "diagnostics.h"
+#include "persistentinfo.h"
 #include "serialcaptureworker.h"
 
 namespace {
@@ -260,6 +261,39 @@ TEST_CASE( "Automatic response counters are independent and disabled tabs still 
     CHECK( first.responseCounter( response.id ) == 2 );
     StreamSessionTestAccess::feedData( second, QByteArrayLiteral( "READY\n" ) );
     CHECK( second.responseCounter( response.id ) == 2 );
+}
+
+TEST_CASE( "Pack responses are matched after the user's, and only once turned on",
+           "[serial][session][actions][E16]" )
+{
+    // E16c3: an enabled configuration pack's responses follow the user's and start off.
+    ScopedActionsState restore;
+    auto& settings = PersistentInfo::getSettings( app_settings{} );
+    settings.remove( "PackActions" );
+    auto& manager = ActionsManager::instance();
+    REQUIRE( manager.importFromDefinitions( {}, { testResponse( 7201 ) } ).ok );
+    manager.setAutoResponsesEnabled( true );
+    auto packResponse = testResponse( 1 );
+    packResponse.name = QStringLiteral( "Pack response" );
+    manager.setPackItems( { { "a.pack", "Pack A", {}, { packResponse } } } );
+    REQUIRE( manager.packResponses().size() == 1 );
+    const auto packId = manager.packResponses().first().response.id;
+    StreamSession session( settingsFor( QStringLiteral( "TEST_PACK_RESPONSES" ) ) );
+    StreamSessionTestAccess::openConnection( session );
+    QSignalSpy matches( &session, &StreamSession::responseMatched );
+    StreamSessionTestAccess::feedData( session, QByteArrayLiteral( "READY\n" ) );
+    CHECK( session.responseCounter( 7201 ) == 1 );
+    CHECK( session.responseCounter( packId ) == 0 );
+    REQUIRE( manager.setResponseEnabled( packId, true ) );
+    StreamSessionTestAccess::feedData( session, QByteArrayLiteral( "READY\n" ) );
+    CHECK( session.responseCounter( packId ) == 1 );
+    REQUIRE( matches.size() == 3 );
+    CHECK( matches.at( 1 ).at( 0 ).toInt() == 7201 );
+    CHECK( matches.at( 2 ).at( 0 ).toInt() == packId );
+    // The counters list the packs' responses too.
+    CHECK( session.responseCounters().size() == 2 );
+    manager.setPackItems( {} );
+    settings.remove( "PackActions" );
 }
 
 TEST_CASE( "Per-tab automatic response switches preserve manual actions and persisted state",

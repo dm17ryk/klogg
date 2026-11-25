@@ -722,7 +722,7 @@ int StreamSession::responseCounter( int responseId ) const
 QVariantList StreamSession::responseCounters() const
 {
     QVariantList counters;
-    const auto& responses = ActionsManager::instance().responses();
+    const auto responses = ActionsManager::instance().effectiveResponses();
     for ( const auto& response : responses ) {
         QVariantMap counter;
         counter.insert( QStringLiteral( "responseId" ), response.id );
@@ -770,7 +770,7 @@ void StreamSession::handleIncomingLine( const QByteArray& lineBytes,
     }
 
     // Signal consumers may edit the repository while a match is being reported.
-    const auto responses = ActionsManager::instance().responses();
+    const auto responses = ActionsManager::instance().effectiveResponses();
     if ( responses.isEmpty() ) {
         return;
     }

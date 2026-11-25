@@ -398,6 +398,21 @@ void MainWindow::setPluginManager(
     pluginController_ = new PluginUiController( this, &manager, std::move( executor ) );
     // The controller's first refresh ran before it was ours: register the plugin shortcuts now.
     updatePluginShortcuts();
+    // Pack actions and responses are edited in place, and the packs managed, through the plugin
+    // controller (E16c3, design 4.5), in both the Actions and the Responses window.
+    for ( auto* window : { &actionsResponsesWindow_, &responsesWindow_ } ) {
+        window->setPackItemEditor(
+            [ this ]( QWidget* parent, const QString& packId, const QString& path ) {
+                if ( pluginController_ ) {
+                    pluginController_->editPackItem( parent, packId, path );
+                }
+            } );
+        window->setPacksOpener( [ this, window ] {
+            if ( pluginController_ ) {
+                pluginController_->openPacks( window );
+            }
+        } );
+    }
     LOG_DEBUG << "Plugin UI attached window=" << session_.windowId().toStdString();
 }
 

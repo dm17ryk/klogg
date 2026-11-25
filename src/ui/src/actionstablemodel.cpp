@@ -78,11 +78,25 @@ QVariant ActionsTableModel::data( const QModelIndex& index, int role ) const
     if ( role == ActionIdRole ) {
         return action.id;
     }
+    const auto& origin = origins_.at( row );
+    if ( role == PackIdRole ) {
+        return origin.packId;
+    }
+    if ( role == NamespacedIdRole ) {
+        return origin.packId.isEmpty() ? QString{}
+                                       : namespacedItemId( origin.packId, origin.localId );
+    }
     if ( role == SequenceValueRole ) {
         return action.sequence.value;
     }
     if ( role == Qt::ToolTipRole ) {
-        return tooltipForAction( action );
+        // A pack's action: its pack and the name it has on every PC (E16c3).
+        return origin.packId.isEmpty()
+                   ? tooltipForAction( action )
+                   : tr( "Pack: %1 (%2), read only: copy it to make it yours" )
+                             .arg( origin.packName,
+                                   namespacedItemId( origin.packId, origin.localId ) )
+                         + '\n' + tooltipForAction( action );
     }
     switch ( index.column() ) {
     case 0:
@@ -106,7 +120,9 @@ QVariant ActionsTableModel::data( const QModelIndex& index, int role ) const
         break;
     case 2:
         if ( role == Qt::DisplayRole ) {
-            return action.name;
+            return origin.packId.isEmpty()
+                       ? action.name
+                       : QStringLiteral( "%1 (%2)" ).arg( action.name, origin.packName );
         }
         break;
     case 3:
@@ -161,11 +177,20 @@ void ActionsTableModel::refresh()
 {
     beginResetModel();
     actions_.clear();
+    origins_.clear();
     const auto& actions = ActionsManager::instance().actions();
     actions_.reserve( actions.size() );
     for ( const auto& action : actions ) {
         if ( !action.hidden ) {
             actions_.push_back( action );
+            origins_.push_back( {} );
+        }
+    }
+    // Then the enabled packs' (E16c3).
+    for ( const auto& listed : ActionsManager::instance().packActions() ) {
+        if ( !listed.action.hidden ) {
+            actions_.push_back( listed.action );
+            origins_.push_back( { listed.packId, listed.packName, listed.localId } );
         }
     }
     endResetModel();
@@ -191,6 +216,11 @@ const ActionDefinition* ActionsTableModel::actionAt( int row ) const
         return nullptr;
     }
     return &actions_.at( row );
+}
+
+ActionsTableModel::Origin ActionsTableModel::originAt( int row ) const
+{
+    return row < 0 || row >= origins_.size() ? Origin{} : origins_.at( row );
 }
 
 QString ActionsTableModel::previewSequence( const ActionSequence& sequence ) const

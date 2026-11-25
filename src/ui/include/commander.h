@@ -193,6 +193,9 @@ struct CommanderRequest {
     QString paneTabs;
     std::optional<int> filterIndex;
     std::optional<int> entityId;
+    // E16c3: a configuration pack's action or response as "<pack-id>/<local-id>", the same on
+    // every PC (its run-time id may differ); the receiving instance makes it entityId.
+    QString entityKey;
     std::optional<int> timeoutMs;
     uint64_t beforeContext = 0;
     uint64_t afterContext = 0;
