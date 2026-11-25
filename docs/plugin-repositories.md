@@ -640,6 +640,7 @@ shipped as an ordinary process plugin (a `converter` or `tool`).
   `messageIntegrity` `valid`, `invalid` or `not_reported` (the default); they are independent of the
   result's own `complete`, which only says whether every row was kept.
 - It returns `None` when the bytes are not its message ("not dispatched").
+- A module's suffix may be `.py` in any case, as the pack's manifest check takes it.
 
 **Result.** PreviewService result version 1 with `backend: "python_decoder"`, `decoder`,
 `offsetSpace: "decoder_payload"`, `moduleSha256` (the session copy that decoded) and `enginePid`
@@ -680,12 +681,17 @@ would exceed 64), and hashes them; later changes of the pack's files reach the n
 pack is a package of its own whose path is its copy, so a module imports the pack's other listed
 modules relatively (`from . import common`) and two packs' modules of the same name never collide.
 Only listed modules are part of a pack (its store keeps only them), so a helper module is listed
-too. Enabling, disabling or updating a pack starts new sessions.
+too. Each folder of a listed module is a package of the pack, also when its name has a `.`; a
+module and a folder of the same name (`sub.py` beside `sub/`) are refused when the session starts.
+Enabling, disabling or updating a pack starts new sessions.
 
 **Trust.** Pack Python is local code with the user's permissions. The install, enable and update
 confirmations of pack Lua cover it ("contains Python code that runs on this computer"; "Lua and
 Python code" for both), and auto-update of such a pack is the same trust decision as for a process
-plugin.
+plugin. A repository install or update asks from the catalog entry's `contents`, so staging
+refuses a pack package whose entry leaves out its `lua` or `python_decoders` ("The package has
+python_decoders, which its catalog entry's contents do not list"); `build_catalog.py` lists them
+from the manifest.
 
 **Capability.** The host feature `python_decoders` (version 1) says this CILogg runs pack Python
 decoders: `get_plugins` reports it in `hostFeatures`, and per pack `pythonDecodersActive` (the pack

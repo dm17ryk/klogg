@@ -99,10 +99,11 @@ def module_path(value):
     if not bounded_text(value, MODULE_PATH_LIMIT) or "\\" in value or ":" in value:
         return False
     path = PurePosixPath(value)
+    # The suffix in any case, as the pack validator (configpack.cpp) takes it.
     return (
         not path.is_absolute()
         and all(part not in ("", ".", "..") for part in value.split("/"))
-        and path.suffix == ".py"
+        and path.suffix.lower() == ".py"
     )
 
 
@@ -142,12 +143,15 @@ def validate_profile(profile):
     return targets
 
 
-def module_name(package, module):
-    """The import name of a pack module: its path below the pack's package, one name part per
-    path part. Only `%` and `.` are escaped, so distinct paths never share a name and a module
-    whose parts are identifiers keeps the name a relative import finds."""
-    parts = PurePosixPath(module).with_suffix("").parts
+def package_name(package, parts):
+    """The import name of a path below the pack's package, one name part per path part. Only `%`
+    and `.` are escaped, so distinct paths never share a name."""
     return ".".join([package] + [part.replace("%", "%25").replace(".", "%2E") for part in parts])
+
+
+def module_name(package, module):
+    """The import name of a pack module (its folders are registered packages, see start())."""
+    return package_name(package, PurePosixPath(module).with_suffix("").parts)
 
 
 def pack_relative(filename, folder):
@@ -359,7 +363,11 @@ class DecoderSession:
             body = handle.read(MODULE_FILE_LIMIT + 1)
         if len(body) > MODULE_FILE_LIMIT:
             raise ProofError("input_limit")
-        copy = folder / module
+        # The copy ends in .py, whatever the case of the pack's suffix, so the import system
+        # finds it for a relative import too.
+        copy = folder / PurePosixPath(module).with_suffix(".py")
+        if copy.exists():
+            raise ProofError("invalid_profile")  # two listed paths that differ only in case
         copy.parent.mkdir(parents=True, exist_ok=True)
         copy.write_bytes(body)
         return copy, hashlib.sha256(body).hexdigest()
@@ -393,12 +401,18 @@ class DecoderSession:
                 }
             # The pack's namespace: a package whose path is the pack's copy, so a module reaches
             # the pack's other listed modules by relative imports, and nothing of another pack.
-            namespace = types.ModuleType(package)
-            namespace.__path__ = [str(folder)]
-            namespace.__package__ = package
-            namespace.__spec__ = importlib.machinery.ModuleSpec(package, None, is_package=True)
-            namespace.__spec__.submodule_search_locations = [str(folder)]
-            sys.modules[package] = namespace
+            # Each folder of a listed module is a package of its own whose path is the real
+            # folder, so a folder name with `.` or `%` (escaped in the import name) works too.
+            folders = {package: folder}
+            for module in copies:
+                parts = PurePosixPath(module).parts[:-1]
+                for depth in range(1, len(parts) + 1):
+                    folders[package_name(package, parts[:depth])] = folder.joinpath(*parts[:depth])
+            modules = {module_name(package, module) for module in copies}
+            if modules & set(folders):
+                raise ProofError("invalid_profile")  # a module and a folder of one name
+            for name, path in folders.items():
+                self.register_package(name, path)
         self.decoders = decoders
         self.identity = identity
         LOG.debug(
@@ -406,6 +420,15 @@ class DecoderSession:
             len(profile["packs"]),
             len({entry["copy"] for entry in decoders.values()}),
         )
+
+    @staticmethod
+    def register_package(name, path):
+        package = types.ModuleType(name)
+        package.__path__ = [str(path)]
+        package.__package__ = name
+        package.__spec__ = importlib.machinery.ModuleSpec(name, None, is_package=True)
+        package.__spec__.submodule_search_locations = [str(path)]
+        sys.modules[name] = package
 
     def describe(self, error, entry):
         """The exception type and the innermost place in the pack's code, never its message."""
@@ -441,7 +464,7 @@ class DecoderSession:
                 except BaseException:
                     sys.modules.pop(name, None)
                     raise
-        except (Exception, SystemExit) as error:
+        except BaseException as error:  # anything the module raises, KeyboardInterrupt too
             LOG.warning("python_decoder_load_failed decoder=%s error=%s", target, type(error).__name__)
             return None, self.describe(error, entry)
         function = getattr(module, "decode", None)
@@ -468,7 +491,7 @@ class DecoderSession:
         context = dict(request["context"], decoder=target)
         try:
             result = function(payload, context)
-        except (Exception, SystemExit) as error:
+        except BaseException as error:  # a decoder failure, whatever it raises
             LOG.warning("python_decoder_failed id=%s decoder=%s error=%s",
                         request["id"], target, type(error).__name__)
             response.update(reason="decoder_failed", detail=self.describe(error, entry))

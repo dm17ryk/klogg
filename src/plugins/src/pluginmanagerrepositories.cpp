@@ -1,5 +1,6 @@
 // Plugin repositories, the merged catalog, package downloads and Azure DevOps sign-in of
 // PluginManager (docs/plugin-repositories.md sections 3.1-3.6 and 3.8, tasks E15a and E15b).
+#include "configpack.h"
 #include "log.h"
 #include "pluginmanager.h"
 #include "semanticversion.h"
@@ -593,6 +594,7 @@ void PluginManager::stagePackage( const QJsonObject& entry, const QString& jobId
     const auto id = entry.value( "id" ).toString();
     const auto version = entry.value( "version" ).toString();
     const auto kind = entry.value( "kind" ).toString();
+    const auto contents = entry.value( "contents" );
     const auto sha256 = entry.value( "sha256" ).toString();
     // The record keeps the catalog's address, which never carries a credential.
     const InstallSource source{ entry.value( "repository" ).toString(), version,
@@ -614,7 +616,7 @@ void PluginManager::stagePackage( const QJsonObject& entry, const QString& jobId
     auto* watcher = new QFutureWatcher<StagedPlugin>( this );
     const auto root = QDir( dataRoot_ ).filePath( "plugins" );
     connect( watcher, &QFutureWatcher<StagedPlugin>::finished, this,
-             [ this, watcher, package, jobId, id, version, kind, source ] {
+             [ this, watcher, package, jobId, id, version, kind, contents, source ] {
                  const auto staged = watcher->result();
                  watcher->deleteLater();
                  QString problem = staged.error;
@@ -626,6 +628,16 @@ void PluginManager::stagePackage( const QJsonObject& entry, const QString& jobId
                  // process plugin into a pack or the other way round.
                  if ( problem.isEmpty() && packageKind( staged.manifest.json ) != kind ) {
                      problem = QStringLiteral( "Package kind differs from catalog." );
+                 }
+                 // The GUI asks about a pack's Lua and Python from the entry's `contents`: an
+                 // entry that leaves the package's code out would skip that question.
+                 if ( problem.isEmpty() ) {
+                     const auto hidden = packCodeNotInCatalog( staged.manifest.json, contents );
+                     if ( !hidden.isEmpty() ) {
+                         problem = QStringLiteral( "The package has %1, which its catalog entry's "
+                                                   "contents do not list." )
+                                       .arg( hidden.join( QStringLiteral( ", " ) ) );
+                     }
                  }
                  if ( !problem.isEmpty() ) {
                      if ( !staged.directory.isEmpty() ) {

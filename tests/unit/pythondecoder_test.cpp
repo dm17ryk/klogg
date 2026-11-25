@@ -683,6 +683,25 @@ TEST_CASE( "Automatic previews route to Python decoders and fall back only when 
     }
 }
 
+TEST_CASE( "A catalog entry lists the code its pack package carries", "[pythondecoder]" )
+{
+    // The GUI asks about a repository install from the entry's `contents`, so a package whose
+    // entry leaves its code out is refused when it is staged.
+    auto manifest = pythonPack( PackA, {} );
+    CHECK( packCodeNotInCatalog( manifest, QJsonArray{ "previews", "python_decoders" } ).isEmpty() );
+    CHECK( packCodeNotInCatalog( manifest, QJsonArray{ "previews" } )
+           == QStringList{ "python_decoders" } );
+    CHECK( packCodeNotInCatalog( manifest, QJsonValue() ) == QStringList{ "python_decoders" } );
+    auto content = manifest.value( "content" ).toObject();
+    content[ "lua" ] = QJsonObject{ { "folder", "lua" }, { "load", QJsonArray{ "a.lua" } } };
+    manifest[ "content" ] = content;
+    CHECK( packCodeNotInCatalog( manifest, QJsonArray{ "previews", "python_decoders" } )
+           == QStringList{ "lua" } );
+    // A process plugin is not a pack: its code is the plugin itself.
+    CHECK( packCodeNotInCatalog( QJsonObject{ { "id", "org.example.tool" } }, QJsonValue() )
+               .isEmpty() );
+}
+
 TEST_CASE( "Pack Python asks before it can run", "[pythondecoder]" )
 {
     QTemporaryDir root;

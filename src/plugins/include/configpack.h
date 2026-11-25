@@ -56,6 +56,11 @@ QString validatePackManifest( const QJsonObject& manifest, PackContent* content 
 QString validatePackFiles( const QJsonObject& manifest, const QString& directory );
 // Catalog `contents` types of a pack, in the order of the catalog format.
 QStringList packContents( const QJsonObject& manifest );
+// The code a pack package carries (`lua`, `python_decoders`) that its catalog entry's `contents`
+// does not list. The GUI asks before pack code can run from that list (design 4.3, 4.4), so a
+// repository install refuses a package whose entry leaves its code out. Empty for a process
+// plugin, or when the entry lists all of it.
+QStringList packCodeNotInCatalog( const QJsonObject& manifest, const QJsonValue& catalogContents );
 // The preview names of a previews.json document (an object with `previews`, or a bare array).
 QStringList packPreviewNames( const QByteArray& previewsJson );
 // The `get_plugins` pack fields: contents and the counts that E16a knows.

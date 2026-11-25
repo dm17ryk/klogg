@@ -522,9 +522,11 @@ public:
             return;
         }
         external_ = true;
-        externalBackend_ = TsharkBackend;
         const auto carrierName = result.value( "carrierName" );
         const auto route = routeFor( config_, optionsFor( request_ ), carrierName.toString() );
+        // The route's engine names every result from here on, an early timeout's too.
+        const bool python = route.contains( "python" );
+        externalBackend_ = python ? PythonBackend : TsharkBackend;
         const auto encoded = result.value( "payloadBase64" );
         const auto payload = QByteArray::fromBase64( encoded.toString().toLatin1() );
         if ( carrierName.userType() != QMetaType::QString || route.isEmpty()
@@ -541,8 +543,6 @@ public:
             return;
         }
         const auto name = result.value( "previewName" ).toString();
-        const bool python = route.contains( "python" );
-        externalBackend_ = python ? PythonBackend : TsharkBackend;
         // Automatic mode falls back to JSON only when the engine says it did not dispatch.
         const auto notDispatched = python ? QStringLiteral( "decoder_not_dispatched" )
                                           : QStringLiteral( "dissector_not_dispatched" );

@@ -233,6 +233,45 @@ class SnapshotTests(Case):
             self.assertEqual(response["moduleSha256"], hashlib.sha256(source).hexdigest())
         self.assertEqual(names, {"dash": "dash", "under": "under", "dot": "dot"})
 
+    def test_a_module_suffix_in_any_case_is_accepted_as_the_pack_validator_does(self):
+        root = self.base / "packs" / "org.example.a"
+        write(root / "python/Upper.PY", "from . import helper\n"
+                                        "def decode(payload, context):\n"
+                                        "    return [{'name': helper.NAME}]\n")
+        write(root / "python/helper.Py", "NAME = 'upper'\n")
+        pack = {"id": "org.example.a", "root": str(root), "decoders": [
+            {"id": "upper", "module": "python/Upper.PY"},
+            {"id": "helper", "module": "python/helper.Py"},
+        ]}
+        response = self.evaluate([pack], "org.example.a/upper")
+        self.assertEqual(response["state"], "completed", response)
+        self.assertEqual(response["fields"][0]["columns"][0], "upper")
+        with self.assertRaisesRegex(ProofError, "invalid_profile"):
+            worker.validate_request(request([dict(pack, decoders=[
+                {"id": "text", "module": "python/notes.txt"}])], "org.example.a/text"))
+
+    def test_relative_imports_work_in_folders_whose_names_are_escaped(self):
+        root = self.base / "packs" / "org.example.a"
+        write(root / "v1.2/decode%x.py", "from . import helper\n"
+                                         "def decode(payload, context):\n"
+                                         "    return [{'name': helper.NAME}]\n")
+        write(root / "v1.2/helper.py", "NAME = 'escaped'\n")
+        pack = {"id": "org.example.a", "root": str(root), "decoders": [
+            {"id": "main", "module": "v1.2/decode%x.py"},
+            {"id": "helper", "module": "v1.2/helper.py"},
+        ]}
+        response = self.evaluate([pack], "org.example.a/main")
+        self.assertEqual(response["state"], "completed", response)
+        self.assertEqual(response["fields"][0]["columns"][0], "escaped")
+
+    def test_a_module_and_a_folder_of_one_name_are_refused(self):
+        pack = self.pack("org.example.a", {
+            "python/sub.py": "def decode(payload, context):\n    return []\n",
+            "python/sub/inner.py": "def decode(payload, context):\n    return []\n",
+        })
+        with self.assertRaisesRegex(ProofError, "invalid_profile"):
+            self.evaluate([pack], "org.example.a/sub")
+
     def test_a_warm_session_runs_its_copies_after_the_pack_folder_goes(self):
         pack = self.pack("org.example.a", {"decode_simple.py": SIMPLE})
         self.assertEqual(self.evaluate([pack], "org.example.a/simple")["state"], "completed")
@@ -431,6 +470,13 @@ class ResultTests(Case):
         self.assertNotIn("secret", json.dumps(response))
         exited = self.decode("def decode(payload, context):\n    raise SystemExit(3)\n")
         self.assertEqual(exited["reason"], "decoder_failed")
+        for name in ("KeyboardInterrupt", "GeneratorExit"):
+            with self.subTest(name=name):
+                raised = self.decode("def decode(payload, context):\n    raise %s()\n" % name)
+                self.assertEqual(raised["reason"], "decoder_failed")
+                self.assertTrue(raised["detail"].startswith(name), raised["detail"])
+                at_import = self.decode("raise %s()\n" % name)
+                self.assertEqual(at_import["reason"], "decoder_load_failed")
 
     def test_load_failures(self):
         for name, (body, detail) in {

@@ -409,6 +409,22 @@ QStringList packContents( const QJsonObject& manifest )
     return contents;
 }
 
+QStringList packCodeNotInCatalog( const QJsonObject& manifest, const QJsonValue& catalogContents )
+{
+    QStringList hidden;
+    if ( !isConfigPack( manifest ) ) {
+        return hidden;
+    }
+    const auto listed = catalogContents.toArray();
+    for ( const auto& code : packContents( manifest ) ) {
+        if ( ( code == QLatin1String( "lua" ) || code == QLatin1String( "python_decoders" ) )
+             && !listed.contains( QJsonValue( code ) ) ) {
+            hidden.append( code );
+        }
+    }
+    return hidden;
+}
+
 QStringList packPreviewNames( const QByteArray& previewsJson )
 {
     const auto document = QJsonDocument::fromJson( previewsJson );
