@@ -1821,8 +1821,9 @@ follows.
   its own size, cut by the box) and `alt` (its accessible name, also shown when the source cannot be
   shown). Without `width` and `height` the image takes its own size (at most 4,096 pixels): a
   registered picture's, the largest size of a plugin file or built-in icon, and 256 pixels for a
-  scalable (SVG) one. When the plugin's registered images change, every `image` element shows the
-  new picture.
+  scalable (SVG) one. With only `width` or only `height`, the other side keeps the aspect ratio,
+  also at most 4,096 pixels. When the plugin's registered images change, every `image` element
+  shows the new picture.
 - **`sparkline`.** `values` (numbers; at most 1,024, the last ones kept; `null` is a gap), `min` and
   `max` (default: the range of the values), `kind` (`line`, the default, or `bar`) and `tone`. Its
   default size is 120 by 24 pixels; its accessible description names the count and the last value.
@@ -1881,7 +1882,8 @@ follows.
   dialog with `view/hide`. Esc and the title bar's close button press `cancel` when the dialog has
   it, else `close`, else just close the dialog. The `view/closed` of a dialog with `buttons`
   carries `result` (the button that closed it; null when it closed otherwise) and `inputs` (the
-  view's inputs at that moment). The buttons are disabled while the view is (before the plugin's
+  view's inputs at that moment), with `truncated: true` when the inputs were shortened to their
+  256 KiB budget, as in view events. The buttons are disabled while the view is (before the plugin's
   first root and while it is stopped). `default` is the button Enter presses when no element button
   of the view is the default (also once an element button stops being the default), except where
   the focused control uses Enter itself; without `default`, Enter presses none of the dialog

@@ -1240,6 +1240,29 @@ TEST_CASE( "E17f Enter in a dialog presses an element default, else the declared
     REQUIRE( picked() == 1 );
 }
 
+TEST_CASE( "E17f view/closed says when a dialog's inputs were shortened", "[ui][workbench][E17]" )
+{
+    LayoutsWindow fixture;
+    fixture.open( "ask" );
+    REQUIRE( waitFor( [ & ] { return fixture.button( "ask", "ok" )->isEnabled(); } ) );
+    // Five full fields pass the 256 KiB input budget (and stay below the 512 KiB event limit).
+    QJsonArray fields;
+    for ( int index = 0; index < 5; ++index ) {
+        fields.append( element( "field", QString( "big%1" ).arg( index ),
+                                { { "kind", "multiline" },
+                                  { "value", QString( PluginView::MaxFieldValueChars, QLatin1Char( 'x' ) ) } } ) );
+    }
+    Q_EMIT fixture.manager->viewRequest(
+        PluginId, "view/update",
+        QJsonObject{ { "view_id", "ask" }, { "root", element( "column", "big_body", { { "children", fields } } ) } } );
+    fixture.host()->flush();
+    fixture.button( "ask", "ok" )->click();
+    REQUIRE( waitFor( [ & ] { return closedOf( fixture.folder, "ask" ).value( "result" ) == "ok"; } ) );
+    const auto closed = closedOf( fixture.folder, "ask" );
+    REQUIRE( closed.value( "truncated" ) == true );
+    REQUIRE_FALSE( closed.value( "inputs" ).toObject().isEmpty() ); // shortened, not dropped
+}
+
 TEST_CASE( "E17f a root does not drop the appends queued before it", "[ui][workbench][E17]" )
 {
     LayoutsWindow fixture;

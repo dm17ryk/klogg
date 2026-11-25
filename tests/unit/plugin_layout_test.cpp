@@ -220,6 +220,26 @@ TEST_CASE( "E17f pictures of plugin files take their own size without a box", "[
     }
 }
 
+TEST_CASE( "E17f an image with one side given keeps the other within the size limit",
+           "[plugins][E17]" )
+{
+    using cilogg::plugins::MaxImageSide;
+    PluginImage image;
+    QImage tall( 1, MaxImageSide, QImage::Format_ARGB32 );
+    tall.fill( Qt::black );
+    image.setImage( tall );
+    image.setBox( MaxImageSide, 0 ); // the aspect ratio would ask for 16,777,216 pixels
+    REQUIRE( image.sizeHint() == QSize( MaxImageSide, MaxImageSide ) );
+    QImage wide( MaxImageSide, 1, QImage::Format_ARGB32 );
+    wide.fill( Qt::black );
+    image.setImage( wide );
+    image.setBox( 0, MaxImageSide );
+    REQUIRE( image.sizeHint() == QSize( MaxImageSide, MaxImageSide ) );
+    image.setBox( 0, 2 ); // a tiny one still keeps a pixel
+    image.setImage( tall );
+    REQUIRE( image.sizeHint() == QSize( 1, 2 ) );
+}
+
 TEST_CASE( "E17f images are placed by their scale", "[plugins][E17]" )
 {
     const QRect box( 0, 0, 100, 50 );

@@ -86,15 +86,15 @@ QSize PluginImage::sizeHint() const
     QSize natural = image_.isNull()
                         ? fontMetrics().size( Qt::TextSingleLine, alt_.left( 256 ) ) + QSize( 8, 8 )
                         : boundedSize( image_.size() / qMax( 1.0, image_.devicePixelRatio() ) );
+    // One side given: the other keeps the aspect ratio, within the image size limit too.
+    const auto side = []( double value ) {
+        return static_cast<int>( std::lround( std::clamp( value, 1.0, double( MaxImageSide ) ) ) );
+    };
     if ( width_ > 0 && height_ <= 0 && !image_.isNull() && image_.width() > 0 ) {
-        // One side given: the other keeps the aspect ratio.
-        natural = QSize( width_, static_cast<int>( std::lround( double( width_ ) * image_.height()
-                                                               / image_.width() ) ) );
+        natural = QSize( width_, side( double( width_ ) * image_.height() / image_.width() ) );
     }
     else if ( height_ > 0 && width_ <= 0 && !image_.isNull() && image_.height() > 0 ) {
-        natural = QSize( static_cast<int>( std::lround( double( height_ ) * image_.width()
-                                                        / image_.height() ) ),
-                         height_ );
+        natural = QSize( side( double( height_ ) * image_.width() / image_.height() ), height_ );
     }
     return QSize( width_ > 0 ? width_ : natural.width(), height_ > 0 ? height_ : natural.height() );
 }

@@ -1031,10 +1031,12 @@ class _ViewClosedParamsRequired(TypedDict):
 class ViewClosedParams(_ViewClosedParamsRequired, total=False):
     """A view/closed. For a dialog that declares `buttons` (host feature view_dialogs) it also
     carries `result`, the DIALOG_BUTTONS name of the button that closed it (None when it closed
-    otherwise), and `inputs`, the view's inputs at that moment."""
+    otherwise), and `inputs`, the view's inputs at that moment, with `truncated` True when they
+    were shortened to their 256 KiB budget."""
     window_id: str
     result: Optional[str]
     inputs: JsonObject
+    truncated: bool
 
 
 class _CompleteParamsRequired(TypedDict):

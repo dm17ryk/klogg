@@ -87,7 +87,7 @@ class Builders(LayoutCase):
             self.assertTrue(hasattr(sdk, name), name)
         self.assertIn("index", sdk.ViewEventParams.__annotations__)
         self.assertEqual(set(sdk.ViewClosedParams.__annotations__),
-                         {"view_id", "window_id", "result", "inputs"})
+                         {"view_id", "window_id", "result", "inputs", "truncated"})
 
     def test_tabs_and_tab(self):
         sdk = self.sdk

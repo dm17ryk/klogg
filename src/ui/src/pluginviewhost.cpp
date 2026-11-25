@@ -991,8 +991,14 @@ QJsonObject PluginViewHost::closedExtra( const Open& open ) const
     if ( open.dialogButtons.isEmpty() ) {
         return {};
     }
-    return { { "result", open.result },
-             { "inputs", open.view ? open.view->inputs() : QJsonObject{} } };
+    // Inputs over their budget are shortened: say so, as view events do.
+    bool truncated = false;
+    QJsonObject extra{ { "result", open.result },
+                       { "inputs", open.view ? open.view->inputs( &truncated ) : QJsonObject{} } };
+    if ( truncated ) {
+        extra.insert( "truncated", true );
+    }
+    return extra;
 }
 
 void PluginViewHost::updateTitle( Open& open )
