@@ -975,8 +975,9 @@ with FakeHost.start_package("path/to/my-plugin") as host:   # its plugin.json, e
   `apply`, or None) and `inputs` to `view/closed`, each only when given, as CILogg does for a
   dialog with `buttons`. When the plugin's manifest is known (`start`, `start_package`, or a
   `manifest` attribute for `in_process`) and describes the view, a button the dialog does not
-  declare, or a `result` for a view that is not a dialog with `buttons`, raises ValueError, since
-  CILogg never sends one. Every event carries `inputs` (pass `inputs=` to fill it).
+  declare, a `result` for a view that is not a dialog with `buttons`, or `ok`/`yes` as the result
+  of a `confirm_by_plugin` dialog (the plugin hides it, so the result is None) raises ValueError,
+  since CILogg never sends one. Every event carries `inputs` (pass `inputs=` to fill it).
 - `frames` (`Frame`: `direction`, `message`, `raw`, `time`) holds the whole session; `errors`
   lists frames that CILogg would refuse (malformed envelopes, requests from the plugin);
   `stderr` holds a subprocess plugin's diagnostics; `shutdown()` returns its exit code.

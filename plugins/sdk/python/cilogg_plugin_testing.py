@@ -574,18 +574,23 @@ class FakeHost:
         self.notify("view/opened", {"view_id": view_id, "window_id": window_id,
                                     "context": dict(context or {})})
 
+    def _described_view(self, view_id: str) -> Optional[JsonObject]:
+        """The manifest's entry for view_id; None when the manifest does not describe it."""
+        views = self.manifest.get("views")
+        if isinstance(views, list):
+            for view in views:
+                if isinstance(view, dict) and view.get("id") == view_id:
+                    return view
+        return None
+
     def _declared_dialog_buttons(self, view_id: str) -> Optional[List[str]]:
         """The `buttons` the manifest declares for view_id (empty for a view that is not a
         dialog or declares none); None when the manifest does not describe the view."""
-        views = self.manifest.get("views")
-        if not isinstance(views, list):
+        view = self._described_view(view_id)
+        if view is None:
             return None
-        for view in views:
-            if isinstance(view, dict) and view.get("id") == view_id:
-                buttons = view.get("buttons") if view.get("kind") == "dialog" else None
-                return ([name for name in buttons if isinstance(name, str)]
-                        if isinstance(buttons, list) else [])
-        return None
+        buttons = view.get("buttons") if view.get("kind") == "dialog" else None
+        return [name for name in buttons if isinstance(name, str)] if isinstance(buttons, list) else []
 
     def close_view(self, view_id: str, window_id: str = "w1", *,
                    result: Optional[str] = _NOT_GIVEN,
@@ -605,6 +610,11 @@ class FakeHost:
                                  "sends no result")
             if declared and result is not None and result not in declared:
                 raise ValueError(f"Dialog {view_id!r} declares no {result!r} button")
+            view = self._described_view(view_id)
+            if view is not None and view.get("confirm_by_plugin") is True \
+                    and result in ("ok", "yes"):
+                raise ValueError(f"Dialog {view_id!r} confirms by plugin: CILogg does not close "
+                                 f"it on {result!r} (the plugin hides it, and result is None)")
             params["result"] = result
         if inputs is not None:
             params["inputs"] = dict(inputs)

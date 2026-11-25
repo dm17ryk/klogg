@@ -644,23 +644,28 @@ class Events(LayoutCase):
         host.manifest = {"views": [
             {"id": "main", "kind": "window"},
             {"id": "ask", "kind": "dialog", "buttons": ["ok", "cancel", "apply"]},
-            {"id": "plain", "kind": "dialog"}]}
+            {"id": "plain", "kind": "dialog"},
+            {"id": "confirmed", "kind": "dialog", "buttons": ["ok", "cancel"],
+             "confirm_by_plugin": True}]}
         host.press_dialog_button("ask", "apply")
         host.close_view("ask", result="cancel")
         host.close_view("ask", result=None)
         host.close_view("plain")
         host.press_dialog_button("other", "close")  # not described: nothing to check against
+        host.press_dialog_button("confirmed", "ok")  # the plugin decides, then hides it
+        host.close_view("confirmed", result=None)
         self.assertEqual([(event["view_id"], event["value"]) for event in
-                          (events.get(timeout=2), events.get(timeout=2))],
-                         [("ask", "apply"), ("other", "close")])
-        self.assertEqual([closed.get(timeout=2).get("result", "-") for _ in range(3)],
-                         ["cancel", None, "-"])
+                          (events.get(timeout=2) for _ in range(3))],
+                         [("ask", "apply"), ("other", "close"), ("confirmed", "ok")])
+        self.assertEqual([closed.get(timeout=2).get("result", "-") for _ in range(4)],
+                         ["cancel", None, "-", None])
         for call in (lambda: host.press_dialog_button("ask", "close"),
                      lambda: host.press_dialog_button("plain", "ok"),
                      lambda: host.press_dialog_button("main", "ok"),
                      lambda: host.close_view("ask", result="yes"),
                      lambda: host.close_view("plain", result=None),
-                     lambda: host.close_view("main", result="ok")):
+                     lambda: host.close_view("main", result="ok"),
+                     lambda: host.close_view("confirmed", result="ok")):
             with self.subTest(), self.assertRaises(ValueError):
                 call()
 

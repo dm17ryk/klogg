@@ -1793,7 +1793,8 @@ follows.
 ### 29.2 Content
 
 - **`text_view`.** `text`, `format` (`plain`, the default, or `markdown`), `monospace` (default
-  false), `wrap` (default true), `follow` (default false: scroll to the end after new text) and
+  false), `wrap` (default true), `follow` (default false: scroll to the end after new text and
+  when turned on; a root that sends it again leaves the reader's place) and
   `max_lines` (0, the default, is no limit; at most 100,000; plain text only: the oldest lines go).
   The whole text is at most 1 MiB (1,048,576 characters): when more arrives, the oldest lines go.
   The patch entry `{"id", "append": "..."}` adds text at the end (at most 65,536 characters; a

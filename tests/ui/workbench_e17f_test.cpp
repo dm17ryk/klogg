@@ -28,6 +28,7 @@
 #include <QLineEdit>
 #include <QMenu>
 #include <QPlainTextEdit>
+#include <QPointer>
 #include <QPushButton>
 #include <QScrollBar>
 #include <QShortcut>
@@ -248,6 +249,24 @@ TEST_CASE( "E17f layout containers: tabs, splitter, form, grid, separators and s
     fixture.view.setRoot( layoutRoot() );
     REQUIRE( fixture.get<QTabWidget>( "tabs" ) == tabs );
     REQUIRE( tabs->currentIndex() == 0 );
+    {
+        // A root of another shape replaces the tabs. The old tab widget is deleted later and may
+        // change its current tab as its pages go: that speaks neither for the new tree nor at all.
+        View rebuilt( layoutRoot() );
+        QPointer<QTabWidget> old = rebuilt.get<QTabWidget>( "tabs" );
+        auto other = layoutRoot();
+        auto children = other.value( "children" ).toArray();
+        children.append( element( "label", "extra", { { "text", "new" } } ) );
+        other.insert( "children", children );
+        rebuilt.view.setRoot( other );
+        REQUIRE( rebuilt.get<QTabWidget>( "tabs" ) != old );
+        const auto sent = rebuilt.events.size();
+        REQUIRE( old );
+        old->setCurrentIndex( 0 );
+        QCoreApplication::sendPostedEvents( nullptr, QEvent::DeferredDelete );
+        REQUIRE( old.isNull() );
+        REQUIRE( rebuilt.events.size() == sent );
+    }
 
     // Splitter: sizes and the panes' stretch.
     auto* splitter = fixture.get<QSplitter>( "split" );
@@ -439,6 +458,17 @@ TEST_CASE( "E17f text views: plain text, Markdown, appends, limits, links and fi
                && browser->verticalScrollBar()->value() == browser->verticalScrollBar()->maximum();
     } ) );
     REQUIRE( browser->lineWrapMode() == QTextEdit::NoWrap );
+    // A same-shaped root that sends `follow` again with the text the plugin last set leaves the
+    // reader's place; new text goes to the end again.
+    auto* bar = browser->verticalScrollBar();
+    QTest::qWait( 50 ); // the appends' queued scrolls to the end run first
+    bar->setValue( 0 ); // the user scrolled up
+    fixture.view.setRoot( root( { { "text", "other\n" }, { "follow", true }, { "wrap", false } } ) );
+    REQUIRE( view->text().endsWith( "row 199\n" ) ); // the appended text stays
+    QCoreApplication::processEvents();
+    REQUIRE( bar->value() == 0 );
+    fixture.patch( { QJsonObject{ { "id", "log" }, { "append", "row 200\n" } } } );
+    REQUIRE( waitFor( [ & ] { return bar->maximum() > 0 && bar->value() == bar->maximum(); } ) );
     // Markdown: rendered with HTML off; a link click sends `link`, the host never follows it.
     fixture.patch( { QJsonObject{ { "id", "log" },
                                   { "set", QJsonObject{ { "format", "markdown" },

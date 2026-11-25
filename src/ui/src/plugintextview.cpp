@@ -206,8 +206,13 @@ void PluginTextView::setWrap( bool wrap )
 
 void PluginTextView::setFollow( bool follow )
 {
+    // Turning it on goes to the end; a root that sends `follow` again leaves the reader's place
+    // (only new text scrolls).
+    const bool starts = follow && !follow_;
     follow_ = follow;
-    followEnd();
+    if ( starts ) {
+        followEnd();
+    }
 }
 
 void PluginTextView::setMaxLines( int lines )

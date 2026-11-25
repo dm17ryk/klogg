@@ -694,6 +694,12 @@ void PluginView::detachTables()
             node->treeModel->onEdited = {};
             node->treeModel->onCheckRequested = {};
         }
+        // E17f: a tab widget being torn down may pick new current tabs as its pages go. That is
+        // no user's change: it must neither reach the plugin (as the new tree's `changed`) nor
+        // this view once its nodes are gone.
+        if ( node && node->type == QLatin1String( "tabs" ) && node->content ) {
+            node->content->blockSignals( true );
+        }
     }
 }
 
