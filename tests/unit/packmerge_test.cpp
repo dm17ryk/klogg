@@ -9,6 +9,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QProcess>
+#include <QSettings>
 #include <QSignalSpy>
 #include <QStandardPaths>
 #include <QTemporaryDir>
@@ -16,6 +17,7 @@
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <algorithm>
+#include <tuple>
 
 #include "packcanonical.h"
 #include "packmerge.h"
@@ -104,6 +106,54 @@ QVariantMap finished( PluginManager& manager, const Result& started )
     return {};
 }
 
+struct FilterRow {
+    QString id;
+    QString name;
+    QString filter;
+    QVariant regex; // invalid: the key is left out
+};
+
+// A predefined filters file as CILogg exports it (PredefinedFiltersDialog::exportFilters):
+// QSettings in INI format, group PredefinedFiltersCollection. `extra` keys are added as they are.
+QByteArray filtersConf( const QVector<FilterRow>& rows, int version = 3,
+                        const QVariantMap& extra = {} )
+{
+    QTemporaryDir folder;
+    REQUIRE( folder.isValid() );
+    const auto path = folder.filePath( "filters.conf" );
+    {
+        QSettings settings( path, QSettings::IniFormat );
+        settings.beginGroup( "PredefinedFiltersCollection" );
+        settings.setValue( "version", version );
+        settings.beginWriteArray( "filters" );
+        for ( int index = 0; index < rows.size(); ++index ) {
+            settings.setArrayIndex( index );
+            const auto& row = rows.at( index );
+            if ( !row.id.isNull() ) {
+                settings.setValue( "id", row.id );
+            }
+            settings.setValue( "name", row.name );
+            settings.setValue( "filter", row.filter );
+            if ( row.regex.isValid() ) {
+                settings.setValue( "regex", row.regex );
+            }
+        }
+        settings.endArray();
+        settings.endGroup();
+        for ( auto key = extra.cbegin(); key != extra.cend(); ++key ) {
+            settings.setValue( key.key(), key.value() );
+        }
+        settings.sync();
+        REQUIRE( settings.status() == QSettings::NoError );
+    }
+    return readFile( path );
+}
+
+const QVector<FilterRow> SomeFilters{
+    { "f-one", "Errors", "ERROR|FATAL", true },
+    { "f-two", QString::fromUtf8( "Reset, \"quoted\" \xce\x94" ), "Software or Reset", false },
+};
+
 QString previewRegex( const QString& folder, const QString& name )
 {
     const auto previews = QJsonDocument::fromJson( readFile( folder + "/previews.json" ) )
@@ -156,13 +206,15 @@ TEST_CASE( "Pack items have a canonical one-item-per-file form", "[packmerge][E1
                    .isEmpty() );
         CHECK( why.contains( "more than 128 previews" ) );
     }
-    // Every file the manifest lists is carried, also actions, highlights and filters.
+    // Every Lua and Python file the manifest lists is carried as a file, and so are actions and
+    // highlights until they get a canonical form; filters have one of their own (E16c).
     auto withFilters = packManifest();
     auto declared = withFilters[ "content" ].toObject();
-    declared[ "filters" ] = "filters/predefined.json";
+    declared[ "filters" ] = "filters/predefined.conf";
+    declared[ "highlights" ] = "highlights.conf";
     withFilters[ "content" ] = declared;
     CHECK( packcanonical::listedFiles( withFilters )
-           == QStringList{ "files/lua/a.lua", "files/filters/predefined.json" } );
+           == QStringList{ "files/lua/a.lua", "files/highlights.conf" } );
 
     QString error;
     const auto files = packcanonical::fromPreviews( Previews, &error );
@@ -201,6 +253,132 @@ TEST_CASE( "Pack items have a canonical one-item-per-file form", "[packmerge][E1
     const auto metaBack = QJsonDocument::fromJson( packcanonical::toPreviews( withMeta ) ).object();
     REQUIRE( metaBack.value( "previews" ).toArray().size() == 1 );
     CHECK( metaBack.value( "previews" ).toArray().first().toObject().value( "name" ).toString() == "meta" );
+}
+
+TEST_CASE( "Pack filters have a canonical one-filter-per-file form", "[packmerge][E16]" )
+{
+    QString error;
+    const auto files = packcanonical::fromFilters( filtersConf( SomeFilters ), &error );
+    REQUIRE( error.isEmpty() );
+    CHECK( files.value( "filters/order.txt" ) == "f-one\nf-two\n" );
+    REQUIRE( files.contains( "filters/f-one.json" ) );
+    CHECK( QJsonDocument::fromJson( files.value( "filters/f-one.json" ) ).object()
+           == object( R"({"filter":"ERROR|FATAL","id":"f-one","name":"Errors","regex":true})" ) );
+    // One member per line, sorted keys, like every structured item.
+    CHECK( files.value( "filters/f-one.json" )
+           == packcanonical::itemBytes(
+               QJsonDocument::fromJson( files.value( "filters/f-one.json" ) ).object() ) );
+    CHECK( QJsonDocument::fromJson( files.value( "filters/f-two.json" ) ).object().value( "name" )
+           == SomeFilters.at( 1 ).name );
+    CHECK( packcanonical::kindOf( "filters/f-one.json" ) == "filter" );
+    CHECK( packcanonical::itemOf( "filters/f-one.json" ) == "f-one" );
+    CHECK( packcanonical::isCanonical( "filters/f-one.json" ) );
+    CHECK( !packcanonical::isCanonical( "filters/F-one.json" ) );
+    CHECK( packcanonical::kindOf( "filters/order.txt" ) == "filter-order" );
+    CHECK( packcanonical::isCanonical( "filters/order.txt" ) );
+    // A filter whose id is "order" is an item like any other (the order file ends in .txt).
+    CHECK( packcanonical::kindOf( "filters/order.json" ) == "filter" );
+    CHECK( packcanonical::itemOf( "filters/order.json" ) == "order" );
+
+    // The round trip keeps every filter, its order and its values, and the file it writes is the
+    // filters file CILogg imports (QSettings, INI format, version 3).
+    const auto conf = packcanonical::toFilters( files );
+    CHECK( packcanonical::fromFilters( conf ) == files );
+    QTemporaryDir folder;
+    REQUIRE( folder.isValid() );
+    {
+        QFile out( folder.filePath( "back.conf" ) );
+        REQUIRE( out.open( QIODevice::WriteOnly ) );
+        out.write( conf );
+    }
+    QSettings back( folder.filePath( "back.conf" ), QSettings::IniFormat );
+    CHECK( back.value( "PredefinedFiltersCollection/version" ).toInt() == 3 );
+    CHECK( back.value( "PredefinedFiltersCollection/filters/size" ).toInt() == 2 );
+    CHECK( back.value( "PredefinedFiltersCollection/filters/2/name" ).toString()
+           == SomeFilters.at( 1 ).name );
+    CHECK( back.value( "PredefinedFiltersCollection/filters/2/regex" ).toBool() == false );
+
+    // Filters missing from the order follow in id order; order lines without a filter are skipped.
+    auto reordered = files;
+    reordered.insert( "filters/order.txt", "f-two\ngone\n" );
+    const auto again = packcanonical::fromFilters( packcanonical::toFilters( reordered ) );
+    CHECK( again.value( "filters/order.txt" ) == "f-two\nf-one\n" );
+
+    // An exported file without `regex` is a regex filter, as the import reads it.
+    const auto noRegex = packcanonical::fromFilters( filtersConf( { { "x", "X", "x", {} } } ) );
+    CHECK( QJsonDocument::fromJson( noRegex.value( "filters/x.json" ) ).object().value( "regex" )
+           == true );
+    // No filters at all is a valid, empty filters file.
+    const auto none = packcanonical::fromFilters( filtersConf( {} ), &error );
+    CHECK( error.isEmpty() );
+    CHECK( none == PackFiles{ { "filters/order.txt", QByteArray{} } } );
+
+    // A file that is not such a filters file is refused, never cleaned up quietly: a filter's
+    // identity is its id, and anything the file holds besides the filters would be lost.
+    const QVector<std::pair<const char*, QByteArray>> bad{
+        { "not INI", QByteArray( "\xff\xfe\x00[[[", 6 ) },
+        { "no group", "[Other]\nx=1\n" },
+        { "newer version", filtersConf( SomeFilters, 4 ) },
+        { "no id", filtersConf( { { QString{}, "A", "a", true } } ) },
+        { "empty id", filtersConf( { { "", "A", "a", true } } ) },
+        { "id with a line break", filtersConf( { { "a\nb", "A", "a", true } } ) },
+        { "repeated id", filtersConf( { { "a", "A", "a", true }, { "a", "B", "b", true } } ) },
+        { "no name", filtersConf( { { "a", "", "a", true } } ) },
+        { "no pattern", filtersConf( { { "a", "A", "", true } } ) },
+        { "regex not a boolean", filtersConf( { { "a", "A", "a", "maybe" } } ) },
+        { "another key", filtersConf( SomeFilters, 3, { { "General/other", 1 } } ) },
+        { "another filter key",
+          filtersConf( SomeFilters, 3,
+                       { { "PredefinedFiltersCollection/filters/1/color", "red" } } ) },
+        { "a filter past the size",
+          filtersConf( SomeFilters, 3,
+                       { { "PredefinedFiltersCollection/filters/3/name", "C" } } ) },
+    };
+    for ( const auto& [ why, bytes ] : bad ) {
+        INFO( why );
+        QString refused;
+        CHECK( packcanonical::fromFilters( bytes, &refused ).isEmpty() );
+        CHECK( refused.startsWith( "The pack's filters file is not valid" ) );
+    }
+    // More filters than a configuration import takes (4,096) is refused before it becomes that
+    // many store items.
+    {
+        QVector<FilterRow> many;
+        for ( int index = 0; index <= packcanonical::MaxPackFilterItems; ++index ) {
+            many.append( { QStringLiteral( "f%1" ).arg( index ), "F", "f", true } );
+        }
+        QString refused;
+        CHECK( packcanonical::fromFilters( filtersConf( many ), &refused ).isEmpty() );
+        CHECK( refused.contains( "more than 4096 filters" ) );
+    }
+
+    // A pack folder's filters file becomes its filter items.
+    QTemporaryDir pack;
+    REQUIRE( pack.isValid() );
+    QDir().mkpath( pack.filePath( "lua" ) );
+    QDir().mkpath( pack.filePath( "filters" ) );
+    const auto write = [ &pack ]( const QString& name, const QByteArray& bytes ) {
+        QFile file( pack.filePath( name ) );
+        REQUIRE( file.open( QIODevice::WriteOnly ) );
+        file.write( bytes );
+    };
+    auto manifest = packManifest();
+    auto content = manifest[ "content" ].toObject();
+    content[ "filters" ] = "filters/predefined.conf";
+    manifest[ "content" ] = content;
+    write( "previews.json", Previews );
+    write( "lua/a.lua", "-- a\n" );
+    write( "filters/predefined.conf", filtersConf( SomeFilters ) );
+    error.clear();
+    const auto folderFiles = packcanonical::fromPackFolder( manifest, pack.path(), &error );
+    CHECK( error.isEmpty() );
+    CHECK( folderFiles.contains( "filters/f-two.json" ) );
+    CHECK( folderFiles.value( "filters/order.txt" ) == "f-one\nf-two\n" );
+    CHECK( !folderFiles.contains( "files/filters/predefined.conf" ) );
+    // A bad filters file in a pack folder is the pack's error.
+    write( "filters/predefined.conf", "[Other]\nx=1\n" );
+    CHECK( packcanonical::fromPackFolder( manifest, pack.path(), &error ).isEmpty() );
+    CHECK( error.startsWith( "The pack's filters file is not valid" ) );
 }
 
 TEST_CASE( "Pack items merge item by item and field by field", "[packmerge][E16]" )
@@ -1989,4 +2167,217 @@ TEST_CASE( "Packs install, edit and update through their local store", "[packmer
     CHECK( manager.manage( "pack_edits", id, {} ).payload[ "files" ].toList().isEmpty() );
     REQUIRE( manager.manage( "remove", id, {} ).ok() );
     CHECK( !QFileInfo::exists( root.filePath( "data/pack-store/org.example.pack.git" ) ) );
+}
+
+namespace {
+// A pack package with predefined filters only (E16c): plugin.json and filters.conf, or no filters
+// file at all when `filters` is empty.
+QString writeFilterPackage( const QString& folder, const QString& version,
+                            const QByteArray& filters )
+{
+    QDir().mkpath( folder );
+    auto manifest = packManifest( version );
+    QJsonObject content;
+    if ( !filters.isEmpty() ) {
+        content[ "filters" ] = "filters.conf";
+    }
+    else {
+        content[ "previews" ] = "previews.json";
+    }
+    manifest[ "content" ] = content;
+    const auto write = [ &folder ]( const QString& name, const QByteArray& bytes ) {
+        QFile file( folder + '/' + name );
+        REQUIRE( file.open( QIODevice::WriteOnly ) );
+        file.write( bytes );
+    };
+    write( "plugin.json", QJsonDocument( manifest ).toJson() );
+    if ( !filters.isEmpty() ) {
+        write( "filters.conf", filters );
+    }
+    else {
+        write( "previews.json", Previews );
+    }
+    return folder;
+}
+
+// The filters the content folder's filters file holds, by id, in its order.
+QVector<QJsonObject> contentFilters( const QString& folder )
+{
+    const auto files = packcanonical::fromFilters( readFile( folder + "/filters.conf" ) );
+    QVector<QJsonObject> filters;
+    for ( const auto& id : QString::fromUtf8( files.value( "filters/order.txt" ) )
+                               .split( '\n', Qt::SkipEmptyParts ) ) {
+        filters.append( QJsonDocument::fromJson(
+                            files.value( "filters/" + packcanonical::encodeName( id ) + ".json" ) )
+                            .object() );
+    }
+    return filters;
+}
+
+QString edit( PluginManager& manager, const QString& path, const QJsonObject& item )
+{
+    return manager
+        .manage( "pack_edit", "org.example.pack",
+                 { { "path", path },
+                   { "content", QString::fromUtf8( QJsonDocument( item ).toJson() ) } } )
+        .error;
+}
+} // namespace
+
+TEST_CASE( "Pack filters install, edit and update through the local store", "[packmerge][E16]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    PluginManager manager( root.filePath( "data" ), root.filePath( "none" ) );
+    const auto id = QStringLiteral( "org.example.pack" );
+    const auto v1
+        = writeFilterPackage( root.filePath( "v1" ), "1.0.0", filtersConf( SomeFilters ) );
+    REQUIRE( finished( manager, manager.manage( "install", {}, { { "path", v1 } } ) )[ "state" ]
+             == "completed" );
+    const auto content = manager.packContentDirectory( id );
+    REQUIRE( contentFilters( content ).size() == 2 );
+    CHECK( manager.plugins().first().toMap()[ "filters" ] == 2 );
+
+    // The filters are items of the pack, one per id, and an order.
+    const auto one = QStringLiteral( "filters/f-one.json" );
+    QStringList kinds;
+    for ( const auto& file : manager.manage( "pack_files", id, {} ).payload[ "files" ].toList() ) {
+        kinds.append( file.toMap()[ "kind" ].toString() + ':' + file.toMap()[ "item" ].toString() );
+    }
+    kinds.sort();
+    CHECK( kinds
+           == QStringList{ "filter-order:filters/order.txt", "filter:f-one", "filter:f-two" } );
+
+    // Edited in place: the content folder's filters file follows, with a readable history.
+    auto item = QJsonDocument::fromJson( manager.manage( "pack_read", id, { { "path", one } } )
+                                             .payload[ "content" ]
+                                             .toString()
+                                             .toUtf8() )
+                    .object();
+    item[ "filter" ] = "ERROR|FATAL|PANIC";
+    REQUIRE( edit( manager, one, item ).isEmpty() );
+    CHECK( contentFilters( content ).first().value( "filter" ) == "ERROR|FATAL|PANIC" );
+    CHECK( manager.manage( "pack_history", id, { { "path", one } } )
+               .payload[ "commits" ]
+               .toList()
+               .first()
+               .toMap()[ "message" ]
+           == "Edit filter 'Errors'" );
+    // The id is the filter's identity, and every filter stays one CILogg reads.
+    auto otherId = item;
+    otherId[ "id" ] = "f-other";
+    CHECK( edit( manager, one, otherId )
+           == "The filter's id must stay the same (copy it to make another)." );
+    for ( const auto& [ key, bad, why ] :
+          { std::tuple<QString, QJsonValue, QString>{ "name", "", "needs a name and a pattern" },
+            std::tuple<QString, QJsonValue, QString>{ "filter", 3, "needs a name and a pattern" },
+            std::tuple<QString, QJsonValue, QString>{ "regex", "yes",
+                                                      "needs exactly an id, a name, a pattern" },
+            std::tuple<QString, QJsonValue, QString>{
+                "color", "red", "needs exactly an id, a name, a pattern" } } ) {
+        INFO( key.toStdString() );
+        auto invalid = item;
+        invalid[ key ] = bad;
+        CHECK( edit( manager, one, invalid ).contains( why ) );
+    }
+    CHECK( contentFilters( content ).first().value( "filter" ) == "ERROR|FATAL|PANIC" );
+    // The order is edited as text, never deleted; a filter can be deleted.
+    REQUIRE( manager
+                 .manage( "pack_edit", id,
+                          { { "path", "filters/order.txt" }, { "content", "f-two\nf-one\n" } } )
+                 .ok() );
+    CHECK( contentFilters( content ).first().value( "id" ) == "f-two" );
+    CHECK( manager.manage( "pack_history", id, { { "path", "filters/order.txt" } } )
+               .payload[ "commits" ]
+               .toList()
+               .first()
+               .toMap()[ "message" ]
+           == "Edit the filter order" );
+    CHECK(
+        !manager.manage( "pack_edit", id, { { "path", "filters/order.txt" }, { "remove", true } } )
+             .ok() );
+    REQUIRE( manager.manage( "pack_reset", id, { { "path", "filters/order.txt" } } ).ok() );
+    CHECK( contentFilters( content ).first().value( "id" ) == "f-one" );
+    REQUIRE(
+        manager.manage( "pack_edit", id, { { "path", "filters/f-two.json" }, { "remove", true } } )
+            .ok() );
+    REQUIRE( contentFilters( content ).size() == 1 );
+    REQUIRE( manager.manage( "pack_reset", id, { { "path", "filters/f-two.json" } } ).ok() );
+    REQUIRE( contentFilters( content ).size() == 2 );
+
+    // A new version that renames the edited filter and adds one merges field by field.
+    auto v2Rows = SomeFilters;
+    v2Rows[ 0 ].name = "Errors and worse";
+    v2Rows.append( { "f-three", "Warnings", "WARN", false } );
+    const auto v2 = writeFilterPackage( root.filePath( "v2" ), "1.1.0", filtersConf( v2Rows ) );
+    REQUIRE( finished( manager, manager.manage( "install", {}, { { "path", v2 } } ) )[ "state" ]
+             == "completed" );
+    auto merged = contentFilters( content );
+    REQUIRE( merged.size() == 3 );
+    CHECK( merged.at( 2 ).value( "id" ) == "f-three" ); // the new version's order
+    const auto oneMerged
+        = *std::find_if( merged.cbegin(), merged.cend(), []( const QJsonObject& filter ) {
+              return filter.value( "id" ) == "f-one";
+          } );
+    CHECK( oneMerged.value( "filter" ) == "ERROR|FATAL|PANIC" );
+    CHECK( oneMerged.value( "name" ) == "Errors and worse" );
+
+    // A version that changes the edited pattern: a conflict on that field of that filter.
+    auto v3Rows = v2Rows;
+    v3Rows[ 0 ].filter = "ERROR";
+    const auto v3 = writeFilterPackage( root.filePath( "v3" ), "1.2.0", filtersConf( v3Rows ) );
+    const auto refused = finished( manager, manager.manage( "install", {}, { { "path", v3 } } ) );
+    REQUIRE( refused[ "state" ] == "failed" );
+    const auto conflicts = refused[ "result" ].toMap()[ "conflicts" ].toList();
+    REQUIRE( conflicts.size() == 1 );
+    CHECK( conflicts.first().toMap()[ "kind" ] == "filter" );
+    CHECK( conflicts.first().toMap()[ "item" ] == "f-one" );
+    CHECK( conflicts.first().toMap()[ "field" ] == "filter" );
+    const auto revision = refused[ "result" ].toMap()[ "revision" ];
+    // A resolution never changes the id, and the whole filter keeps it.
+    for ( const auto& resolution :
+          { QVariantMap{ { "path", one }, { "field", "id" }, { "value", "f-other" } },
+            QVariantMap{ { "path", one },
+                         { "field", QString{} },
+                         { "value", QVariantMap{ { "id", "f-other" },
+                                                 { "name", "X" },
+                                                 { "filter", "x" },
+                                                 { "regex", true } } } } } ) {
+        const auto job
+            = finished( manager, manager.manage( "install", {},
+                                                 { { "path", v3 },
+                                                   { "resolutions", QVariantList{ resolution } },
+                                                   { "revision", revision } } ) );
+        CHECK( job[ "error" ].toString().startsWith( "Invalid merge resolution" ) );
+    }
+    // A resolution that would make a filter CILogg cannot read is refused with the reason.
+    const auto unreadable = finished(
+        manager,
+        manager.manage(
+            "install", {},
+            { { "path", v3 },
+              { "resolutions", QVariantList{ QVariantMap{
+                                   { "path", one }, { "field", "filter" }, { "value", "" } } } },
+              { "revision", revision } } ) );
+    CHECK( unreadable[ "error" ].toString().contains( "needs a name and a pattern" ) );
+    REQUIRE( finished( manager, manager.manage(
+                                    "install", {},
+                                    { { "path", v3 },
+                                      { "resolutions",
+                                        QVariantList{ QVariantMap{ { "path", one },
+                                                                   { "field", "filter" },
+                                                                   { "value", "ERROR|PANIC" } } } },
+                                      { "revision", revision } } ) )[ "state" ]
+             == "completed" );
+    CHECK( contentFilters( content ).size() == 3 );
+
+    // A version without a filters file takes the filters with it, edits too, and says so.
+    const auto v4 = writeFilterPackage( root.filePath( "v4" ), "2.0.0", {} );
+    const auto job = finished( manager, manager.manage( "install", {}, { { "path", v4 } } ) );
+    REQUIRE( job[ "state" ] == "completed" );
+    CHECK( job[ "result" ].toMap()[ "droppedEdits" ].toStringList().contains( "f-one" ) );
+    for ( const auto& file : manager.manage( "pack_files", id, {} ).payload[ "files" ].toList() ) {
+        CHECK( !file.toMap()[ "kind" ].toString().startsWith( "filter" ) );
+    }
+    CHECK( manager.plugins().first().toMap()[ "filters" ] == 0 );
 }

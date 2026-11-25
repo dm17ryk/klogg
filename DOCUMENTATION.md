@@ -206,16 +206,19 @@ For several packages, list them in a `sources.json` file and pass `--sources sou
 
 **Configuration packs** are packages without a program: `"kind": "config-pack"` and a `content`
 object that lists preview definitions (`previews.json` format), Lua files for TShark and their
-decoder routes, and Python decoders (carried now, run by a later CILogg). They install, update,
-enable and remove like plugins, from the same repositories; build them with `--os any --arch
-any`. Pack previews appear in the previews dialog with the pack's name, and **Copy to My
-Previews** makes your own copy. CILogg asks before it enables a pack with Lua, because that Lua
-runs on your computer. The [plugin SDK](docs/plugin-sdk.md#configuration-packs) describes the
+decoder routes, predefined filters (the file **Export** in the Predefined Filters dialog writes),
+and Python decoders (carried now, run by a later CILogg). They install, update, enable and remove
+like plugins, from the same repositories; build them with `--os any --arch any`. Pack previews
+appear in the previews dialog with the pack's name, and **Copy to My Previews** makes your own
+copy. Pack filters appear in the predefined filter list as "<name> (<pack>)" and in the Predefined
+Filters dialog after yours, read only: **Copy to My Filters** makes your own copy (it replaces the
+pack's), **Edit…** edits the pack's filter in place, and **Packs…** opens the Plugins and Packs
+window. CILogg asks before it enables a pack with Lua, because that Lua runs on your computer. The [plugin SDK](docs/plugin-sdk.md#configuration-packs) describes the
 format; [plugins/examples/protocol-pack](plugins/examples/protocol-pack) is a complete example.
 
 **Editing a pack in place.** Select a pack preview in the previews dialog and click **Edit…**, or
-select the pack on the Installed tab and click **Pack Files…** to edit any of its previews, blocks
-or Lua and Python files. Items open in a text editor (JSON for previews and blocks) with **Open in
+select the pack on the Installed tab and click **Pack Files…** to edit any of its previews, blocks,
+filters or Lua and Python files. Items open in a text editor (JSON for previews and blocks) with **Open in
 External Editor**, **History…** (every saved version, with **Revert to This Version**) and **Reset
 to Pack Version**. The Installed tab shows "Edited locally (n)". Your edits survive updates: a
 new version is merged with them, and only when the new version changes the same field you changed

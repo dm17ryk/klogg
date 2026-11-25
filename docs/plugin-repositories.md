@@ -677,6 +677,31 @@ The rules of section 4.2 apply to the other content of a pack:
   items and all enabled packs together; enabling or updating a pack that would exceed one is
   refused with a message.
 
+**As built (E16c1, predefined filters).** E16c is delivered as three PRs (decided on 2026-11-24):
+E16c1 predefined filters, E16c2 highlighter sets, E16c3 actions with automatic responses. A
+pack's `filters` file is the INI file **Export** writes (group `PredefinedFiltersCollection`,
+version 1 to 3); `packcanonical::fromFilters` refuses one that is not exactly that (a filter
+without a unique `id`, a name or a pattern, a `regex` that is neither true nor false, any other
+key, more than 4,096 filters), so nothing in it is lost on the way to the store. In the store each
+filter is `filters/<id>.json` (`filter`, `id`, `name`, `regex`) with the list order in
+`filters/order.txt`; filters merge field by field like previews (the `id` is the identity: no
+resolution or edit changes it), the order as text, and `toFilters` writes the content folder's
+filters file back with QSettings (version 3). An edit, a merge result or a reset must leave every
+filter one CILogg reads back the same, within 4,096 filters and 1 MiB (`filtersInvalid`); a version
+without a filters file takes the filter items with it (`droppedEdits`), and `pack_reset` refuses a
+filter there. `PreviewPackRegistry` reads each enabled pack's filters and hands them to
+`PackFilters` as `ListedFilter`s (the filter with its pack's ID and name; `PredefinedFilter` itself
+is unchanged), apart from the user's `PredefinedFiltersCollection` (never saved, exported or put
+in a project snapshot); `effectivePredefinedFilters` lists the user's filters, then the packs'
+whose id the user has not taken. The pack check refuses a filter id another enabled pack has and
+more than 4,096 filters together. The search bar's filter list shows pack filters as
+"<name> (<pack name>)" and follows `PackFilters::changed`; Commander's predefined filters carry
+`packId` and `packName`. The Predefined Filters dialog lists the pack's filters after the user's
+with a Source column ("replaced by your filter" when a filter of the user's has the id), read
+only, with **Copy to My Filters** (a filter of the user's with the same id), **Edit...** (the
+pack item editor on `filters/<id>.json`) and **Packs...** (the Plugins and Packs window over the
+dialog). `get_plugins` counts a pack's `filters`.
+
 ### 4.6 Local edits and merge on update
 
 **Decided (Dmitry, 2026-11-17): edit in place with merge.** Process plugins (for example a CPF tool,

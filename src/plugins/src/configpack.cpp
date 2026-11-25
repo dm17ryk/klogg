@@ -1,5 +1,6 @@
 #include "configpack.h"
 
+#include "packcanonical.h"
 #include "pluginmanifest.h"
 #include <QDir>
 #include <QDirIterator>
@@ -9,6 +10,7 @@
 #include <QJsonDocument>
 #include <QRegularExpression>
 #include <QSet>
+#include <algorithm>
 
 namespace cilogg::plugins {
 namespace {
@@ -392,8 +394,20 @@ QVariantMap packSummary( const QJsonObject& manifest, const QString& directory )
             previews = static_cast<int>( packPreviewNames( file.read( MaxPackFileBytes ) ).size() );
         }
     }
+    int filters = 0;
+    if ( !content.filters.isEmpty() ) {
+        QFile file( QDir( directory ).filePath( content.filters ) );
+        if ( file.open( QIODevice::ReadOnly ) ) {
+            const auto items = packcanonical::fromFilters( file.read( MaxPackFileBytes ) );
+            filters = static_cast<int>(
+                std::count_if( items.keyBegin(), items.keyEnd(), []( const QString& path ) {
+                    return packcanonical::kindOf( path ) == QLatin1String( "filter" );
+                } ) );
+        }
+    }
     return { { "contents", packContents( manifest ) },
              { "previews", previews },
+             { "filters", filters },
              { "luaFiles", static_cast<int>( content.luaLoad.size() ) },
              { "pythonDecoders", static_cast<int>( content.pythonDecoders.size() ) } };
 }

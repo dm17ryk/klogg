@@ -41,17 +41,36 @@
 #define PREDEFINEDFILTERSDIALOG_H_
 
 #include <QDialog>
+#include <functional>
+#include <memory>
 
 #include "predefinedfilters.h"
-#include "predefinedfiltersdialog.h"
-#include "ui_predefinedfiltersdialog.h"
 
-class PredefinedFiltersDialog : public QDialog, public Ui::PredefinedFiltersDialog {
+class QAbstractButton;
+class QToolButton;
+namespace Ui {
+class PredefinedFiltersDialog;
+}
+
+// The user's predefined filters, then the enabled configuration packs' (E16c, design 4.5): pack
+// filters are listed with the pack's name, read only, and edited in place (Edit...) or copied into
+// the user's own (Copy to My Filters). Only the user's rows are saved, exported and imported.
+// The form is a member (not a base), so tests can use the dialog without its generated header.
+class PredefinedFiltersDialog : public QDialog {
     Q_OBJECT
 
   public:
-    PredefinedFiltersDialog( QWidget* parent = nullptr );
-    PredefinedFiltersDialog( const QString& newFilter, QWidget* parent = nullptr );
+      using PackItemEditor
+          = std::function<void( QWidget* parent, const QString& packId, const QString& path )>;
+
+      PredefinedFiltersDialog( QWidget* parent = nullptr );
+      PredefinedFiltersDialog( const QString& newFilter, QWidget* parent = nullptr );
+      ~PredefinedFiltersDialog() override;
+
+      // Edit... on a pack filter opens this editor on its store item (filters/<id>.json).
+      void setPackItemEditor( PackItemEditor editor );
+      // Packs... opens the Plugins and Packs window.
+      void setPacksOpener( std::function<void()> opener );
 
   private Q_SLOTS:
     void addFilter();
@@ -73,7 +92,17 @@ class PredefinedFiltersDialog : public QDialog, public Ui::PredefinedFiltersDial
 
   private:
     void addFilterRow( const QString& newFilter );
+    // A row of the user's at `row` (before the pack rows).
+    void insertOwnRow( int row, const PredefinedFilter& filter );
     void populateFiltersTable( const PredefinedFiltersCollection::Collection& filters );
+    // The enabled packs' filters after the user's rows, marked when one of the user's replaces one.
+    void refreshPackRows();
+    // The user's rows come first; the pack rows follow them.
+    int ownRowCount() const;
+    bool isPackRow( int row ) const;
+    bool isReplacedRow( int row ) const;
+    void copyPackFilter();
+    void editPackFilter();
 
     void swapFilters( int currentRow, int newRow, int column );
 
@@ -82,6 +111,13 @@ class PredefinedFiltersDialog : public QDialog, public Ui::PredefinedFiltersDial
 
     void updateButtons();
     void updateUpDownButtons( int currentRow );
+
+    std::unique_ptr<Ui::PredefinedFiltersDialog> ui_;
+    QToolButton* copyPackFilterButton_ = nullptr;
+    QToolButton* editPackFilterButton_ = nullptr;
+    QToolButton* packsButton_ = nullptr;
+    PackItemEditor packItemEditor_;
+    std::function<void()> packsOpener_;
 };
 
 #endif

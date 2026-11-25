@@ -68,11 +68,8 @@ class PredefinedFiltersComboBox final : public WidePopupComboBox {
     QVariantList commanderFilters() const;
     std::optional<PredefinedFilter> commanderFilterById( const QString& filterId ) const;
     std::optional<PredefinedFilter> commanderFilterByIndex( int filterIndex ) const;
-    // The filters this list offers.
-    QList<PredefinedFilter> filters() const
-    {
-        return filtersCollection_.getFilters();
-    }
+    // The filters this list offers: the user's, then the enabled packs' (E16c).
+    QList<PredefinedFilter> filters() const;
 
     void showPopup() override;
 
@@ -81,12 +78,13 @@ class PredefinedFiltersComboBox final : public WidePopupComboBox {
 
   private:
     void setTitle( const QString& title );
-    void insertFilters( const PredefinedFiltersCollection::Collection& filters );
+    void insertFilters( const QList<ListedFilter>& filters );
     void collectFilters();
     QList<int> selectedFilterIndexes() const;
 
   private:
     PredefinedFiltersCollection filtersCollection_;
+    QList<ListedFilter> filters_; // as listed: the user's, then the packs'
 
     QStandardItemModel* model_;
     struct SearchPatternState {

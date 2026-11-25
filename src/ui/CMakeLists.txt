@@ -259,6 +259,13 @@ set_property(
   APPEND
   PROPERTY AUTOUIC_SEARCH_PATHS "${CMAKE_CURRENT_SOURCE_DIR}/ui"
 )
+# The forms are kept next to their headers; a source that includes its form's generated header
+# itself (the header holding the form as a member) finds the form there.
+set_property(
+  TARGET klogg_ui
+  APPEND
+  PROPERTY AUTOUIC_SEARCH_PATHS "${CMAKE_CURRENT_SOURCE_DIR}/include"
+)
 
 if(KLOGG_USE_LTO)
   set_property(TARGET klogg_ui PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
