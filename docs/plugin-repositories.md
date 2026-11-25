@@ -694,7 +694,10 @@ filter there. `PreviewPackRegistry` reads each enabled pack's filters and hands 
 is unchanged), apart from the user's `PredefinedFiltersCollection` (never saved, exported or put
 in a project snapshot); `effectivePredefinedFilters` lists the user's filters, then the packs'
 whose id the user has not taken. The pack check refuses a filter id another enabled pack has and
-more than 4,096 filters together. The search bar's filter list shows pack filters as
+more than 4,096 filters together; the user's own filters are not limited, and when they grow past
+that the packs' filters give way in the lists (`packFiltersGiveWay`, shown as "not listed" in the
+dialog), as pack previews do. No other content file may be the filters file, which CILogg writes
+(`checkReservedPaths`), and an order with CR LF line ends keeps its order. The search bar's filter list shows pack filters as
 "<name> (<pack name>)" and follows `PackFilters::changed`; Commander's predefined filters carry
 `packId` and `packName`. The Predefined Filters dialog lists the pack's filters after the user's
 with a Source column ("replaced by your filter" when a filter of the user's has the id), read

@@ -83,19 +83,44 @@ void PackFilters::setFilters( const QList<ListedFilter>& filters )
     Q_EMIT changed();
 }
 
-QList<ListedFilter> effectivePredefinedFilters( const QList<PredefinedFilter>& own )
+namespace {
+// The enabled packs' filters that the user's filters do not replace.
+QList<ListedFilter> listedPackFilters( const QList<PredefinedFilter>& own )
 {
-    QList<ListedFilter> filters;
     QSet<QString> ids;
     for ( const auto& filter : own ) {
-        filters.append( { filter, QString{}, QString{} } );
         ids.insert( filter.id );
     }
+    QList<ListedFilter> filters;
     for ( const auto& listed : PackFilters::instance().filters() ) {
         if ( !ids.contains( listed.filter.id ) ) {
             filters.append( listed );
         }
     }
+    return filters;
+}
+} // namespace
+
+bool packFiltersGiveWay( const QList<PredefinedFilter>& own )
+{
+    return own.size() + listedPackFilters( own ).size() > MaxListedFilters;
+}
+
+QList<ListedFilter> effectivePredefinedFilters( const QList<PredefinedFilter>& own )
+{
+    QList<ListedFilter> filters;
+    for ( const auto& filter : own ) {
+        filters.append( { filter, QString{}, QString{} } );
+    }
+    const auto packs = listedPackFilters( own );
+    // The user's filters grew past the limit after the packs were enabled (enabling is checked):
+    // the packs' filters give way, never the user's.
+    if ( own.size() + packs.size() > MaxListedFilters ) {
+        LOG_WARNING << "Pack predefined filters not listed: own=" << own.size()
+                    << " packs=" << packs.size() << " limit=" << MaxListedFilters;
+        return filters;
+    }
+    filters.append( packs );
     return filters;
 }
 

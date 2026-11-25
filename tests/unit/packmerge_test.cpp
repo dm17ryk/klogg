@@ -303,6 +303,16 @@ TEST_CASE( "Pack filters have a canonical one-filter-per-file form", "[packmerge
     reordered.insert( "filters/order.txt", "f-two\ngone\n" );
     const auto again = packcanonical::fromFilters( packcanonical::toFilters( reordered ) );
     CHECK( again.value( "filters/order.txt" ) == "f-two\nf-one\n" );
+    // An order edited with CR LF line ends keeps its order (Codex review of #165).
+    reordered.insert( "filters/order.txt", "f-two\r\nf-one\r\n" );
+    CHECK( packcanonical::fromFilters( packcanonical::toFilters( reordered ) )
+               .value( "filters/order.txt" )
+           == "f-two\nf-one\n" );
+    auto previewOrder = packcanonical::fromPreviews( Previews );
+    previewOrder.insert( "previews/order.txt", "First Frame\r\nSecond\r\n" );
+    CHECK( packcanonical::fromPreviews( packcanonical::toPreviews( previewOrder ) )
+               .value( "previews/order.txt" )
+           == "First Frame\nSecond\n" );
 
     // An exported file without `regex` is a regex filter, as the import reads it.
     const auto noRegex = packcanonical::fromFilters( filtersConf( { { "x", "X", "x", {} } } ) );

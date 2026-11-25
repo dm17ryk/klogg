@@ -258,6 +258,20 @@ TEST_CASE( "Configuration pack manifests follow the pack rules", "[plugins][E16]
         const auto aliased = withContent( withContent( valid, "actions", "defs/Rules.json" ),
                                           "filters", "defs/rules.json" );
         CHECK( manifestError( aliased ).contains( "differ only in case" ) );
+        // CILogg writes the filters file from the pack's filters (E16c): a file carried as it is
+        // may not be the same file, or it would replace them (Codex review of #165).
+        const auto filtersFile = QStringLiteral( "is the pack's filters file" );
+        CHECK( manifestError( withContent( withContent( valid, "actions", "defs/rules.conf" ),
+                                           "filters", "defs/rules.conf" ) )
+                   .contains( filtersFile ) );
+        CHECK( manifestError( withContent( withContent( valid, "highlights", "f.conf" ), "filters",
+                                           "f.conf" ) )
+                   .contains( filtersFile ) );
+        CHECK( manifestError( withContent( valid, "filters", "python/summary.py" ) )
+                   .contains( filtersFile ) );
+        CHECK( manifestError( withContent( withContent( valid, "actions", "a.json" ), "highlights",
+                                           "a.json" ) )
+                   .isEmpty() );
     }
     SECTION( "Python decoders need an id and a .py module" )
     {
@@ -1067,6 +1081,17 @@ TEST_CASE( "Pack filters join the predefined filters with the pack's name", "[pl
         REQUIRE( model->rowCount() == 4 ); // the title, then the filters
         CHECK( model->item( 3 )->text() == "Errors (Pack a.pack)" );
         CHECK( model->item( 1 )->text() == "Mine" );
+        // A list reloaded (a pack enabled, edited or updated) while the search uses its filters
+        // shows them ticked again when it opens (Codex review of #165).
+        combo.updateSearchPattern( "ERROR", false );
+        combo.showPopup();
+        CHECK( model->item( 3 )->checkState() == Qt::Checked );
+        combo.hidePopup();
+        combo.populatePredefinedFilters();
+        CHECK( model->item( 3 )->checkState() == Qt::Unchecked );
+        combo.showPopup();
+        CHECK( model->item( 3 )->checkState() == Qt::Checked );
+        combo.hidePopup();
     }
 
     // Two enabled packs never share a filter id, and your filters and the packs' together stay
@@ -1152,6 +1177,30 @@ TEST_CASE( "Pack filters join the predefined filters with the pack's name", "[pl
         CHECK( mine.at( 2 ).id == "f-one" );
         CHECK( mine.at( 2 ).pattern == "ERROR" );
         CHECK( mine.at( 2 ).useRegex );
+    }
+
+    // Your own filters are not limited: grown past 4,096 with the packs' (enabling was checked),
+    // the packs' filters give way in the lists, never yours (Codex review of #165).
+    {
+        const auto before = collection.getFilters();
+        QList<PredefinedFilter> many;
+        for ( int index = 0; index < MaxListedFilters - 1; ++index ) {
+            many.append( { QStringLiteral( "u%1" ).arg( index ), "U", "u", false } );
+        }
+        collection.saveToStorage( many ); // 4,095 of yours and the pack's 2: 4,097
+        CHECK( packFiltersGiveWay( many ) );
+        CHECK( effectivePredefinedFilters( many ).size() == MaxListedFilters - 1 );
+        PredefinedFiltersComboBox combo( nullptr );
+        CHECK( combo.filters().size() == MaxListedFilters - 1 );
+        PredefinedFiltersDialog dialog;
+        auto* table = dialog.findChild<QTableWidget*>( "filtersTableWidget" );
+        REQUIRE( table->rowCount() == MaxListedFilters + 1 );
+        CHECK( table->item( MaxListedFilters - 1, 3 )->text()
+               == "Pack a.pack (not listed: more than 4096 filters)" );
+        many.removeLast(); // 4,094 and 2: they fit again
+        CHECK( !packFiltersGiveWay( many ) );
+        CHECK( effectivePredefinedFilters( many ).size() == MaxListedFilters );
+        collection.saveToStorage( before );
     }
 
     // Disabled, the pack's filters are gone from the list.

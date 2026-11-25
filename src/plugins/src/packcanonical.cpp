@@ -32,6 +32,14 @@ bool plain( QChar character )
            || character == '.' || character == '_' || character == '-';
 }
 
+// The names of an order file, one per line. An order edited on Windows or merged from such an edit
+// may end its lines with CR LF: no name or id has a CR (fromPreviews and fromFilters refuse one),
+// so it is the line end's.
+QStringList orderLines( const QByteArray& order )
+{
+    return QString::fromUtf8( order ).remove( '\r' ).split( '\n' );
+}
+
 QByteArray readFile( const QString& path, QString* error )
 {
     QFile file( path );
@@ -177,7 +185,7 @@ QByteArray toPreviews( const PackFiles& files )
         }
     }
     QJsonArray ordered;
-    for ( const auto& line : QString::fromUtf8( files.value( OrderFile ) ).split( '\n' ) ) {
+    for ( const auto& line : orderLines( files.value( OrderFile ) ) ) {
         if ( previews.contains( line ) ) {
             ordered.append( previews.take( line ) );
         }
@@ -301,7 +309,7 @@ QByteArray toFilters( const PackFiles& files, QString* error )
     }
     // A filter's id is its store path's (pack_edit keeps the two the same).
     QVector<std::pair<QString, QJsonObject>> ordered;
-    for ( const auto& line : QString::fromUtf8( files.value( FilterOrderFile ) ).split( '\n' ) ) {
+    for ( const auto& line : orderLines( files.value( FilterOrderFile ) ) ) {
         if ( filters.contains( line ) ) {
             ordered.append( { line, filters.take( line ) } );
         }

@@ -1044,10 +1044,12 @@ packs](plugin-repositories.md) section 4). The example is
   nothing else. Pack filters join the predefined filter list after your own, with the pack's name
   (Commander's `get_filters` adds `packId` and `packName` to them); a filter of yours with a pack
   filter's id replaces it (**Copy to My Filters** keeps the id); two enabled packs never share a
-  filter id; your filters and all enabled packs' together stay within 4,096. Exports and project
-  snapshots contain your filters only.
-- No content file may be `plugin.json` or the previews file (compared ignoring case): CILogg
-  writes both itself for the pack's content with your edits. Two content files may not differ
+  filter id; enabling or updating a pack that would make your filters and all enabled packs'
+  more than 4,096 is refused. Your own filters are not limited: when they grow past that, the
+  packs' filters are not listed until you have fewer (as pack previews give way). Exports and
+  project snapshots contain your filters only.
+- No content file may be `plugin.json`, the previews file or the filters file (compared ignoring
+  case): CILogg writes them itself for the pack's content with your edits. Two content files may not differ
   only in case either (one file on Windows and macOS).
 - `get_plugins` adds `contents` and the counts `previews`, `filters`, `luaFiles` and
   `pythonDecoders` for a pack, `localEdits` (the edited items) and `needsMerge` (the version an

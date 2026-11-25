@@ -41,9 +41,9 @@ public:
         QList<ListedFilter> filters;
         QString error;
     };
-    // The most predefined filters the user's and the enabled packs' can be together: as many as
-    // a configuration import takes.
-    static constexpr int FilterLimit = 4096;
+    // The most predefined filters the user's and the enabled packs' can be together when a pack is
+    // enabled or updated (MaxListedFilters).
+    static constexpr int FilterLimit = MaxListedFilters;
 
     static PreviewPackRegistry& instance();
     // Follows the manager's changes and installs the pack check (PluginManager::setPackCheck).

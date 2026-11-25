@@ -111,6 +111,9 @@ PredefinedFiltersComboBox::PredefinedFiltersComboBox( QWidget* parent )
 void PredefinedFiltersComboBox::populatePredefinedFilters()
 {
     model_->clear();
+    // The new rows start unticked: the next popup ticks the ones the search uses again, also when
+    // the search did not change (a configuration pack's filters changed, E16c).
+    searchPattern_.lastOne_.clear();
     filters_ = effectivePredefinedFilters( filtersCollection_.getSyncedFilters() );
 
     setTitle( tr("Predefined filters") );

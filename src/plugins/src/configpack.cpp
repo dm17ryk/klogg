@@ -129,13 +129,16 @@ QString checkReservedPaths( const PackContent& content )
     if ( !content.previews.isEmpty() && same( content.previews, manifest ) ) {
         return QStringLiteral( "content.previews cannot be plugin.json." );
     }
-    QStringList others{ content.actions, content.highlights, content.filters };
+    // The files carried as they are; the filters file is written from the pack's filter items.
+    QStringList raw{ content.actions, content.highlights };
     for ( const auto& file : content.luaLoad ) {
-        others.append( content.luaFolder + '/' + file );
+        raw.append( content.luaFolder + '/' + file );
     }
     for ( const auto& decoder : content.pythonDecoders ) {
-        others.append( decoder.module );
+        raw.append( decoder.module );
     }
+    auto others = raw;
+    others.append( content.filters );
     for ( const auto& path : others ) {
         if ( !path.isEmpty()
              && ( same( path, manifest ) || ( !content.previews.isEmpty() && same( path, content.previews ) ) ) ) {
@@ -152,6 +155,16 @@ QString checkReservedPaths( const PackContent& content )
             if ( !a.isEmpty() && same( a, b ) && QDir::cleanPath( a ) != QDir::cleanPath( b ) ) {
                 return QStringLiteral( "The content files %1 and %2 differ only in case." )
                     .arg( a.left( 128 ), b.left( 128 ) );
+            }
+        }
+    }
+    // CILogg writes the filters file from the pack's filter items (E16c), so no file carried as it
+    // is may be that file too: written after it, it would replace the filters and their edits.
+    if ( !content.filters.isEmpty() ) {
+        for ( const auto& path : raw ) {
+            if ( !path.isEmpty() && same( path, content.filters ) ) {
+                return QStringLiteral( "The content file %1 is the pack's filters file." )
+                    .arg( path.left( 128 ) );
             }
         }
     }

@@ -306,7 +306,15 @@ void PredefinedFiltersDialog::refreshPackRows()
         }
     }
     const auto readOnly = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
-    for ( const auto& listed : PackFilters::instance().filters() ) {
+    const auto& packFilters = PackFilters::instance().filters();
+    // Past the limit with these rows of the user's, the packs' filters give way in the lists
+    // (effectivePredefinedFilters): they say so here.
+    const auto listedPackFilters = std::count_if( packFilters.cbegin(), packFilters.cend(),
+                                                  [ &ownIds ]( const ListedFilter& listed ) {
+                                                      return !ownIds.contains( listed.filter.id );
+                                                  } );
+    const bool givingWay = own + listedPackFilters > MaxListedFilters;
+    for ( const auto& listed : packFilters ) {
         const auto& filter = listed.filter;
         const auto row = ui_->filtersTableWidget->rowCount();
         const bool replaced = ownIds.contains( filter.id );
@@ -325,14 +333,20 @@ void PredefinedFiltersDialog::refreshPackRows()
         regexCheckbox->setEnabled( false );
         ui_->filtersTableWidget->setCellWidget( row, 2, regexCheckbox );
         auto* source = new QTableWidgetItem(
-            replaced ? tr( "%1 (replaced by your filter)" ).arg( listed.packName )
-                     : listed.packName );
+            replaced    ? tr( "%1 (replaced by your filter)" ).arg( listed.packName )
+            : givingWay ? tr( "%1 (not listed: more than %2 filters)" )
+                              .arg( listed.packName )
+                              .arg( MaxListedFilters )
+                        : listed.packName );
         source->setFlags( readOnly );
-        source->setToolTip( replaced
-                                ? tr( "Your filter with the same id replaces this pack filter." )
-                                : tr( "From the configuration pack \"%1\". Edit it in place "
-                                      "or copy it to your own filters." )
-                                      .arg( listed.packName ) );
+        source->setToolTip(
+            replaced    ? tr( "Your filter with the same id replaces this pack filter." )
+            : givingWay ? tr( "Your filters and the packs' would be more than %1, so the "
+                              "packs' filters are not listed until you have fewer." )
+                              .arg( MaxListedFilters )
+                        : tr( "From the configuration pack \"%1\". Edit it in place "
+                              "or copy it to your own filters." )
+                              .arg( listed.packName ) );
         ui_->filtersTableWidget->setItem( row, SourceColumn, source );
     }
 }
@@ -422,6 +436,7 @@ void PredefinedFiltersDialog::addFilterRow( const QString& newFilter )
     // After the user's rows, before the packs'.
     const auto newRow = ownRowCount();
     insertOwnRow( newRow, { createPredefinedFilterId(), QString{}, newFilter, false } );
+    refreshPackRows(); // one more of the user's can make the packs' filters give way
 
     ui_->filtersTableWidget->scrollToItem( ui_->filtersTableWidget->item( newRow, 0 ) );
     ui_->filtersTableWidget->setCurrentCell( newRow, 0 );
