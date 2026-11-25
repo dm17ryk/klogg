@@ -74,6 +74,13 @@ struct StreamSessionTestAccess {
                 },
                 Qt::QueuedConnection );
     }
+#else
+    // Receives the bytes the session hands to its serial transport (the worker's sendData).
+    static void setTransportSink( StreamSession& session,
+                                  std::function<void( const QByteArray&, bool )> sink )
+    {
+        session.transportSinkForTests_ = std::move( sink );
+    }
 #endif
     static void openConnection( StreamSession& session )
     {

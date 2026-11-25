@@ -153,6 +153,9 @@ private:
     bool closePublished_ = true;
     bool destroying_ = false;
     bool writePolicyExhausted_ = false;
+#else
+    // Tests without a serial device receive here what sendBytes would hand to the port's worker.
+    std::function<void( const QByteArray&, bool )> transportSinkForTests_;
 #endif
 
     SerialCaptureSettings settings_;

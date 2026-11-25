@@ -3257,7 +3257,8 @@ void MainWindow::sendActionById( int actionId )
     }
 
     QString errorMessage;
-    if ( !sendActionDefinition( streamSession, actionSnapshot, parameters, -1, &errorMessage ) ) {
+    if ( !sendActionDefinition( streamSession, actionSnapshot, ActionSendOrigin::Manual, parameters,
+                                -1, &errorMessage ) ) {
         QMessageBox::warning( this, tr( "Send action" ),
                               errorMessage.isEmpty() ? tr( "Failed to send action." )
                                                      : errorMessage );
@@ -3287,7 +3288,8 @@ void MainWindow::sendActionByIdWithParameters( int actionId, const QVariantMap& 
     LOG_DEBUG << "Sending action id=" << actionSnapshot.id
               << " with inline parameters, parameter_count=" << parameters.size();
     QString errorMessage;
-    if ( !sendActionDefinition( streamSession, actionSnapshot, parameters, -1, &errorMessage ) ) {
+    if ( !sendActionDefinition( streamSession, actionSnapshot, ActionSendOrigin::Manual, parameters,
+                                -1, &errorMessage ) ) {
         QMessageBox::warning( this, tr( "Send action" ),
                               errorMessage.isEmpty() ? tr( "Failed to send action." )
                                                      : errorMessage );
@@ -3912,8 +3914,8 @@ CommanderResult MainWindow::commanderSendAction( const CommanderRequest& request
     LOG_DEBUG << "send_action routing: explicit_tab=" << explicitTab
               << " tab_id=" << actionsTabIdForSession( streamSession );
     QString errorMessage;
-    if ( !sendActionDefinition( streamSession, actionSnapshot, request.actionParameters, -1,
-                                &errorMessage ) ) {
+    if ( !sendActionDefinition( streamSession, actionSnapshot, ActionSendOrigin::Manual,
+                                request.actionParameters, -1, &errorMessage ) ) {
         return commanderFailure( CommanderResultCode::ExecutionFailed,
                                  errorMessage.isEmpty() ? tr( "Failed to send action." )
                                                         : errorMessage );

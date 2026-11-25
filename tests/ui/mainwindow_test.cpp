@@ -1321,7 +1321,24 @@ TEST_CASE( "Pressing Send transmits at once even when the action has an initial 
     REQUIRE( ActionsManager::instance().createAction( action, &error ) );
     fixture.enable( 0, true );
     fixture.select( 0 );
-    QSignalSpy sent( fixture.streams[ 0 ].get(), &StreamSession::actionSent );
+
+    // The bytes the destination session hands to its serial transport, and when.
+    QElapsedTimer pressed;
+    QVector<QPair<QByteArray, qint64>> written;
+    const auto recordWrite = [ &written, &pressed ]( const QByteArray& bytes ) {
+        written.push_back( { bytes, pressed.elapsed() } );
+    };
+#ifndef KLOGG_SHARED_SERIAL_WRITER
+    StreamSessionTestAccess::setTransportSink(
+        *fixture.streams[ 0 ],
+        [ recordWrite ]( const QByteArray& bytes, bool ) { recordWrite( bytes ); } );
+#else
+    // The checked writer has its own transport; observe the dispatch instead.
+    QObject::connect( fixture.streams[ 0 ].get(), &StreamSession::actionSent, &fixture.window,
+                      [ recordWrite ]( int, const QString&, int, const QByteArray& bytes ) {
+                          recordWrite( bytes );
+                      } );
+#endif
 
     // Press the Send button of the action's row, as the user does.
     fixture.actionsWindow->show();
@@ -1340,21 +1357,20 @@ TEST_CASE( "Pressing Send transmits at once even when the action has an initial 
     table->scrollTo( sendCell );
     QApplication::processEvents();
     const auto button = table->visualRect( sendCell ).center();
-    QElapsedTimer pressed;
     pressed.start();
     QTest::mouseClick( table->viewport(), Qt::LeftButton, {}, button );
-    const auto buttonLatency = sent.isEmpty() ? -1 : pressed.elapsed();
-    if ( sent.isEmpty() ) {
+    const bool writtenByRelease = !written.isEmpty();
+    if ( !writtenByRelease ) {
         // Report how late it is instead of only failing.
-        const auto late
-            = QTest::qWaitFor( [ &sent ] { return !sent.isEmpty(); }, LegacyInitialDelayMs + 2000 );
+        const auto late = QTest::qWaitFor( [ &written ] { return !written.isEmpty(); },
+                                           LegacyInitialDelayMs + 2000 );
         WARN( "the write came only after the press, late=" << late );
     }
-    INFO( "press to write took " << ( sent.isEmpty() ? -1 : pressed.elapsed() ) << " ms" );
-    REQUIRE( sent.size() == 1 );
-    CHECK( buttonLatency >= 0 );
-    CHECK( buttonLatency <= PressToWriteBudgetMs );
-    CHECK( sent.front().at( 3 ).toByteArray() == QByteArrayLiteral( "GET VERSION:01;\r\n" ) );
+    REQUIRE( written.size() == 1 );
+    INFO( "press to write took " << written.front().second << " ms" );
+    CHECK( writtenByRelease );
+    CHECK( written.front().second <= PressToWriteBudgetMs );
+    CHECK( written.front().first == QByteArrayLiteral( "GET VERSION:01;\r\n" ) );
 
     // A Commander / MCP send_action is an explicit request too.
     CommanderRequest send;
@@ -1362,8 +1378,9 @@ TEST_CASE( "Pressing Send transmits at once even when the action has an initial 
     send.entityId = action.id;
     pressed.restart();
     REQUIRE( fixture.window.executeCommanderRequest( send ).ok() );
-    CHECK( sent.size() == 2 );
-    CHECK( pressed.elapsed() <= PressToWriteBudgetMs );
+    REQUIRE( written.size() == 2 );
+    CHECK( written.back().first == QByteArrayLiteral( "GET VERSION:01;\r\n" ) );
+    CHECK( written.back().second <= PressToWriteBudgetMs );
 }
 
 TEST_CASE( "Actions enablement falls back to an eligible destination and persists every tab flag",
