@@ -1305,8 +1305,8 @@ TEST_CASE( "Actions picker routes default sends while explicit selectors retain 
 TEST_CASE( "Pressing Send transmits at once even when the action has an initial delay (#142)",
            "[ui][commander][actions][send-latency]" )
 {
-    // Dmitry's "<9.41> Read Version" action carries a 3600 ms initial delay from the legacy
-    // import; pressing Send put the [TX] line 3.6 to 4.4 s after the press.
+    // A legacy-imported "Read Version" action carries a 3600 ms initial delay; pressing Send
+    // put the [TX] line 3.6 to 4.4 s after the press (#142).
     constexpr int LegacyInitialDelayMs = 3600;
     constexpr qint64 PressToWriteBudgetMs = 250;
     ActionsDefinitionsRestoreGuard restoreDefinitions;
@@ -1333,7 +1333,8 @@ TEST_CASE( "Pressing Send transmits at once even when the action has an initial 
         *fixture.streams[ 0 ],
         [ recordWrite ]( const QByteArray& bytes, bool ) { recordWrite( bytes ); } );
 #else
-    // The checked writer has its own transport; observe the dispatch instead.
+    // The checked writer has its own transport. This observes the dispatch (actionSent, emitted
+    // just before submitActionWrite), which still proves no delay was scheduled.
     QObject::connect( fixture.streams[ 0 ].get(), &StreamSession::actionSent, &fixture.window,
                       [ recordWrite ]( int, const QString&, int, const QByteArray& bytes ) {
                           recordWrite( bytes );
