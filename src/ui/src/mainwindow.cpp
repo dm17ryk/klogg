@@ -3000,6 +3000,21 @@ void MainWindow::editHighlighters()
 void MainWindow::editPredefinedFilters( const QString& newFilter )
 {
     PredefinedFiltersDialog dialog( newFilter, this );
+    // Pack filters are edited in place, and the packs managed, through the plugin controller
+    // (E16c, design 4.5).
+    if ( pluginController_ ) {
+        dialog.setPackItemEditor(
+            [ this ]( QWidget* parent, const QString& packId, const QString& path ) {
+                if ( pluginController_ ) {
+                    pluginController_->editPackItem( parent, packId, path );
+                }
+            } );
+        dialog.setPacksOpener( [ this, &dialog ] {
+            if ( pluginController_ ) {
+                pluginController_->openPacks( &dialog );
+            }
+        } );
+    }
 
     signalMux_.connect( &dialog, SIGNAL( optionsChanged() ), SLOT( applyConfiguration() ) );
 

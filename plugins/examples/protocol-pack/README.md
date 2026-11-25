@@ -9,6 +9,9 @@ CILogg reads its content.
   (`DEMO_TYPES`) are shared with each other and with no other pack.
 - `content.decoder_routes`: sends the "Demo frame" preview to the `cilogg_demo` dissector when the
   preview decoder uses TShark; without TShark the preview falls back to its JSON fields.
+- `filters.conf`: two predefined filters ("Demo frames", "Demo errors") in the file **Export** in
+  the Predefined Filters dialog writes. Each has an `id` of its own, which is its identity: they
+  appear after your filters as "Demo frames (Example protocol pack)".
 
 Install it from **Plugins > Plugins and Packs > Installed > Install Folder…** and enable it. The
 Lua runs on your computer with your permissions while the pack is enabled, so CILogg asks first.

@@ -571,6 +571,8 @@ void openPackFiles( QWidget* parent, Executor executor, const QString& packId,
                                                { "block", tr( "Block" ) },
                                                { "order", tr( "Preview order" ) },
                                                { "meta", tr( "Previews settings" ) },
+                                               { "filter", tr( "Filter" ) },
+                                               { "filter-order", tr( "Filter order" ) },
                                                { "file", tr( "File" ) } };
     const auto selected = [ table ]( int role ) {
         const auto* cell = table->currentRow() >= 0 ? table->item( table->currentRow(), 0 ) : nullptr;
@@ -729,8 +731,9 @@ bool openPackMerge( QWidget* parent, const QString& packName, const QVariantMap&
         const auto conflict = value.toMap();
         const auto kind = conflict.value( "kind" ).toString();
         const auto path = conflict.value( "path" ).toString();
-        if ( kind == "file" || kind == "order" ) {
-            // Lua and Python: Installed, Yours and New version side by side, the result below.
+        if ( kind == "file" || kind == "order" || kind == "filter-order" ) {
+            // Lua and Python, and the orders: Installed, Yours and New version side by side, the
+            // result below.
             auto* page = new QWidget( tabs );
             auto* pageLayout = new QVBoxLayout( page );
             auto* sides = new QSplitter( Qt::Horizontal, page );
@@ -840,9 +843,11 @@ bool openPackMerge( QWidget* parent, const QString& packName, const QVariantMap&
             continue; // one row for an item too large to show
         }
         if ( !parentRow ) {
-            parentRow = new QTreeWidgetItem( tree, { QStringLiteral( "%1 %2" ).arg(
-                                                         kind == "preview" ? tr( "Preview" ) : tr( "Block" ),
-                                                         conflict.value( "item" ).toString() ) } );
+            parentRow = new QTreeWidgetItem(
+                tree, { QStringLiteral( "%1 %2" ).arg( kind == "preview"  ? tr( "Preview" )
+                                                       : kind == "filter" ? tr( "Filter" )
+                                                                          : tr( "Block" ),
+                                                       conflict.value( "item" ).toString() ) } );
             parentRow->setData( 0, ConflictRole, QVariantMap{ { "path", path }, { "kind", kind } } );
             parentRow->setExpanded( true );
         }

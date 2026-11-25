@@ -2216,6 +2216,9 @@ void CrawlerWidget::setup()
 
     connect( predefinedFilters_, &PredefinedFiltersComboBox::filterChanged, this,
              &CrawlerWidget::setSearchPatternFromPredefinedFilters );
+    // The enabled configuration packs' filters join the list (E16c): it follows their changes.
+    connect( &PackFilters::instance(), &PackFilters::changed, this,
+             &CrawlerWidget::reloadPredefinedFilters );
 
     connect( searchLineEdit_, &QWidget::customContextMenuRequested, this,
              &CrawlerWidget::showSearchContextMenu );

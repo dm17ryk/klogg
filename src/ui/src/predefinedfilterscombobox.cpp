@@ -50,6 +50,8 @@
 constexpr int PatternRole = Qt::UserRole + 1;
 constexpr int RegexRole = PatternRole + 1;
 constexpr int FilterIdRole = RegexRole + 1;
+constexpr int NameRole
+    = FilterIdRole + 1; // the filter's name; a pack filter's text adds the pack's
 
 class QCheckListStyledItemDelegate : public QStyledItemDelegate {
   public:
@@ -109,11 +111,14 @@ PredefinedFiltersComboBox::PredefinedFiltersComboBox( QWidget* parent )
 void PredefinedFiltersComboBox::populatePredefinedFilters()
 {
     model_->clear();
-    const auto filters = filtersCollection_.getSyncedFilters();
+    // The new rows start unticked: the next popup ticks the ones the search uses again, also when
+    // the search did not change (a configuration pack's filters changed, E16c).
+    searchPattern_.lastOne_.clear();
+    filters_ = effectivePredefinedFilters( filtersCollection_.getSyncedFilters() );
 
     setTitle( tr("Predefined filters") );
 
-    insertFilters( filters );
+    insertFilters( filters_ );
 
     this->setModel( model_ );
 }
@@ -158,12 +163,13 @@ QList<int> PredefinedFiltersComboBox::selectedFilterIndexes() const
 QVariantList PredefinedFiltersComboBox::commanderFilters() const
 {
     QVariantList filters;
-    const auto currentFilters = filtersCollection_.getFilters();
+    const auto& currentFilters = filters_;
     const auto selectedIndexes = selectedFilterIndexes();
 
     filters.reserve( currentFilters.size() );
     for ( int filterIndex = 0; filterIndex < currentFilters.size(); ++filterIndex ) {
-        const auto& filter = currentFilters.at( filterIndex );
+        const auto& listed = currentFilters.at( filterIndex );
+        const auto& filter = listed.filter;
         QVariantMap filterInfo;
         filterInfo.insert( QStringLiteral( "filterId" ), filter.id );
         filterInfo.insert( QStringLiteral( "filterIndex" ), filterIndex );
@@ -171,6 +177,11 @@ QVariantList PredefinedFiltersComboBox::commanderFilters() const
         filterInfo.insert( QStringLiteral( "pattern" ), filter.pattern );
         filterInfo.insert( QStringLiteral( "useRegex" ), filter.useRegex );
         filterInfo.insert( QStringLiteral( "selected" ), selectedIndexes.contains( filterIndex ) );
+        // A configuration pack's filter says which pack it comes from (E16c).
+        if ( !listed.packId.isEmpty() ) {
+            filterInfo.insert( QStringLiteral( "packId" ), listed.packId );
+            filterInfo.insert( QStringLiteral( "packName" ), listed.packName );
+        }
         filters.push_back( filterInfo );
     }
 
@@ -184,27 +195,37 @@ std::optional<PredefinedFilter> PredefinedFiltersComboBox::commanderFilterById(
         return std::nullopt;
     }
 
-    const auto currentFilters = filtersCollection_.getFilters();
+    const auto& currentFilters = filters_;
     const auto filterIt = std::find_if( currentFilters.cbegin(), currentFilters.cend(),
-                                        [ &filterId ]( const auto& filter ) {
-                                            return filter.id == filterId;
+                                        [ &filterId ]( const ListedFilter& listed ) {
+                                            return listed.filter.id == filterId;
                                         } );
     if ( filterIt == currentFilters.cend() ) {
         return std::nullopt;
     }
 
-    return *filterIt;
+    return filterIt->filter;
 }
 
 std::optional<PredefinedFilter> PredefinedFiltersComboBox::commanderFilterByIndex(
     int filterIndex ) const
 {
-    const auto currentFilters = filtersCollection_.getFilters();
+    const auto& currentFilters = filters_;
     if ( filterIndex < 0 || filterIndex >= currentFilters.size() ) {
         return std::nullopt;
     }
 
-    return currentFilters.at( filterIndex );
+    return currentFilters.at( filterIndex ).filter;
+}
+
+QList<PredefinedFilter> PredefinedFiltersComboBox::filters() const
+{
+    QList<PredefinedFilter> filters;
+    filters.reserve( filters_.size() );
+    for ( const auto& listed : filters_ ) {
+        filters.append( listed.filter );
+    }
+    return filters;
 }
 
 void PredefinedFiltersComboBox::showPopup()
@@ -261,11 +282,18 @@ void PredefinedFiltersComboBox::setTitle( const QString& title )
     model_->insertRow( 0, titleItem );
 }
 
-void PredefinedFiltersComboBox::insertFilters(
-    const PredefinedFiltersCollection::Collection& filters )
+void PredefinedFiltersComboBox::insertFilters( const QList<ListedFilter>& filters )
 {
-    for ( const auto& filter : filters ) {
-        auto* item = new QStandardItem( filter.name );
+    for ( const auto& listed : filters ) {
+        const auto& filter = listed.filter;
+        // A configuration pack's filter is listed with the pack's name (E16c).
+        auto* item = new QStandardItem(
+            listed.packId.isEmpty()
+                ? filter.name
+                : QStringLiteral( "%1 (%2)" ).arg( filter.name, listed.packName ) );
+        if ( !listed.packId.isEmpty() ) {
+            item->setToolTip( tr( "From the configuration pack \"%1\"" ).arg( listed.packName ) );
+        }
 
         item->setFlags( Qt::ItemIsUserCheckable | Qt::ItemIsEnabled );
         item->setData( Qt::Unchecked, Qt::CheckStateRole );
@@ -273,6 +301,7 @@ void PredefinedFiltersComboBox::insertFilters(
         item->setData( filter.pattern, PatternRole );
         item->setData( filter.useRegex, RegexRole );
         item->setData( filter.id, FilterIdRole );
+        item->setData( filter.name, NameRole );
 
         model_->insertRow( model_->rowCount(), item );
     }
@@ -297,7 +326,9 @@ void PredefinedFiltersComboBox::collectFilters()
             continue;
         }
 
-        selectedPatterns.append( { item->data( FilterIdRole ).toString(), item->text(),
+        // Its name, not the pack's name added to it in the list.
+        selectedPatterns.append( { item->data( FilterIdRole ).toString(),
+                                   item->data( NameRole ).toString(),
                                    item->data( PatternRole ).toString(),
                                    item->data( RegexRole ).toBool() } );
     }
