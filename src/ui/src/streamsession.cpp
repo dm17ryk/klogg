@@ -458,7 +458,7 @@ void StreamSession::setupWorker()
         return;
     }
 
-    worker_ = new SerialCaptureWorker( settings_ );
+    worker_ = workerFactory_ ? workerFactory_( settings_ ) : new SerialCaptureWorker( settings_ );
     worker_->moveToThread( &thread_ );
     const auto generation = ++workerGeneration_;
 

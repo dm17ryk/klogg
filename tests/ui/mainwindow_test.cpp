@@ -51,10 +51,12 @@
 
 #include "test_utils.h"
 
-#include "configuration.h"
-#include "actionsmanager.h"
+#include "../serial_owner_fixture.h"
+#include "../streamsession_testaccess.h"
 #include "actionparametersdialog.h"
+#include "actionsmanager.h"
 #include "actionsresponseswindow.h"
+#include "configuration.h"
 #include "log.h"
 #include "mainwindow.h"
 #include "predefinedfilters.h"
@@ -65,7 +67,6 @@
 #include "streamsession.h"
 #include "updateuicontroller.h"
 #include "versionchecker.h"
-#include "../streamsession_testaccess.h"
 
 namespace {
 struct SessionFilesRestoreGuard {
@@ -1309,35 +1310,81 @@ TEST_CASE( "Pressing Send transmits at once even when the action has an initial 
     // A legacy-imported "Read Version" action carries a 3600 ms initial delay; pressing Send
     // put the [TX] line 3.6 to 4.4 s after the press (#142).
     constexpr int LegacyInitialDelayMs = 3600;
-    // Generous for a loaded CI runner; the deterministic proof is the write before the click
-    // returns. The old delay was 3600 ms.
+    // Generous for a loaded CI runner; the old delay was 3600 ms. The deterministic proof is the
+    // dispatch before the click returns.
     constexpr qint64 PressToWriteBudgetMs = 1000;
+    const QByteArray command = QByteArrayLiteral( "GET VERSION:01;\r\n" );
     ActionsDefinitionsRestoreGuard restoreDefinitions;
     ActionsTabsFixture fixture;
     ActionDefinition action;
     action.id = ActionsManager::instance().nextActionId();
     action.name = "Read Version latency probe";
     action.sequence.type = ActionSequenceType::String;
-    action.sequence.value = "GET VERSION:01;\r\n";
+    action.sequence.value = QString::fromLatin1( command );
     action.parameters.delay = LegacyInitialDelayMs;
     QString error;
     REQUIRE( ActionsManager::instance().createAction( action, &error ) );
-    fixture.enable( 0, true );
-    fixture.select( 0 );
-
-    // The bytes the destination session hands to its serial transport (admission into the
-    // checked writer in the shared-writer build), and when.
     QElapsedTimer pressed;
-    QVector<QPair<QByteArray, qint64>> written;
-    const auto recordWrite = [ &written, &pressed ]( const QByteArray& bytes ) {
-        written.push_back( { bytes, pressed.elapsed() } );
+
+#ifndef KLOGG_SHARED_SERIAL_WRITER
+    // Tab 0 gets a running session on a fake serial device, so the test follows the bytes from
+    // the click through the serial worker to the port and to the [TX] line of the capture file.
+    auto port = std::make_shared<cilogg_test::PortState>();
+    auto settings = fixture.streams[ 0 ]->captureSettings();
+    settings.logTransmits = true;
+    settings.addTimestamps = true;
+    auto live = std::make_shared<StreamSession>( settings );
+    StreamSessionTestAccess::setWorkerFactory( *live, cilogg_test::fakePortWorkers( port ) );
+    live->start();
+    REQUIRE( QTest::qWaitFor( [ &port ] { return port->opens.load() == 1; }, 5000 ) );
+    fixture.tabs->setStreamSessionForPath( fixture.paths.at( 0 ), live );
+    fixture.streams[ 0 ] = live;
+    const auto portWrites = [ &port, &command ] {
+        std::lock_guard<std::mutex> lock( port->mutex );
+        return static_cast<int>( port->sent.count( command ) );
     };
+    const auto txLines = [ &fixture ] {
+        QFile capture( fixture.paths.at( 0 ) );
+        return capture.open( QIODevice::ReadOnly )
+                   ? static_cast<int>( capture.readAll().count( "[TX] - GET VERSION:01;" ) )
+                   : -1;
+    };
+    // The time from the press until `count` writes reached the port and the capture file.
+    const auto timeToWrite = [ & ]( int count, qint64* portMs, qint64* lineMs ) {
+        *portMs = *lineMs = -1;
+        const auto arrived = QTest::qWaitFor(
+            [ & ] {
+                if ( *portMs < 0 && portWrites() >= count )
+                    *portMs = pressed.elapsed();
+                if ( *lineMs < 0 && txLines() >= count )
+                    *lineMs = pressed.elapsed();
+                return *portMs >= 0 && *lineMs >= 0;
+            },
+            LegacyInitialDelayMs + 2000 );
+        if ( !arrived )
+            WARN( "write " << count << " did not reach the port and the capture file" );
+    };
+#else
+    // The checked writer: the bytes admitted into it, and when.
+    QVector<qint64> admitted;
     StreamSessionTestAccess::setTransportSink(
-        *fixture.streams[ 0 ],
-        [ recordWrite ]( const QByteArray& bytes, bool ) { recordWrite( bytes ); } );
+        *fixture.streams[ 0 ], [ &admitted, &pressed, &command ]( const QByteArray& bytes, bool ) {
+            if ( bytes == command )
+                admitted.push_back( pressed.elapsed() );
+        } );
     // A failing run may leave a timer pending: detach the sink before the locals go.
     const auto detachSink = qScopeGuard(
         [ &fixture ] { StreamSessionTestAccess::setTransportSink( *fixture.streams[ 0 ], {} ); } );
+    const auto timeToWrite = [ & ]( int count, qint64* portMs, qint64* lineMs ) {
+        if ( !QTest::qWaitFor( [ & ] { return admitted.size() >= count; },
+                               LegacyInitialDelayMs + 2000 ) )
+            WARN( "write " << count << " was not admitted" );
+        *portMs = *lineMs = admitted.size() >= count ? admitted.at( count - 1 ) : -1;
+    };
+#endif
+    fixture.enable( 0, true );
+    fixture.select( 0 );
+    QSignalSpy dispatched( fixture.streams[ 0 ].get(), &StreamSession::actionSent );
 
     // Press the Send button of the action's row, as the user does.
     fixture.actionsWindow->show();
@@ -1358,18 +1405,16 @@ TEST_CASE( "Pressing Send transmits at once even when the action has an initial 
     const auto button = table->visualRect( sendCell ).center();
     pressed.start();
     QTest::mouseClick( table->viewport(), Qt::LeftButton, {}, button );
-    const bool writtenByRelease = !written.isEmpty();
-    if ( !writtenByRelease ) {
-        // Report how late it is instead of only failing.
-        const auto late = QTest::qWaitFor( [ &written ] { return !written.isEmpty(); },
-                                           LegacyInitialDelayMs + 2000 );
-        WARN( "the write came only after the press, late=" << late );
-    }
-    REQUIRE( written.size() == 1 );
-    INFO( "press to write took " << written.front().second << " ms" );
-    CHECK( writtenByRelease );
-    CHECK( written.front().second <= PressToWriteBudgetMs );
-    CHECK( written.front().first == QByteArrayLiteral( "GET VERSION:01;\r\n" ) );
+    // No timer: the send is dispatched before the click returns.
+    CHECK( dispatched.size() == 1 );
+    qint64 portMs = -1;
+    qint64 lineMs = -1;
+    timeToWrite( 1, &portMs, &lineMs );
+    INFO( "press to port write " << portMs << " ms, to the [TX] line " << lineMs << " ms" );
+    REQUIRE( portMs >= 0 );
+    REQUIRE( lineMs >= 0 );
+    CHECK( portMs <= PressToWriteBudgetMs );
+    CHECK( lineMs <= PressToWriteBudgetMs );
 
     // A Commander / MCP send_action is an explicit request too.
     CommanderRequest send;
@@ -1377,9 +1422,13 @@ TEST_CASE( "Pressing Send transmits at once even when the action has an initial 
     send.entityId = action.id;
     pressed.restart();
     REQUIRE( fixture.window.executeCommanderRequest( send ).ok() );
-    REQUIRE( written.size() == 2 );
-    CHECK( written.back().first == QByteArrayLiteral( "GET VERSION:01;\r\n" ) );
-    CHECK( written.back().second <= PressToWriteBudgetMs );
+    CHECK( dispatched.size() == 2 );
+    timeToWrite( 2, &portMs, &lineMs );
+    INFO( "send_action to port write " << portMs << " ms, to the [TX] line " << lineMs << " ms" );
+    REQUIRE( portMs >= 0 );
+    REQUIRE( lineMs >= 0 );
+    CHECK( portMs <= PressToWriteBudgetMs );
+    CHECK( lineMs <= PressToWriteBudgetMs );
 }
 
 TEST_CASE( "Actions enablement falls back to an eligible destination and persists every tab flag",
