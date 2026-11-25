@@ -1638,6 +1638,11 @@ void PluginView::apply( Node& node, const QJsonObject& incoming, bool fromRoot )
                       "unknown " + node.type + " property ignored: " + it.key().left( 64 ) );
         }
         else if ( it.key() != "id" && it.key() != "type" && it.key() != "children" ) {
+            // E17f: a size hint of the wrong type is ignored (applySizeHints warns), so the
+            // element keeps its previous one.
+            if ( pluginlayout::sizeHintKeys().contains( it.key() ) && !it.value().isDouble() ) {
+                continue;
+            }
             node.props.insert( it.key(), it.value() );
         }
     }

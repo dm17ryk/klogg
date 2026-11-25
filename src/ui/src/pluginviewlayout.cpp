@@ -171,6 +171,13 @@ QString captionText( QString caption )
     // A label with a buddy reads `&` as a mnemonic, even as plain text.
     return caption.replace( QLatin1Char( '&' ), QStringLiteral( "&&" ) );
 }
+
+const QStringList& sizeHintKeys()
+{
+    static const QStringList keys{ "stretch",    "min_width",  "max_width", "min_height",
+                                   "max_height", "span",       "row_span" };
+    return keys;
+}
 } // namespace pluginlayout
 
 QWidget* PluginView::buildContainer( Node& node, const QJsonObject& element, QWidget* parent,
@@ -777,27 +784,29 @@ void PluginView::applySizeHints( Node& node, const QJsonObject& props )
     if ( !widget ) {
         return;
     }
-    static const QStringList Hints{ "stretch", "min_width", "max_width", "min_height",
-                                    "max_height", "span", "row_span" };
-    for ( const auto& key : Hints ) {
+    for ( const auto& key : pluginlayout::sizeHintKeys() ) {
         if ( props.contains( key ) && !props.value( key ).isDouble() ) {
             warnOnce( "hint:" + node.id + ':' + key,
                       "size hint " + key + " of " + node.id + " is not a number; ignored" );
         }
     }
+    // A hint of the wrong type is ignored: apply() keeps the previous value (section 29.1).
+    const auto given = [ & ]( const char* key ) {
+        return props.value( QLatin1String( key ) ).isDouble();
+    };
     const auto pixels = [ & ]( const char* key ) {
         return boundedInt( node.props.value( QLatin1String( key ) ), 0, MaxHintPixels, 0 );
     };
-    if ( props.contains( "min_width" ) ) {
+    if ( given( "min_width" ) ) {
         widget->setMinimumWidth( pixels( "min_width" ) );
     }
-    if ( props.contains( "max_width" ) ) {
+    if ( given( "max_width" ) ) {
         widget->setMaximumWidth( pixels( "max_width" ) > 0 ? pixels( "max_width" ) : QWIDGETSIZE_MAX );
     }
-    if ( props.contains( "min_height" ) ) {
+    if ( given( "min_height" ) ) {
         widget->setMinimumHeight( pixels( "min_height" ) );
     }
-    if ( props.contains( "max_height" ) ) {
+    if ( given( "max_height" ) ) {
         widget->setMaximumHeight( pixels( "max_height" ) > 0 ? pixels( "max_height" ) : QWIDGETSIZE_MAX );
     }
     if ( props.contains( "align" ) ) {

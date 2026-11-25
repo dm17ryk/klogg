@@ -1862,7 +1862,9 @@ follows.
   asks "Discard changes?" with the `close_confirm` text (default "This view has unsaved changes.
   Discard them?"), Discard and Cancel (object name `pluginView_<plugin>_<view>_discard`). Closing
   by the plugin (`view/hide`), by the plugin stopping or with the CILogg window does not ask; the
-  `ok` and `yes` buttons never ask.
+  `ok` and `yes` buttons never ask. A question still open when its view goes away is dismissed,
+  and its answer only ever acts on the view it was asked about, not on one opened again under the
+  same id meanwhile.
 - **Dialog buttons.** A view of `kind: dialog` may declare `buttons` (from `ok`, `cancel`, `apply`,
   `close`, `yes`, `no`, each once), `default` (one of them) and `confirm_by_plugin` in
   `plugin.json`; other kinds refuse them as a manifest error, and an older CILogg ignores them. The

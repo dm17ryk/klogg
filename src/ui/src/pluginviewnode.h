@@ -34,6 +34,8 @@ bool expands( const QString& type );
 QString formCaption( const QJsonObject& element );
 // A caption as the text of a label with a buddy (`&` shown as written).
 QString captionText( QString caption );
+// The numeric size hints every element takes (section 29.1).
+const QStringList& sizeHintKeys();
 } // namespace pluginlayout
 
 struct PluginView::Node {

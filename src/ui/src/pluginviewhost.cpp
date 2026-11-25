@@ -116,6 +116,24 @@ QDialogButtonBox::StandardButton dialogBoxButton( const QString& name )
 }
 
 constexpr char DialogButtonProperty[] = "pluginDialogButton";
+
+// Every opened view gets a serial of its own, so the answer to a question asked about one never
+// acts on a view opened again under the same key while the question was open.
+quint64 nextOpenSerial = 0;
+
+// E17f: the "Discard changes?" question of a view that goes away while it is open.
+void dismissDiscardQuestion( QWidget* window, const QString& pluginId, const QString& viewId )
+{
+    if ( !window ) {
+        return;
+    }
+    const auto name = PluginView::objectNameFor( pluginId, viewId ) + "_discard";
+    for ( auto* dialog : window->findChildren<QDialog*>( name, Qt::FindDirectChildrenOnly ) ) {
+        if ( dialog->isVisible() ) {
+            dialog->reject();
+        }
+    }
+}
 } // namespace
 
 struct PluginViewHost::Open {
@@ -144,6 +162,7 @@ struct PluginViewHost::Open {
     QJsonValue result = QJsonValue( QJsonValue::Null );
     bool closeConfirmed = false; // the user chose Discard: the next close goes through
     bool confirming = false;     // the question is open
+    quint64 serial = ++nextOpenSerial;
 };
 
 struct PluginViewHost::Message {
@@ -922,6 +941,7 @@ void PluginViewHost::containerClosed( const QString& key )
     if ( open->view ) {
         open->view->cancelDialogs();
     }
+    dismissDiscardQuestion( window_, open->pluginId, open->viewId );
     saveState( *open );
     if ( manager_ ) {
         manager_->closeView( open->pluginId, open->viewId, windowId_, closedExtra( *open ) );
@@ -972,6 +992,7 @@ bool PluginViewHost::confirmDiscard( const QString& key )
         text = tr( "This view has unsaved changes. Discard them?" );
     }
     const auto dialogName = PluginView::objectNameFor( open.pluginId, open.viewId ) + "_discard";
+    const auto serial = open.serial;
     open.confirming = true;
     const QPointer<PluginViewHost> guard( this );
     const bool discard = dialogs_.confirm
@@ -980,9 +1001,10 @@ bool PluginViewHost::confirmDiscard( const QString& key )
     if ( !guard ) {
         return false;
     }
-    // The question's event loop may have closed the view.
+    // The question's event loop may have closed the view, or closed it and opened it again: the
+    // answer is only for the view it was asked about.
     const auto after = open_.find( key );
-    if ( after == open_.end() ) {
+    if ( after == open_.end() || after->second->serial != serial ) {
         return false;
     }
     after->second->confirming = false;
@@ -1409,8 +1431,12 @@ bool PluginViewHost::eventFilter( QObject* watched, QEvent* event )
                 // close event, since the question runs its own event loop.
                 if ( open->view && open->view->modified() && !open->closeConfirmed && !closing_ ) {
                     event->ignore();
-                    QTimer::singleShot( 0, this, [ this, closedKey ] {
-                        if ( !confirmDiscard( closedKey ) ) {
+                    const auto serial = open->serial;
+                    QTimer::singleShot( 0, this, [ this, closedKey, serial ] {
+                        // Asked later: only while the same view is still open.
+                        const auto asked = open_.find( closedKey );
+                        if ( asked == open_.end() || asked->second->serial != serial
+                             || !confirmDiscard( closedKey ) ) {
                             return;
                         }
                         const auto it = open_.find( closedKey );

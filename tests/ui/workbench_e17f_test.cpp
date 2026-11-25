@@ -27,6 +27,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
+#include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QPointer>
 #include <QPushButton>
@@ -37,9 +38,11 @@
 #include <QTabWidget>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QTimer>
 #include <catch2/catch.hpp>
 #include <functional>
 #include <memory>
+#include <utility>
 
 using cilogg::plugins::PluginManager;
 
@@ -338,6 +341,11 @@ TEST_CASE( "E17f layout containers: tabs, splitter, form, grid, separators and s
                                   { "set", QJsonObject{ { "stretch", 0 }, { "max_width", 0 } } } } } );
     REQUIRE( row->stretch( row->indexOf( wide ) ) == 0 );
     REQUIRE( wide->maximumWidth() == QWIDGETSIZE_MAX );
+    // A hint of the wrong type is ignored: the element keeps the previous one.
+    fixture.patch( { QJsonObject{ { "id", "wide" },
+                                  { "set", QJsonObject{ { "min_width", "x" }, { "stretch", true } } } } } );
+    REQUIRE( wide->minimumWidth() == 90 );
+    REQUIRE( row->stretch( row->indexOf( wide ) ) == 0 );
     // A grid's places are part of the shape: a patch cannot move a cell.
     fixture.patch( { QJsonObject{ { "id", "g2" }, { "set", QJsonObject{ { "span", 3 } } } } } );
     REQUIRE( place( "g2" ) == QList<int>{ 0, 2, 1, 1 } );
@@ -926,6 +934,9 @@ struct LayoutsWindow {
     std::unique_ptr<MainWindow> window;
     QStringList confirmations; // object names of the discard questions asked
     bool discard = false;
+    std::function<void()> duringQuestion; // runs while a question is open
+    // When set, asks instead of the answer above (a real modal question, say).
+    std::function<bool( QWidget*, const QString& )> askWith;
 
     LayoutsWindow()
     {
@@ -954,10 +965,13 @@ struct LayoutsWindow {
         window->show();
         REQUIRE( waitFor( [ & ] { return host() != nullptr; } ) );
         PluginViewDialogs dialogs;
-        dialogs.confirm = [ this ]( QWidget*, const QString& objectName, const QString&,
+        dialogs.confirm = [ this ]( QWidget* parent, const QString& objectName, const QString&,
                                     const QString& text, const QString& ) {
             confirmations.append( objectName + ":" + text );
-            return discard;
+            if ( duringQuestion ) {
+                duringQuestion();
+            }
+            return askWith ? askWith( parent, objectName ) : discard;
         };
         host()->setDialogs( dialogs );
     }
@@ -1133,4 +1147,58 @@ TEST_CASE( "E17f a modified view marks its title and asks before closing; button
     REQUIRE( waitFor( [ & ] { return fixture.host()->container( PluginId, "layouts" ) == nullptr; } ) );
     REQUIRE( waitFor( [ & ] { return !closedOf( fixture.folder, "layouts" ).isEmpty(); } ) );
     REQUIRE_FALSE( closedOf( fixture.folder, "layouts" ).contains( "result" ) );
+}
+
+TEST_CASE( "E17f the answer to Discard changes? is only for the view it asked about",
+           "[ui][workbench][E17]" )
+{
+    LayoutsWindow fixture;
+    auto* view = fixture.open( "layouts" );
+    REQUIRE( waitFor( [ & ] { return view->modified(); } ) );
+    QPointer<QWidget> asked = fixture.host()->container( PluginId, "layouts" );
+    REQUIRE( asked );
+    // While the question is open, the view is closed and opened again: Discard is not for the
+    // new one.
+    QPointer<QWidget> reopened;
+    bool opened = false;
+    bool replaced = false;
+    fixture.discard = true;
+    fixture.duringQuestion = [ & ] {
+        if ( std::exchange( replaced, true ) ) {
+            return; // only during the first question
+        }
+        fixture.host()->closeView( PluginId, "layouts" );
+        QString error;
+        opened = fixture.host()->openView( PluginId, "layouts", {}, &error );
+        reopened = fixture.host()->container( PluginId, "layouts" );
+    };
+    asked->close();
+    REQUIRE( waitFor( [ & ] { return !fixture.confirmations.isEmpty(); } ) );
+    REQUIRE( waitFor( [ & ] { return recorded( fixture.folder, "view/closed" ).size() == 1; } ) );
+    QTest::qWait( 300 );
+    REQUIRE( opened );
+    REQUIRE( reopened );
+    REQUIRE( reopened != asked );
+    REQUIRE( fixture.host()->container( PluginId, "layouts" ) == reopened.data() );
+    REQUIRE( recorded( fixture.folder, "view/closed" ).size() == 1 );
+
+    // A question still open when its view goes away is dismissed.
+    auto* again = fixture.host()->view( PluginId, "layouts" );
+    REQUIRE( again );
+    REQUIRE( waitFor( [ & ] { return again->modified(); }, 10000 ) );
+    bool dismissedInTime = false;
+    fixture.askWith = [ & ]( QWidget* parent, const QString& objectName ) {
+        QMessageBox box( QMessageBox::Question, "Discard changes?", "Unsaved", QMessageBox::Cancel,
+                         parent );
+        box.setObjectName( objectName );
+        QTimer::singleShot( 0, &box, [ & ] { fixture.host()->closeView( PluginId, "layouts" ); } );
+        QTimer::singleShot( 5000, &box, [ &box ] { box.done( QMessageBox::Ok ); } ); // a safety net
+        dismissedInTime = box.exec() == QDialog::Rejected;
+        return true; // "Discard", were the view still open
+    };
+    reopened->close();
+    REQUIRE( waitFor( [ & ] { return fixture.host()->container( PluginId, "layouts" ) == nullptr; },
+                      10000 ) );
+    REQUIRE( dismissedInTime );
+    REQUIRE( waitFor( [ & ] { return recorded( fixture.folder, "view/closed" ).size() == 2; } ) );
 }
