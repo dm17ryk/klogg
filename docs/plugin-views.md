@@ -370,7 +370,9 @@ A tree's menu is `<element>_menu` (entries `_copy`, `_copy_all`, `_export`); a f
   - message boxes: result, timeout, closing, limit;
   - limits and unknown types;
   - the lifecycle;
-  - the environment variables, cancel grace and `pause_comm --wait`.
+  - the environment variables, cancel grace and `pause_comm --wait`. A job that ignores
+    cancellation must end no earlier than half the grace period and well before its plugin
+    answers (issue #157).
 - **Python SDK tests** under `tests/plugins/`. `tests/plugins/host_integration.py` drives
   `view-demo` through GUI automation, CLI and native MCP.
 

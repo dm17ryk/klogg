@@ -12,16 +12,18 @@
 #include <functional>
 #include <optional>
 
+#include "predefinedfilters.h"
 #include "previewmanager.h"
 
 namespace cilogg::plugins {
 class PluginManager;
 }
 
-// Applies the enabled configuration packs (docs/plugin-repositories.md 4.2-4.4) to previews and
-// to the TShark decoder, and checks a pack before it is enabled or an update of it is
-// installed: no preview name shared with another enabled pack, and the user's items and all
-// enabled packs together within the preview, Lua and route limits.
+// Applies the enabled configuration packs (docs/plugin-repositories.md 4.2-4.5) to previews, to
+// the TShark decoder and to the predefined filters, and checks a pack before it is enabled or an
+// update of it is installed: no preview name or filter id shared with another enabled pack, and
+// the user's items and all enabled packs together within the preview, Lua, route and filter
+// limits.
 class PreviewPackRegistry : public QObject {
     Q_OBJECT
 public:
@@ -35,8 +37,13 @@ public:
         QVariantMap previewRoutes;
         QVariantMap protocolRoutes;
         int pythonDecoders = 0;
+        // Its predefined filters in its order, with packId and packName (E16c).
+        QList<ListedFilter> filters;
         QString error;
     };
+    // The most predefined filters the user's and the enabled packs' can be together when a pack is
+    // enabled or updated (MaxListedFilters).
+    static constexpr int FilterLimit = MaxListedFilters;
 
     static PreviewPackRegistry& instance();
     // Follows the manager's changes and installs the pack check (PluginManager::setPackCheck).
