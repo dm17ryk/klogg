@@ -2,8 +2,8 @@
   "valid": true,
   "taskCount": 129,
   "requirementCount": 212,
-  "markdownFiles": 160,
-  "validatedLocalLinks": 669,
+  "markdownFiles": 161,
+  "validatedLocalLinks": 675,
   "topologicalTaskCount": 129,
   "issues": [],
   "integrationChecks": {
@@ -1194,5 +1194,31 @@
       }
     },
     "note": "E17 stays in progress: E17f to E17i are planned (E17i after its separate approval)."
+  },
+  "md03bChecks": {
+    "date": "2026-11-25",
+    "task": "MD03",
+    "slice": "MD03b",
+    "planChange": "Approved by Dmitry on 2026-11-24: a narrow Python preview backend before the full MD03 contract, to unblock E16b",
+    "issue": "https://github.com/dm17ryk/klogg/issues/159",
+    "basedOn": "2343ddf3",
+    "taskStatus": "planned",
+    "hardDagAndRequirementsUnchanged": true,
+    "otherTaskRecordsPreserved": true,
+    "productCodeChanged": true,
+    "productBuildRun": true,
+    "testsWrittenFirst": "Python worker tests ran first and failed (module missing); the C++ cases in tests/unit/pythondecoder_test.cpp were written before the production code (first failure: the new APIs did not compile); a mutation run (Python trust prompt off, fallback on the wrong reason, job object not terminated) made the trust, fallback and descendant cases fail before they were restored",
+    "localGates": {
+      "platform": "Windows, MSVC /W4 /WX RelWithDebInfo, Qt 6.10.1, offscreen",
+      "pythonDecoderCases": "cilogg_tests [pythondecoder] 10 cases / 576 assertions",
+      "unitSuite": "cilogg_tests 511 cases / 28300 assertions",
+      "uiSuite": "cilogg_itests [ui]~[workbench-native] 254 cases / 26049 assertions",
+      "pythonWorker": "tests/plugins/test_message_decoder_python_worker.py 27 OK on Python 3.14 and 3.9.25",
+      "pythonPlugins": "python -m unittest discover -s tests/plugins: 429 OK (48 skipped, real-engine cases)",
+      "clang": "clang-cl -fsyntax-only with the Unix warning set, -Wshadow-all and -Werror on the changed C++ files: clean except an init-capture already on master (previewservice.cpp)"
+    },
+    "independentReview": "pending",
+    "qualification": "local_gates_passed_hosted_pending",
+    "pullRequest": null
   }
 }
