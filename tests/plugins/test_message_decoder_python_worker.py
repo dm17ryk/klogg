@@ -9,6 +9,7 @@ import base64
 import hashlib
 import json
 import os
+import shutil
 import struct
 import subprocess
 import sys
@@ -213,6 +214,44 @@ class SnapshotTests(Case):
         # Module state lives as long as the session, separately per pack.
         self.assertEqual((first["calls"], second["calls"], again["calls"]), ("1", "1", "2"))
 
+    def test_module_paths_that_sanitize_alike_stay_distinct(self):
+        root = self.base / "packs" / "org.example.a"
+        write(root / "python/a-b.py", "def decode(payload, context):\n    return [{'name': 'dash'}]\n")
+        write(root / "python/a_b.py", "def decode(payload, context):\n    return [{'name': 'under'}]\n")
+        write(root / "python/a.b.py", "def decode(payload, context):\n    return [{'name': 'dot'}]\n")
+        pack = {"id": "org.example.a", "root": str(root), "decoders": [
+            {"id": "dash", "module": "python/a-b.py"},
+            {"id": "under", "module": "python/a_b.py"},
+            {"id": "dot", "module": "python/a.b.py"},
+        ]}
+        names = {}
+        for decoder in ("dash", "under", "dot"):
+            response = self.evaluate([pack], "org.example.a/" + decoder)
+            self.assertEqual(response["state"], "completed", response)
+            names[decoder] = response["fields"][0]["columns"][0]
+            source = (root / dict((d["id"], d["module"]) for d in pack["decoders"])[decoder]).read_bytes()
+            self.assertEqual(response["moduleSha256"], hashlib.sha256(source).hexdigest())
+        self.assertEqual(names, {"dash": "dash", "under": "under", "dot": "dot"})
+
+    def test_a_warm_session_runs_its_copies_after_the_pack_folder_goes(self):
+        pack = self.pack("org.example.a", {"decode_simple.py": SIMPLE})
+        self.assertEqual(self.evaluate([pack], "org.example.a/simple")["state"], "completed")
+        shutil.rmtree(pack["root"])
+        again = self.evaluate([pack], "org.example.a/simple")
+        self.assertEqual(again["state"], "completed", again)
+        fresh = worker.DecoderSession(self.base)
+        self.addCleanup(fresh.close)
+        with self.assertRaisesRegex(ProofError, "input_missing"):
+            fresh.evaluate(request([pack], "org.example.a/simple"))
+
+    def test_places_in_a_traceback_are_relative_to_their_own_pack_only(self):
+        folder = self.base / "pack-1"
+        self.assertEqual(
+            worker.pack_relative(str(folder / "python" / "x.py"), folder), "python/x.py"
+        )
+        self.assertIsNone(worker.pack_relative(str(self.base / "pack-10" / "x.py"), folder))
+        self.assertIsNone(worker.pack_relative(str(self.base / "elsewhere.py"), folder))
+
     def test_a_pack_module_is_not_importable_by_its_bare_name(self):
         packs = [self.pack("org.example.a", {
             "helper.py": "VALUE = 1\n",
@@ -315,6 +354,21 @@ class ResultTests(Case):
         self.assertEqual(len(response["fields"][0]["columns"][1]), worker.TEXT_LIMIT)
         self.assertEqual(response["reason"], "field_text_limit")
         self.assertTrue(response["limited"])
+
+    def test_lone_surrogates_become_replacement_characters(self):
+        # surrogateescape decoding leaves lone surrogates, which are not valid JSON text for the
+        # host; a surrogate pair written as two code points is one character.
+        response = self.decode("""
+            def decode(payload, context):
+                odd = b"a\\xff".decode("utf-8", "surrogateescape")
+                pair = "\\ud83d\\ude00"
+                return [{"name": odd, "value": pair, "attributes": {odd: odd}}]
+        """)
+        self.assertEqual(response["state"], "completed", response)
+        row = response["fields"][0]
+        self.assertEqual(row["columns"][:2], ["a�", "\U0001F600"])
+        self.assertEqual(row["attributes"], {"a�": "a�"})
+        json.dumps(response, ensure_ascii=False).encode("utf-8")  # strict: no lone surrogates
 
     def test_text_limits_count_utf16_units_as_the_host_does(self):
         wide = "\U0001F600" * 3
@@ -479,7 +533,9 @@ class ProcessTests(unittest.TestCase):
         second = self.exchange(process, request([pack], "org.example.a/noisy", b"\x01\x02", id="r2"))
         self.assertEqual((first["id"], first["state"]), ("r1", "completed"), first)
         self.assertEqual((second["id"], second["fields"][0]["columns"][1]), ("r2", "2"))
-        self.assertEqual(first["enginePid"], process.pid)
+        # One worker answered both (a venv launcher may run the interpreter as its child).
+        self.assertGreater(first["enginePid"], 0)
+        self.assertEqual(first["enginePid"], second["enginePid"])
         process.stdin.close()
         self.assertEqual(process.wait(10), 0)
         self.assertIn(b"printed noise", process.stderr.read())
@@ -496,6 +552,24 @@ class ProcessTests(unittest.TestCase):
         self.assertEqual(failed["reason"], "decoder_failed")
         ok = self.exchange(process, request([pack], "org.example.a/flaky", b"?", id="r2"))
         self.assertEqual(ok["state"], "completed")
+
+    def test_a_decoder_past_its_deadline_is_answered_and_the_worker_stays(self):
+        pack = make_pack(self.base / "packs", "org.example.a", {"decode_slow.py": """
+            import time
+
+            def decode(payload, context):
+                if payload == b"slow":
+                    time.sleep(0.4)
+                return [{"name": "ok"}]
+        """})
+        process = self.start()
+        late = self.exchange(
+            process, request([pack], "org.example.a/slow", b"slow", id="r1", timeoutMs=100)
+        )
+        self.assertEqual((late["id"], late["reason"]), ("r1", "execution_timeout"), late)
+        ok = self.exchange(process, request([pack], "org.example.a/slow", b"fast", id="r2"))
+        self.assertEqual(ok["state"], "completed", ok)
+        self.assertIsNone(process.poll())
 
     def test_a_decoder_that_exits_the_process_is_visible_to_the_host(self):
         pack = make_pack(self.base / "packs", "org.example.a", {"decode_crash.py": """

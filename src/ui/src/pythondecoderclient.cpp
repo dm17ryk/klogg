@@ -132,7 +132,11 @@ PythonDecoderClient::PythonDecoderClient( QObject* parent )
                                QStringLiteral( "message_decoder_wire.py" ),
                                QStringLiteral( "workbench_process.py" ) },
                              validResponse,
-                             false } )
+                             // The decoder's own failures; the worker answers them and goes on.
+                             { QStringLiteral( "decoder_failed" ),
+                               QStringLiteral( "decoder_load_failed" ),
+                               QStringLiteral( "invalid_decoder_result" ),
+                               QStringLiteral( "decoder_not_dispatched" ) } } )
 {
 }
 void PythonDecoderClient::decode( QObject* owner, const QVariantMap& profile,

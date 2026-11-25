@@ -342,7 +342,8 @@ public:
                   << " diagnostic_bytes=" << diagnostics;
         auto done = std::move( completion );
         completion = {};
-        if ( response.value( "state" ) != "completed" && pool_->backend_.failureEndsWorker )
+        if ( response.value( "state" ) != "completed"
+             && !pool_->backend_.survivedFailures.contains( response.value( "reason" ).toString() ) )
             retire( "worker_failure" );
         done( std::move( response ) );
     }

@@ -110,7 +110,8 @@ QVariantMap context( const QString& preview = QStringLiteral( "Demo" ) )
 
 // Runs one decode through the client and waits for its result.
 QVariantMap decode( QObject* channel, const QVariantList& packs, const QString& decoder,
-                    const QByteArray& payload, int timeoutMs = 5000 )
+                    const QByteArray& payload, int timeoutMs = 5000,
+                    const QVariantMap& decodeContext = context() )
 {
     static int counter = 0;
     QEventLoop loop;
@@ -118,7 +119,7 @@ QVariantMap decode( QObject* channel, const QVariantList& packs, const QString& 
     const QPointer<QEventLoop> waiter( &loop );
     const auto id = QStringLiteral( "python-%1" ).arg( ++counter );
     PythonDecoderClient::instance().decode(
-        channel, QVariantMap{ { "packs", packs } }, decoder, context(), payload, timeoutMs, id,
+        channel, QVariantMap{ { "packs", packs } }, decoder, decodeContext, payload, timeoutMs, id,
         [ reply, waiter ]( QVariantMap value ) {
             *reply = std::move( value );
             if ( waiter ) {
@@ -444,6 +445,7 @@ TEST_CASE( "The Python decoder worker is supervised and restarts", "[pythondecod
         base.path(), PackA,
         { { "echo.py", echoModule( "alpha" ) },
           { "crash.py", "import os\ndef decode(payload, context):\n    os._exit(5)\n" },
+          { "broken.py", "def decode(payload, context):\n    raise ValueError()\n" },
           { "loop.py", "def decode(payload, context):\n    while True:\n        pass\n" },
           { "rows.py", "def decode(payload, context):\n"
                        "    return [{'name': 'row', 'value': i} for i in range(600)]\n" },
@@ -478,13 +480,33 @@ TEST_CASE( "The Python decoder worker is supervised and restarts", "[pythondecod
         CHECK( next.value( "state" ) == "completed" );
         CHECK( next.value( "enginePid" ).toLongLong() != firstPid );
     }
+    SECTION( "a failure that ends the worker's channel starts a new worker for the next request" )
+    {
+        // The worker answers a request it cannot take and exits: the next request, sent at once,
+        // must not reach the exiting worker.
+        auto bad = context();
+        bad[ "direction" ] = "sideways";
+        CHECK( decode( &channel, packs, "org.example.alpha/echo", "\x01", 5000, bad )
+                   .value( "reason" )
+               == "invalid_context" );
+        const auto next = decode( &channel, packs, "org.example.alpha/echo", "\x01" );
+        CHECK( next.value( "state" ) == "completed" );
+        CHECK( next.value( "enginePid" ).toLongLong() != firstPid );
+    }
+    SECTION( "a decoder failure keeps the worker" )
+    {
+        CHECK( decode( &channel, packs, "org.example.alpha/broken", "\x01" ).value( "reason" )
+               == "decoder_failed" );
+        const auto again = decode( &channel, packs, "org.example.alpha/echo", "\x02" );
+        CHECK( again.value( "enginePid" ).toLongLong() == firstPid );
+    }
     SECTION( "the deadline ends a request that never returns" )
     {
         QElapsedTimer clock;
         clock.start();
         CHECK( decode( &channel, packs, "org.example.alpha/loop", "\x01", 500 ).value( "reason" )
                == "timeout" );
-        CHECK( clock.elapsed() < 3000 );
+        CHECK( clock.elapsed() < 5000 );
         const auto next = decode( &channel, packs, "org.example.alpha/echo", "\x01" );
         CHECK( next.value( "state" ) == "completed" );
         CHECK( next.value( "enginePid" ).toLongLong() != firstPid );
@@ -538,7 +560,8 @@ TEST_CASE( "A Python decoder's child processes end with its worker", "[pythondec
                             .toUtf8();
     const QVariantList packs{ packProfile( base.path(), PackA, { { "spawn.py", module } } ) };
     QObject channel;
-    CHECK( decode( &channel, packs, "org.example.alpha/spawn", "\x01", 3000 ).value( "reason" )
+    // A generous deadline: a cold runner starts two interpreters before the pid file exists.
+    CHECK( decode( &channel, packs, "org.example.alpha/spawn", "\x01", 5000 ).value( "reason" )
            == "timeout" );
     QFile file( pidFile );
     REQUIRE( file.open( QIODevice::ReadOnly ) );

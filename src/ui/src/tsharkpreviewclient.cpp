@@ -136,7 +136,7 @@ TsharkPreviewClient::TsharkPreviewClient( QObject* parent )
                                QStringLiteral( "message_decoder_wire.py" ),
                                QStringLiteral( "workbench_process.py" ) },
                              validResponse,
-                             true } )
+                             {} } )
 {
 }
 void TsharkPreviewClient::evaluate( QObject* owner, const QVariantMap& profile,

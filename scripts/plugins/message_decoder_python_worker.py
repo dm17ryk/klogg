@@ -84,6 +84,12 @@ def utf16_prefix(text, limit):
     return text.encode("utf-16-le", "surrogatepass")[: limit * 2].decode("utf-16-le", "ignore")
 
 
+def clean_text(text):
+    """Text the host's JSON parser takes: a surrogate pair written as two code points becomes one
+    character, and a lone surrogate (from surrogateescape decoding, say) U+FFFD."""
+    return text.encode("utf-16-le", "surrogatepass").decode("utf-16-le", "replace")
+
+
 def bounded_text(value, limit):
     return type(value) is str and utf16_length(value) <= limit and "\x00" not in value
 
@@ -133,9 +139,23 @@ def validate_profile(profile):
                 raise ProofError("invalid_profile")
             ids.add(decoder["id"])
             targets.add(pack["id"] + "/" + decoder["id"])
-        if not Path(pack["root"]).is_dir():
-            raise ProofError("input_missing")
     return targets
+
+
+def module_name(package, module):
+    """The import name of a pack module: its path below the pack's package, one name part per
+    path part. Only `%` and `.` are escaped, so distinct paths never share a name and a module
+    whose parts are identifiers keeps the name a relative import finds."""
+    parts = PurePosixPath(module).with_suffix("").parts
+    return ".".join([package] + [part.replace("%", "%25").replace(".", "%2E") for part in parts])
+
+
+def pack_relative(filename, folder):
+    """`filename` as a path inside the pack copy `folder` (forward slashes), or None."""
+    try:
+        return Path(filename).relative_to(folder).as_posix()
+    except ValueError:
+        return None
 
 
 def validate_context(context):
@@ -238,6 +258,7 @@ def normalize_result(result):
             reasons.append(reason)
 
     def cut(text):
+        text = clean_text(text)
         prefix = utf16_prefix(text, TEXT_LIMIT)
         if prefix != text:
             limit("field_text_limit")
@@ -262,9 +283,9 @@ def normalize_result(result):
             raise InvalidResult(place + ": attributes are an object of at most 64 entries")
         converted = {}
         for key, value in attributes.items():
-            if not bounded_text(key, ATTRIBUTE_KEY_LIMIT):
+            if type(key) is not str or not bounded_text(clean_text(key), ATTRIBUTE_KEY_LIMIT):
                 raise InvalidResult(place + ": attribute names are text of at most 128 characters")
-            converted[key] = cut(scalar_text(value, place + " attribute"))
+            converted[clean_text(key)] = cut(scalar_text(value, place + " attribute"))
         fields.append(
             {
                 "columns": [
@@ -348,6 +369,9 @@ class DecoderSession:
             return
         decoders = {}
         for index, pack in enumerate(profile["packs"]):
+            # Only a new session reads the pack's folder; a warm one runs its copies.
+            if not Path(pack["root"]).is_dir():
+                raise ProofError("input_missing")
             folder = self.root / ("pack-%d" % index)
             folder.mkdir()
             package = "%s_%d" % (self.prefix, index)
@@ -357,10 +381,8 @@ class DecoderSession:
                 if module not in copies:
                     copies[module] = self.copy_module(pack["root"], module, folder, deadline)
                 copy, digest = copies[module]
-                parts = [re.sub(r"\W", "_", part) for part in PurePosixPath(module).with_suffix("").parts]
-                parts = ["_" + part if part[:1].isdigit() else part for part in parts]
                 decoders[pack["id"] + "/" + decoder["id"]] = {
-                    "name": package + "." + ".".join(parts),
+                    "name": module_name(package, module),
                     "module": module,
                     "copy": copy,
                     "folder": folder,
@@ -385,14 +407,16 @@ class DecoderSession:
     def describe(self, error, entry):
         """The exception type and the innermost place in the pack's code, never its message."""
         place = ""
-        folder = str(entry["folder"])
-        if isinstance(error, SyntaxError) and error.filename and error.filename.startswith(folder):
-            place = "%s:%s" % (Path(error.filename).relative_to(folder).as_posix(), error.lineno)
+        folder = entry["folder"]
+        if isinstance(error, SyntaxError) and error.filename:
+            relative = pack_relative(error.filename, folder)
+            if relative is not None:
+                place = "%s:%s" % (relative, error.lineno)
         trace = error.__traceback__
         while trace is not None:
-            filename = trace.tb_frame.f_code.co_filename
-            if filename.startswith(folder):
-                place = "%s:%d" % (Path(filename).relative_to(folder).as_posix(), trace.tb_lineno)
+            relative = pack_relative(trace.tb_frame.f_code.co_filename, folder)
+            if relative is not None:
+                place = "%s:%d" % (relative, trace.tb_lineno)
             trace = trace.tb_next
         text = type(error).__name__ + (" at " + place if place else "")
         return utf16_prefix(text, DETAIL_LIMIT)
@@ -481,7 +505,8 @@ class DecoderSession:
         return response
 
     def close(self):
-        for name in [name for name in sys.modules if name.startswith(self.prefix)]:
+        own = self.prefix + "_"  # the packages are <prefix>_<index>; another session's differ
+        for name in [name for name in sys.modules if name.startswith(own)]:
             del sys.modules[name]
         try:
             self.temporary.cleanup()
@@ -505,9 +530,15 @@ def claim_stdio():
         import ctypes
         import msvcrt
 
-        kernel32 = ctypes.windll.kernel32
-        kernel32.SetStdHandle(-11, msvcrt.get_osfhandle(1))
-        kernel32.SetStdHandle(-10, msvcrt.get_osfhandle(0))
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        set_std_handle = kernel32.SetStdHandle
+        set_std_handle.argtypes = [wintypes.DWORD, wintypes.HANDLE]
+        set_std_handle.restype = wintypes.BOOL
+        for std, fd in ((0xFFFFFFF5, 1), (0xFFFFFFF6, 0)):  # STD_OUTPUT_HANDLE, STD_INPUT_HANDLE
+            if not set_std_handle(std, msvcrt.get_osfhandle(fd)):
+                raise OSError(ctypes.get_last_error(), "SetStdHandle failed")
     sys.stdout = sys.stderr
     return protocol_in, protocol_out
 
@@ -527,7 +558,6 @@ def main(argv=None):
                 request = read_frame(protocol_in)
                 if request is None:
                     return 0
-                started = time.monotonic()
                 response = session.evaluate(request)
             except (ProofError, OSError, ValueError, RecursionError) as error:
                 reason = str(error) if isinstance(error, ProofError) else "worker_io_error"
@@ -539,9 +569,9 @@ def main(argv=None):
                     response["limited"] = reason in {"request_limit", "input_limit"}
                     write_before(protocol_out, encode_frame(response), time.monotonic() + 1)
                 return 1  # Fatal: the host reaps the channel's group or job.
-            write_before(
-                protocol_out, encode_frame(response), started + request["timeoutMs"] / 1000
-            )
+            # The host enforces the request's deadline; a late answer (execution_timeout) is
+            # still written whole, within a bound of its own, so the channel stays in step.
+            write_before(protocol_out, encode_frame(response), time.monotonic() + 1)
     finally:
         session.close()
 

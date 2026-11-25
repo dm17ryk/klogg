@@ -32,9 +32,10 @@ public:
         QStringList resources; // every resource the worker needs, the script included
         // Whether a response is valid for request `id` (beyond the frame and JSON checks).
         std::function<bool( const QJsonObject&, const QString& )> validResponse;
-        // Whether a failed response ends the worker (TShark) or leaves it running (Python
-        // decoder failures, which the worker reports and survives).
-        bool failureEndsWorker = true;
+        // The failure reasons a worker survives (a Python decoder's own failures). Any other
+        // failed response ends the worker, as the worker exits after it: the next request
+        // starts a new one instead of reaching the exiting process.
+        QStringList survivedFailures;
     };
 
     ~PreviewWorkerClient() override;
