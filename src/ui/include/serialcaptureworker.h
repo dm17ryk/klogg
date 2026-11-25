@@ -4,11 +4,11 @@
 #include <QFile>
 #include <QObject>
 #include <QSerialPort>
+#include <functional>
 #include <optional>
 #ifdef KLOGG_SHARED_SERIAL_WRITER
 #include "backendthreadretirement.h"
 #include "serialwritedriver.h"
-#include <functional>
 #endif
 
 struct SerialCaptureSettings {
@@ -66,15 +66,16 @@ private Q_SLOTS:
     void onError( QSerialPort::SerialPortError error );
 
 private:
+    friend struct SerialCaptureWorkerTestAccess;
+    // Test-only: makes the serial port (a fake device in tests); unset in production.
+    std::function<QSerialPort*( QObject* )> portFactory_;
     void reportFileWritten();
 #ifndef KLOGG_SHARED_SERIAL_WRITER
     // Appends a [TX] line for `data` to the capture file when transmits are logged.
     void logTransmission( const QByteArray& data, bool sensitive );
 #endif
 #ifdef KLOGG_SHARED_SERIAL_WRITER
-    friend struct SerialCaptureWorkerTestAccess;
     friend class StreamSession;
-    std::function<QSerialPort*( QObject* )> portFactory_;
     void startChecked();
     void stopChecked();
     void failChecked( const QString& message );

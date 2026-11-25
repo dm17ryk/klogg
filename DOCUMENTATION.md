@@ -98,6 +98,9 @@ Runs use snapshots; rerun after new data arrives.
 Open a COM port from the **File** menu to capture serial output into a log tab.
 Use actions for reusable transmitted commands and automatic responses to react
 to incoming lines. Typed parameters let a command definition guide data entry.
+Sending an action yourself (its **Send** button, a menu, or Commander `send_action`)
+transmits it at once; the action's delay only postpones automatic sends made by
+responses.
 
 | Reusable commands | Automatic responses |
 | --- | --- |

@@ -21,6 +21,14 @@ int effectiveRepeatCount( const ActionDefinition& action )
 {
     return qMax( action.parameters.repeat ? 2 : 1, action.parameters.repeatCount );
 }
+} // namespace
+
+int initialSendDelayMs( const ActionDefinition& action, ActionSendOrigin origin )
+{
+    return origin == ActionSendOrigin::Automatic ? qMax( 0, action.parameters.delay ) : 0;
+}
+
+namespace {
 
 void setError( QString* errorMessage, const QString& message )
 {
@@ -331,11 +339,12 @@ ResponseMatchResult matchResponseDefinition( const ResponseDefinition& response,
 }
 
 bool sendActionDefinition( StreamSession* session, const ActionDefinition& requestedAction,
-                           const QVariantMap& parameters, int stepIndex, QString* errorMessage,
-                           bool automatic )
+                           ActionSendOrigin origin, const QVariantMap& parameters, int stepIndex,
+                           QString* errorMessage )
 {
     // Observers may edit the repository synchronously while an action is sent.
     const auto action = requestedAction;
+    const bool automatic = origin == ActionSendOrigin::Automatic;
     if ( session == nullptr || !session->isConnectionOpen() ) {
         LOG_WARNING << "Action id=" << action.id << " rejected because no COM port is active";
         setError( errorMessage, QObject::tr( "No active COM port." ) );
@@ -370,7 +379,10 @@ bool sendActionDefinition( StreamSession* session, const ActionDefinition& reque
 #endif
     const auto observableBytes = sensitive ? QByteArrayLiteral( "<redacted>" ) : encoded.bytes;
     const auto repeatCount = effectiveRepeatCount( action );
-    const auto firstDelay = qMax( 0, action.parameters.delay );
+    // A manual send (the Send button, a menu, the parameter dialog, Commander) goes out the
+    // moment it is asked for (issue #142): the action's initial delay only postpones automatic
+    // sends, which responses schedule. Repeats keep their interval either way.
+    const auto firstDelay = initialSendDelayMs( action, origin );
     const auto repeatInterval = qMax( 0, action.parameters.repeatInterval );
     const auto sessionName = session->sourceDisplayName();
     const auto parameterNames = QStringList( parameters.keys() );
@@ -489,8 +501,8 @@ bool executeResponseDefinition( StreamSession* session, const ResponseDefinition
         inlineAction.name = response.name;
         inlineAction.sequence = response.response.inlineAction;
         LOG_DEBUG << "Response id=" << response.id << " executing inline action";
-        if ( !sendActionDefinition( session, inlineAction, capturesToParameters( captures ), -1,
-                                    errorMessage, true ) ) {
+        if ( !sendActionDefinition( session, inlineAction, ActionSendOrigin::Automatic,
+                                    capturesToParameters( captures ), -1, errorMessage ) ) {
             return false;
         }
     }
@@ -533,8 +545,8 @@ bool executeResponseDefinition( StreamSession* session, const ResponseDefinition
         if ( cumulativeDelay <= 0 ) {
             LOG_DEBUG << "Response id=" << response.id << " sending linked action index=" << index
                       << " immediately";
-            if ( !sendActionDefinition( safeSession, action, parameters, index, errorMessage,
-                                        true ) ) {
+            if ( !sendActionDefinition( safeSession, action, ActionSendOrigin::Automatic,
+                                        parameters, index, errorMessage ) ) {
                 return false;
             }
             continue;
@@ -548,8 +560,8 @@ bool executeResponseDefinition( StreamSession* session, const ResponseDefinition
                     LOG_DEBUG << "Response id=" << responseId
                               << " sending delayed linked action index=" << stepIndex;
                     QString ignoredError;
-                    if ( !sendActionDefinition( safeSession, action, parameters, stepIndex,
-                                                &ignoredError, true ) ) {
+                    if ( !sendActionDefinition( safeSession, action, ActionSendOrigin::Automatic,
+                                                parameters, stepIndex, &ignoredError ) ) {
                         LOG_WARNING << "Response id=" << responseId
                                     << " delayed action failed: " << ignoredError.toStdString();
                     }

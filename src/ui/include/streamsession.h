@@ -119,7 +119,6 @@ private:
     void publishWritePolicy();
     void finishWriterBackend();
     bool initializeWriter( quint64 generation );
-    std::function<SerialCaptureWorker*( SerialCaptureSettings )> workerFactory_;
     std::function<bool( QString* )> capturePreflight_;
     std::function<qint64()> writerClock_;
     StreamSourceRegistry* registry_ = &StreamSourceRegistry::get();
@@ -154,6 +153,12 @@ private:
     bool destroying_ = false;
     bool writePolicyExhausted_ = false;
 #endif
+    // Test-only: makes the serial worker (one with a fake port in tests); unset in production.
+    std::function<SerialCaptureWorker*( SerialCaptureSettings )> workerFactory_;
+    // Test-only, for tests without a serial device; never set in production. In the default
+    // build it REPLACES the hand-off to the worker's sendData; with KLOGG_SHARED_SERIAL_WRITER it
+    // OBSERVES each write the checked writer admitted (the real path continues).
+    std::function<void( const QByteArray&, bool )> transportSinkForTests_;
 
     SerialCaptureSettings settings_;
     quint64 actionsGeneration_ = 0;
