@@ -34,6 +34,9 @@ constexpr int FiltersVersion = 3;
 constexpr char HighlightsGroup[] = "HighlighterSetCollection";
 constexpr int HighlightsVersion = 2;
 constexpr int HighlightSetVersion = 3;
+// A rule's colour variance: the colours vary by this many percent either way, so it stays within
+// 0..100 (the editor offers 5 to 99).
+constexpr int MaxColorVariance = 100;
 
 // One highlighter rule's members, as HighlighterSet saves them: the canonical form keeps them all.
 const QStringList& ruleKeys()
@@ -84,6 +87,7 @@ bool validRule( const QJsonObject& rule )
         const bool ok = boolKey( key ) ? value.isBool()
                         : key == QLatin1String( "color_variance" )
                             ? value.isDouble() && value.toDouble() == value.toInt()
+                                  && value.toInt() >= 0 && value.toInt() <= MaxColorVariance
                             : value.isString();
         if ( !ok ) {
             return false;
@@ -544,6 +548,14 @@ PackFiles fromHighlights( const QByteArray& highlightsConf, QString* error )
             return reject( QStringLiteral( "it holds more than the highlighter sets (%1)." )
                                .arg( key.left( 64 ) ) );
         }
+        // A value with an unquoted comma reads as a list, which as one value reads as nothing (a
+        // pattern that matches every line): Export quotes it.
+        if ( key != group + QStringLiteral( "active_sets" )
+             && settings.value( key ).typeId() == QMetaType::QStringList ) {
+            return reject( QStringLiteral( "%1 is a list: quote a value with commas, as Export "
+                                           "writes it." )
+                               .arg( key.left( 64 ) ) );
+        }
     }
     PackFiles files;
     QStringList order;
@@ -609,11 +621,12 @@ PackFiles fromHighlights( const QByteArray& highlightsConf, QString* error )
                 else if ( member.key() == QLatin1String( "color_variance" ) ) {
                     bool number = false;
                     const auto variance = text.toInt( &number );
-                    if ( !number ) {
+                    if ( !number || variance < 0 || variance > MaxColorVariance ) {
                         return reject( QStringLiteral( "rule %1 of set \"%2\" has a color_variance "
-                                                       "that is not a number." )
+                                                       "that is not a number from 0 to %3." )
                                            .arg( rule )
-                                           .arg( set.id.left( 64 ) ) );
+                                           .arg( set.id.left( 64 ) )
+                                           .arg( MaxColorVariance ) );
                     }
                     item.insert( member.key(), variance );
                 }

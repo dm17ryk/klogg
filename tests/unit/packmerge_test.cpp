@@ -561,6 +561,21 @@ TEST_CASE( "Pack highlighter sets have a canonical one-set-per-file form", "[pac
           highlightsConf(
               SomeSets,
               { { "HighlighterSetCollection/sets/2/HighlighterSet/highlighters/size", 4096 } } ) },
+        // A value with an unquoted comma reads as a list, and as a pattern it would be empty,
+        // matching every line (independent review of #169).
+        { "a list where a pattern goes",
+          highlightsConf( SomeSets ).replace( "regexp=ERROR", "regexp=a{1,3}" ) },
+        // A variance outside 0..100 makes an invalid colour range (issue #170).
+        { "a negative variance",
+          highlightsConf(
+              SomeSets,
+              { { "HighlighterSetCollection/sets/1/HighlighterSet/highlighters/1/color_variance",
+                  -50 } } ) },
+        { "a huge variance",
+          highlightsConf(
+              SomeSets,
+              { { "HighlighterSetCollection/sets/1/HighlighterSet/highlighters/1/color_variance",
+                  2147483647 } } ) },
     };
     for ( const auto& [ why, bytes ] : bad ) {
         INFO( why );
@@ -599,6 +614,14 @@ TEST_CASE( "Pack highlighter sets have a canonical one-set-per-file form", "[pac
                .contains( "id" ) );
     CHECK( packcanonical::highlightSetError( files.value( "highlights/s-one.set" ), "s-one" )
                .isEmpty() );
+    // An edited set's variance stays within 0..100 too (issue #170).
+    for ( const auto* variance : { "-1", "101" } ) {
+        INFO( variance );
+        auto edited = files.value( "highlights/s-one.set" );
+        REQUIRE( edited.contains( "\"color_variance\":15" ) );
+        edited.replace( "\"color_variance\":15", QByteArray( "\"color_variance\":" ) + variance );
+        CHECK( !packcanonical::highlightSetError( edited, "s-one" ).isEmpty() );
+    }
 
     // A pack folder's highlighters file becomes its set items.
     QTemporaryDir pack;

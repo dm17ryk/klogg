@@ -708,8 +708,9 @@ dialog). `get_plugins` counts a pack's `filters`.
 **As built (E16c2, highlighter sets).** A pack's `highlights` file is the INI file **Export**
 writes (group `HighlighterSetCollection`, version 1 or 2; each set `HighlighterSet` version 1 to 3);
 `packcanonical::fromHighlights` refuses one that is not exactly that (a set without a unique `id`
-or a name, a counted rule without its `regexp`, a value CILogg would not read back, any other key,
-more than 4,096 sets or 4,096 rules in a set) and drops the exported `active_sets` and color
+or a name, a counted rule without its `regexp`, a value CILogg would not read back, a list where
+one value goes (an unquoted comma), a `color_variance` outside 0 to 100, any other key, more than
+4,096 sets or 4,096 rules in a set) and drops the exported `active_sets` and color
 labels, which are the user's. Rule members an older export lacks take the defaults CILogg reads
 them with (the store's set text carries all eight); requiring every counted rule's pattern keeps
 the work bounded by the file's size, so a count alone cannot make millions of rules. In the store each set is one text file,

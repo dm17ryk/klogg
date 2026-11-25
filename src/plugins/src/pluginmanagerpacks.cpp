@@ -150,8 +150,22 @@ QString highlightsInvalid( const PackFiles& files )
         return QStringLiteral(
             "The pack's highlighters are larger than 1 MiB as CILogg writes them." );
     }
-    packcanonical::fromHighlights( written, &error );
-    return error;
+    const auto readBack = packcanonical::fromHighlights( written, &error );
+    if ( !error.isEmpty() ) {
+        return error;
+    }
+    // Every set reads back as it is (as for filters): a value the highlighters file cannot hold
+    // would change on the way to the content folder.
+    for ( auto set = sets.cbegin(); set != sets.cend(); ++set ) {
+        if ( packcanonical::kindOf( set.key() ) == QLatin1String( "highlight" )
+             && readBack.value( set.key() )
+                    != packcanonical::canonicalHighlightSet( set.value() ) ) {
+            return QStringLiteral( "The pack's highlighter set \"%1\" would change when CILogg "
+                                   "writes it to the highlighters file." )
+                .arg( packcanonical::itemOf( set.key() ).left( 64 ) );
+        }
+    }
+    return {};
 }
 
 // What a merge result, an edit or a reset must keep for the content folder to load: the previews
