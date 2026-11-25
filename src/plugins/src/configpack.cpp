@@ -163,9 +163,9 @@ QString checkReservedPaths( const PackContent& content )
     if ( !content.previews.isEmpty() && same( content.previews, manifest ) ) {
         return QStringLiteral( "content.previews cannot be plugin.json." );
     }
-    // The files carried as they are; the filters and highlighters files are written from the
-    // pack's items (E16c).
-    QStringList raw{ content.actions };
+    // The files carried as they are; the filters, highlighters and actions files are written from
+    // the pack's items (E16c).
+    QStringList raw;
     for ( const auto& file : content.luaLoad ) {
         raw.append( content.luaFolder + '/' + file );
     }
@@ -174,7 +174,8 @@ QString checkReservedPaths( const PackContent& content )
     }
     const QVector<std::pair<QString, QString>> written{
         { content.filters, QStringLiteral( "filters" ) },
-        { content.highlights, QStringLiteral( "highlighters" ) }
+        { content.highlights, QStringLiteral( "highlighters" ) },
+        { content.actions, QStringLiteral( "actions" ) }
     };
     auto others = raw;
     for ( const auto& file : written ) {
@@ -199,9 +200,9 @@ QString checkReservedPaths( const PackContent& content )
             }
         }
     }
-    // CILogg writes the filters and highlighters files from the pack's items (E16c), so no other
-    // content file may be one of them: written after it, it would replace the items and their
-    // edits.
+    // CILogg writes the filters, highlighters and actions files from the pack's items (E16c), so
+    // no other content file may be one of them: written after it, it would replace the items and
+    // their edits.
     for ( qsizetype index = 0; index < written.size(); ++index ) {
         const auto& [ path, what ] = written.at( index );
         if ( path.isEmpty() ) {
@@ -485,41 +486,47 @@ QVariantMap packSummary( const QJsonObject& manifest, const QString& directory )
             previews = static_cast<int>( packPreviewNames( file.read( MaxPackFileBytes ) ).size() );
         }
     }
-    // A filters or highlighters file that is not exactly an export (a pack enabled before E16c may
-    // carry one) contributes nothing: contentWarnings says why.
+    // A filters, highlighters or actions file that is not exactly an export (a pack enabled before
+    // E16c may carry one) contributes nothing: contentWarnings says why.
     QStringList warnings;
-    const auto countItems
-        = [ &directory, &warnings ]( const QString& path, const char* kind,
+    const auto readItems
+        = [ &directory, &warnings ]( const QString& path,
                                      PackFiles ( *convert )( const QByteArray&, QString* ) ) {
+              if ( path.isEmpty() ) {
+                  return PackFiles{};
+              }
               QFile file( QDir( directory ).filePath( path ) );
               if ( !file.open( QIODevice::ReadOnly ) ) {
                   warnings.append(
                       QStringLiteral( "%1 cannot be read: %2" ).arg( path, file.errorString() ) );
-                  return 0;
+                  return PackFiles{};
               }
               QString error;
-              const auto items = convert( file.read( MaxPackFileBytes ), &error );
+              auto items = convert( file.read( MaxPackFileBytes ), &error );
               if ( !error.isEmpty() ) {
                   warnings.append( error );
               }
-              return static_cast<int>(
-                  std::count_if( items.keyBegin(), items.keyEnd(), [ kind ]( const QString& item ) {
-                      return packcanonical::kindOf( item ) == QLatin1String( kind );
-                  } ) );
+              return items;
           };
-    const int filters = content.filters.isEmpty()
-                            ? 0
-                            : countItems( content.filters, "filter", &packcanonical::fromFilters );
-    const int highlighterSets
-        = content.highlights.isEmpty()
-              ? 0
-              : countItems( content.highlights, "highlight", &packcanonical::fromHighlights );
-    QVariantMap summary{ { "contents", packContents( manifest ) },
-                         { "previews", previews },
-                         { "filters", filters },
-                         { "highlighterSets", highlighterSets },
-                         { "luaFiles", static_cast<int>( content.luaLoad.size() ) },
-                         { "pythonDecoders", static_cast<int>( content.pythonDecoders.size() ) } };
+    const auto count = []( const PackFiles& items, const char* kind ) {
+        return static_cast<int>(
+            std::count_if( items.keyBegin(), items.keyEnd(), [ kind ]( const QString& item ) {
+                return packcanonical::kindOf( item ) == QLatin1String( kind );
+            } ) );
+    };
+    const auto actions = readItems( content.actions, &packcanonical::fromActions );
+    QVariantMap summary{
+        { "contents", packContents( manifest ) },
+        { "previews", previews },
+        { "filters", count( readItems( content.filters, &packcanonical::fromFilters ), "filter" ) },
+        { "highlighterSets",
+          count( readItems( content.highlights, &packcanonical::fromHighlights ), "highlight" ) },
+        // Not `actions`: a plugin's entry names its menu actions so (get_plugins).
+        { "packActions", count( actions, "action" ) },
+        { "packResponses", count( actions, "response" ) },
+        { "luaFiles", static_cast<int>( content.luaLoad.size() ) },
+        { "pythonDecoders", static_cast<int>( content.pythonDecoders.size() ) }
+    };
     if ( !warnings.isEmpty() ) {
         summary.insert( QStringLiteral( "contentWarnings" ), warnings );
     }

@@ -287,6 +287,12 @@ TEST_CASE( "Configuration pack manifests follow the pack rules", "[plugins][E16]
         CHECK( manifestError( withContent( withContent( valid, "actions", "a.json" ), "highlights",
                                            "h.conf" ) )
                    .isEmpty() );
+        // And so is the actions file (E16c3).
+        const auto actionsFile = QStringLiteral( "is the pack's actions file" );
+        CHECK( manifestError( withContent( valid, "actions", "python/summary.py" ) )
+                   .contains( actionsFile ) );
+        CHECK( manifestError( withContent( valid, "actions", "lua/file0.lua" ) )
+                   .contains( actionsFile ) );
     }
     SECTION( "Python decoders need an id and a .py module" )
     {
@@ -353,6 +359,34 @@ TEST_CASE( "Configuration pack files are checked when the pack is read", "[plugi
         CHECK( counted.value( "filters" ).toInt() == 2 );
         CHECK( counted.value( "contents" ).toStringList()
                == QStringList{ "previews", "filters", "lua", "python_decoders" } );
+    }
+    SECTION( "a pack's actions and responses are counted (E16c3)" )
+    {
+        CHECK( summary.value( "packActions" ).toInt() == 0 );
+        CHECK( summary.value( "packResponses" ).toInt() == 0 );
+        auto withActions = packManifest();
+        auto content = withActions[ "content" ].toObject();
+        content[ "actions" ] = "actions.json";
+        withActions[ "content" ] = content;
+        writeFile( folder + "/plugin.json", QJsonDocument( withActions ).toJson() );
+        writeFile( folder + "/actions.json",
+                   R"({ "version": 4,
+  "actions": [ { "id": 1, "name": "Status", "sequence": { "type": "string", "value": "s\n" } },
+               { "id": 2, "name": "Reset", "sequence": { "type": "string", "value": "r\n" } } ],
+  "responses": [ { "id": 1, "name": "Seen", "match": { "type": "string", "value": "x" },
+                   "response": { "action_id": 1 } } ] })" );
+        const auto read = Manifest::read( folder );
+        REQUIRE( read.valid() );
+        const auto counted = packSummary( read.json, folder );
+        CHECK( counted.value( "packActions" ).toInt() == 2 );
+        CHECK( counted.value( "packResponses" ).toInt() == 1 );
+        CHECK( counted.value( "contentWarnings" ).toStringList().isEmpty() );
+        // An actions file that is not an export costs only its own items, with the reason.
+        writeFile( folder + "/actions.json", "// mine\n{}" );
+        const auto bad = packSummary( Manifest::read( folder ).json, folder );
+        CHECK( bad.value( "packActions" ).toInt() == 0 );
+        REQUIRE( bad.value( "contentWarnings" ).toStringList().size() == 1 );
+        CHECK( bad.value( "contentWarnings" ).toStringList().first().contains( "actions file" ) );
     }
     SECTION( "every Lua file of the folder is listed" )
     {

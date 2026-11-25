@@ -17,6 +17,7 @@
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <algorithm>
+#include <functional>
 #include <tuple>
 
 #include "packcanonical.h"
@@ -230,6 +231,46 @@ const QVector<SetRow> SomeSets{
     { "s-two", QString::fromUtf8( "Radio, \"quoted\" \xce\x94" ), {} },
 };
 
+// An actions file as CILogg exports it (ActionsRepository::serialize, trimmed): version 4, the
+// actions and the responses with their ids and order. Reset (order 0) comes before Status.
+constexpr auto SomeActions = R"json({
+  "version": 4,
+  "actions": [
+    { "id": 7, "order": 1, "enabled": true, "hidden": false, "name": "Status",
+      "description": "", "sequence": { "type": "string", "value": "status\r\n" } },
+    { "id": 3, "order": 0, "enabled": true, "hidden": false, "name": "Reset",
+      "description": "", "sequence": { "type": "string", "value": "reset\r\n" } }
+  ],
+  "responses": [
+    { "id": 3, "order": 0, "enabled": true, "hidden": false, "name": "After boot",
+      "description": "", "match": { "type": "string", "value": "boot done" },
+      "response": { "action_id": 7, "steps": [ { "action_id": 3, "delay_ms": 100 } ],
+                    "comment": "", "linebreak": false, "timestamp": false, "snapshot": false,
+                    "stop_communication": false } }
+  ]
+})json";
+
+// The actions file's root, with `change` applied to its JSON text.
+QByteArray actionsJson( const std::function<void( QJsonObject& )>& change = {} )
+{
+    auto root = QJsonDocument::fromJson( SomeActions ).object();
+    if ( change ) {
+        change( root );
+    }
+    return QJsonDocument( root ).toJson();
+}
+
+// One action or response of a parsed actions file's list, by id.
+QJsonObject listed( const QJsonObject& root, const QString& list, int id )
+{
+    for ( const auto& value : root.value( list ).toArray() ) {
+        if ( value.toObject().value( "id" ).toInt( -1 ) == id ) {
+            return value.toObject();
+        }
+    }
+    return {};
+}
+
 QString previewRegex( const QString& folder, const QString& name )
 {
     const auto previews = QJsonDocument::fromJson( readFile( folder + "/previews.json" ) )
@@ -282,16 +323,15 @@ TEST_CASE( "Pack items have a canonical one-item-per-file form", "[packmerge][E1
                    .isEmpty() );
         CHECK( why.contains( "more than 128 previews" ) );
     }
-    // Every Lua and Python file the manifest lists is carried as a file, and so are actions until
-    // they get a canonical form; filters and highlights have one of their own (E16c).
+    // Every Lua and Python file the manifest lists is carried as a file; filters, highlights and
+    // actions have a canonical form of their own (E16c).
     auto withFilters = packManifest();
     auto declared = withFilters[ "content" ].toObject();
     declared[ "filters" ] = "filters/predefined.conf";
     declared[ "highlights" ] = "highlights.conf";
     declared[ "actions" ] = "actions.json";
     withFilters[ "content" ] = declared;
-    CHECK( packcanonical::listedFiles( withFilters )
-           == QStringList{ "files/lua/a.lua", "files/actions.json" } );
+    CHECK( packcanonical::listedFiles( withFilters ) == QStringList{ "files/lua/a.lua" } );
 
     QString error;
     const auto files = packcanonical::fromPreviews( Previews, &error );
@@ -645,6 +685,225 @@ TEST_CASE( "Pack highlighter sets have a canonical one-set-per-file form", "[pac
     CHECK( folderFiles.contains( "highlights/s-two.set" ) );
     CHECK( !folderFiles.contains( "files/highlights.conf" ) );
     CHECK( packcanonical::listedFiles( manifest ).isEmpty() );
+}
+
+TEST_CASE( "Pack actions and responses have a canonical one-item-per-file form",
+           "[packmerge][E16]" )
+{
+    QString error;
+    const auto files = packcanonical::fromActions( SomeActions, &error );
+    REQUIRE( error.isEmpty() );
+    // One action and one response per file, known by its id (actions and responses have ids of
+    // their own: both have a 3), and an order for each list. The list order is the one CILogg
+    // reads (by "order"), so the items do not carry it.
+    CHECK( files.keys()
+           == QStringList{ "actions/3.json", "actions/7.json", "actions/order.txt",
+                           "responses/3.json", "responses/order.txt" } );
+    CHECK( files.value( "actions/order.txt" ) == "3\n7\n" );
+    CHECK( files.value( "responses/order.txt" ) == "3\n" );
+    auto status = QJsonDocument::fromJson( SomeActions )
+                      .object()
+                      .value( "actions" )
+                      .toArray()
+                      .first()
+                      .toObject();
+    status.remove( "order" );
+    CHECK( files.value( "actions/7.json" ) == packcanonical::itemBytes( status ) );
+    CHECK( QJsonDocument::fromJson( files.value( "responses/3.json" ) ).object().value( "name" )
+           == "After boot" );
+    CHECK( packcanonical::kindOf( "actions/7.json" ) == "action" );
+    CHECK( packcanonical::itemOf( "actions/7.json" ) == "7" );
+    CHECK( packcanonical::kindOf( "actions/order.txt" ) == "action-order" );
+    CHECK( packcanonical::kindOf( "responses/3.json" ) == "response" );
+    CHECK( packcanonical::itemOf( "responses/3.json" ) == "3" );
+    CHECK( packcanonical::kindOf( "responses/order.txt" ) == "response-order" );
+    CHECK( packcanonical::isCanonical( "actions/7.json" ) );
+    CHECK( packcanonical::isCanonical( "responses/order.txt" ) );
+    // An id is a whole number written without a sign or leading zeros.
+    for ( const auto* odd : { "actions/07.json", "actions/-1.json", "actions/x.json",
+                              "responses/1.5.json", "actions/order.json" } ) {
+        INFO( odd );
+        CHECK( !packcanonical::isCanonical( odd ) );
+    }
+
+    // The round trip keeps every action and response, both orders and every value, and the file
+    // it writes is the actions file CILogg imports (version 4, "order" from the list order).
+    const auto json = packcanonical::toActions( files, &error );
+    REQUIRE( error.isEmpty() );
+    CHECK( packcanonical::fromActions( json ) == files );
+    const auto back = QJsonDocument::fromJson( json ).object();
+    CHECK( back.keys() == QStringList{ "actions", "responses", "version" } );
+    CHECK( back.value( "version" ) == 4 );
+    REQUIRE( back.value( "actions" ).toArray().size() == 2 );
+    CHECK( back.value( "actions" ).toArray().at( 0 ).toObject().value( "name" ) == "Reset" );
+    CHECK( back.value( "actions" ).toArray().at( 0 ).toObject().value( "order" ) == 0 );
+    CHECK( back.value( "actions" ).toArray().at( 1 ).toObject().value( "order" ) == 1 );
+    CHECK( listed( back, "responses", 3 ).value( "response" )
+           == QJsonDocument::fromJson( SomeActions )
+                  .object()
+                  .value( "responses" )
+                  .toArray()
+                  .first()
+                  .toObject()
+                  .value( "response" ) );
+
+    // Items missing from the order follow in id order (as numbers); order lines without an item
+    // are skipped, and CR LF line ends keep the order.
+    auto reordered = files;
+    reordered.insert( "actions/10.json",
+                      packcanonical::itemBytes( { { "id", 10 }, { "name", "Ten" } } ) );
+    reordered.insert( "actions/order.txt", "gone\n" );
+    CHECK( packcanonical::fromActions( packcanonical::toActions( reordered ) )
+               .value( "actions/order.txt" )
+           == "3\n7\n10\n" );
+    reordered.insert( "actions/order.txt", "7\r\n3\r\n" );
+    CHECK( packcanonical::fromActions( packcanonical::toActions( reordered ) )
+               .value( "actions/order.txt" )
+           == "7\n3\n10\n" );
+    // An item's id is its store path's.
+    reordered.insert( "actions/10.json",
+                      packcanonical::itemBytes( { { "id", 11 }, { "name", "Ten" } } ) );
+    CHECK( listed( QJsonDocument::fromJson( packcanonical::toActions( reordered ) ).object(),
+                   "actions", 10 )
+               .value( "name" )
+           == "Ten" );
+    // An item that is not a JSON object cannot be written.
+    reordered.insert( "actions/10.json", "not json" );
+    CHECK( packcanonical::toActions( reordered, &error ).isEmpty() );
+    CHECK( error
+           == "The pack's actions file could not be written: action 10 is not a JSON object." );
+
+    // No actions and no responses is a valid, empty actions file; the version may be left out,
+    // as CILogg reads it.
+    error.clear();
+    const auto none = packcanonical::fromActions( R"({ "actions": [], "responses": [] })", &error );
+    CHECK( error.isEmpty() );
+    CHECK( none
+           == PackFiles{ { "actions/order.txt", QByteArray{} },
+                         { "responses/order.txt", QByteArray{} } } );
+    for ( const auto version : { 1, 3, 4 } ) {
+        CHECK( !packcanonical::fromActions( actionsJson( [ version ]( QJsonObject& root ) {
+                    root[ "version" ] = version;
+                } ) )
+                    .isEmpty() );
+    }
+
+    // A file that is not such an actions file is refused, never cleaned up quietly: an item's
+    // identity is its id, a response runs actions of its own file, and anything else the file
+    // holds (comments too) would be lost.
+    const auto changed
+        = []( const QString& list, int index, const QString& key, const QJsonValue& value ) {
+              return actionsJson( [ & ]( QJsonObject& root ) {
+                  auto items = root[ list ].toArray();
+                  auto item = items.at( index ).toObject();
+                  if ( value.isUndefined() ) {
+                      item.remove( key );
+                  }
+                  else {
+                      item[ key ] = value;
+                  }
+                  items[ index ] = item;
+                  root[ list ] = items;
+              } );
+          };
+    const auto linking = []( const QJsonObject& response ) {
+        return actionsJson( [ &response ]( QJsonObject& root ) {
+            auto responses = root[ "responses" ].toArray();
+            auto item = responses.first().toObject();
+            item[ "response" ] = response;
+            responses[ 0 ] = item;
+            root[ "responses" ] = responses;
+        } );
+    };
+    const QVector<std::pair<const char*, QByteArray>> bad{
+        { "not JSON", "{ [[[" },
+        { "comments", QByteArray( "// the pack's actions\n" ) + SomeActions },
+        { "not an object", "[]" },
+        { "no responses", R"({ "version": 4, "actions": [] })" },
+        { "actions not a list", R"({ "version": 4, "actions": {}, "responses": [] })" },
+        { "version 2", actionsJson( []( QJsonObject& root ) { root[ "version" ] = 2; } ) },
+        { "version as text", actionsJson( []( QJsonObject& root ) { root[ "version" ] = "4"; } ) },
+        { "another key", actionsJson( []( QJsonObject& root ) { root[ "variables" ] = 1; } ) },
+        { "an action that is not an object", actionsJson( []( QJsonObject& root ) {
+              auto actions = root[ "actions" ].toArray();
+              actions.append( 3 );
+              root[ "actions" ] = actions;
+          } ) },
+        { "no id", changed( "actions", 0, "id", QJsonValue::Undefined ) },
+        { "id not whole", changed( "actions", 0, "id", 1.5 ) },
+        { "id as text", changed( "actions", 0, "id", "7" ) },
+        { "negative id", changed( "responses", 0, "id", -1 ) },
+        { "id too large", changed( "actions", 0, "id", 4294967296.0 ) },
+        { "repeated action id", changed( "actions", 1, "id", 7 ) },
+        { "no name", changed( "actions", 0, "name", QJsonValue::Undefined ) },
+        { "blank name", changed( "responses", 0, "name", "  " ) },
+        { "a response running an action of another file",
+          linking( QJsonObject{ { "action_id", 9 } } ) },
+        { "a step running an action of another file",
+          linking( QJsonObject{ { "steps", QJsonArray{ QJsonObject{ { "action_id", 9 } } } } } ) },
+        { "a link that is not a number", linking( QJsonObject{ { "action_id", "7" } } ) },
+    };
+    for ( const auto& [ why, bytes ] : bad ) {
+        INFO( why );
+        QString refused;
+        CHECK( packcanonical::fromActions( bytes, &refused ).isEmpty() );
+        CHECK( refused.startsWith( "The pack's actions file is not valid" ) );
+    }
+    CHECK( [ & ] {
+        QString refused;
+        packcanonical::fromActions( linking( QJsonObject{ { "action_id", 9 } } ), &refused );
+        return refused;
+    }()
+           == "The pack's actions file is not valid: response 3 runs action 9, which is not in "
+              "the file." );
+    // A response without an action of the file (-1) runs none.
+    CHECK( !packcanonical::fromActions(
+                linking( QJsonObject{ { "action_id", -1 }, { "comment", "seen" } } ) )
+                .isEmpty() );
+    // More actions or responses than a configuration import takes (4,096) is refused before it
+    // becomes that many store items.
+    {
+        QJsonArray many;
+        for ( int index = 0; index <= packcanonical::MaxPackActionItems; ++index ) {
+            many.append( QJsonObject{ { "id", index }, { "name", "A" } } );
+        }
+        QString refused;
+        CHECK(
+            packcanonical::fromActions(
+                QJsonDocument( QJsonObject{ { "actions", many }, { "responses", QJsonArray{} } } )
+                    .toJson(),
+                &refused )
+                .isEmpty() );
+        CHECK( refused.contains( "more than 4096 actions" ) );
+    }
+
+    // A pack folder's actions file becomes its items.
+    QTemporaryDir pack;
+    REQUIRE( pack.isValid() );
+    auto manifest = packManifest();
+    auto content = manifest[ "content" ].toObject();
+    content.remove( "lua" );
+    content[ "actions" ] = "serial/actions.json";
+    manifest[ "content" ] = content;
+    QDir().mkpath( pack.filePath( "serial" ) );
+    const auto write = [ &pack ]( const QString& name, const QByteArray& bytes ) {
+        QFile file( pack.filePath( name ) );
+        REQUIRE( file.open( QIODevice::WriteOnly ) );
+        file.write( bytes );
+    };
+    write( "previews.json", Previews );
+    write( "serial/actions.json", SomeActions );
+    error.clear();
+    const auto folderFiles = packcanonical::fromPackFolder( manifest, pack.path(), &error );
+    CHECK( error.isEmpty() );
+    CHECK( folderFiles.contains( "actions/7.json" ) );
+    CHECK( folderFiles.value( "responses/order.txt" ) == "3\n" );
+    CHECK( !folderFiles.contains( "files/serial/actions.json" ) );
+    CHECK( packcanonical::listedFiles( manifest ).isEmpty() );
+    // A bad actions file in a pack folder is the pack's error.
+    write( "serial/actions.json", R"({ "actions": [ { "name": "No id" } ], "responses": [] })" );
+    CHECK( packcanonical::fromPackFolder( manifest, pack.path(), &error ).isEmpty() );
+    CHECK( error.startsWith( "The pack's actions file is not valid" ) );
 }
 
 TEST_CASE( "Pack items merge item by item and field by field", "[packmerge][E16]" )
@@ -2800,6 +3059,247 @@ TEST_CASE( "Pack highlighter sets install, edit and update through the local sto
     CHECK( manager.plugins().first().toMap()[ "highlighterSets" ] == 0 );
 }
 
+namespace {
+// A pack package with actions and responses only (E16c3): plugin.json and actions.json, or a
+// previews document instead when `actions` is empty.
+QString writeActionPackage( const QString& folder, const QString& version,
+                            const QByteArray& actions )
+{
+    QDir().mkpath( folder );
+    auto manifest = packManifest( version );
+    QJsonObject content;
+    content[ actions.isEmpty() ? "previews" : "actions" ]
+        = actions.isEmpty() ? "previews.json" : "actions.json";
+    manifest[ "content" ] = content;
+    const auto write = [ &folder ]( const QString& name, const QByteArray& bytes ) {
+        QFile file( folder + '/' + name );
+        REQUIRE( file.open( QIODevice::WriteOnly ) );
+        file.write( bytes );
+    };
+    write( "plugin.json", QJsonDocument( manifest ).toJson() );
+    write( actions.isEmpty() ? "previews.json" : "actions.json",
+           actions.isEmpty() ? QByteArray( Previews ) : actions );
+    return folder;
+}
+
+// The content folder's actions file.
+QJsonObject contentActions( const QString& folder )
+{
+    return QJsonDocument::fromJson( readFile( folder + "/actions.json" ) ).object();
+}
+
+// The ids of a list of the content folder's actions file, in its order.
+QList<int> contentIds( const QString& folder, const QString& list )
+{
+    QList<int> ids;
+    for ( const auto& value : contentActions( folder ).value( list ).toArray() ) {
+        ids.append( value.toObject().value( "id" ).toInt( -1 ) );
+    }
+    return ids;
+}
+
+// The actions file `SomeActions` with one action's field changed (or added).
+QByteArray withAction( const QByteArray& actions, int id, const QString& key,
+                       const QJsonValue& value )
+{
+    auto root = QJsonDocument::fromJson( actions ).object();
+    auto list = root[ "actions" ].toArray();
+    for ( int index = 0; index < list.size(); ++index ) {
+        auto item = list.at( index ).toObject();
+        if ( item.value( "id" ).toInt( -1 ) == id ) {
+            item[ key ] = value;
+            list[ index ] = item;
+        }
+    }
+    root[ "actions" ] = list;
+    return QJsonDocument( root ).toJson();
+}
+} // namespace
+
+TEST_CASE( "Pack actions and responses install, edit and update through the local store",
+           "[packmerge][E16]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    PluginManager manager( root.filePath( "data" ), root.filePath( "none" ) );
+    const auto id = QStringLiteral( "org.example.pack" );
+    const auto v1 = writeActionPackage( root.filePath( "v1" ), "1.0.0", SomeActions );
+    REQUIRE( finished( manager, manager.manage( "install", {}, { { "path", v1 } } ) )[ "state" ]
+             == "completed" );
+    const auto content = manager.packContentDirectory( id );
+    CHECK( contentIds( content, "actions" ) == QList<int>{ 3, 7 } );
+    CHECK( contentIds( content, "responses" ) == QList<int>{ 3 } );
+    CHECK( manager.plugins().first().toMap()[ "packActions" ] == 2 );
+    CHECK( manager.plugins().first().toMap()[ "packResponses" ] == 1 );
+
+    // The actions and responses are items of the pack, one per id, and an order for each list.
+    QStringList kinds;
+    for ( const auto& file : manager.manage( "pack_files", id, {} ).payload[ "files" ].toList() ) {
+        kinds.append( file.toMap()[ "kind" ].toString() + ':' + file.toMap()[ "item" ].toString() );
+    }
+    kinds.sort();
+    CHECK( kinds
+           == QStringList{ "action-order:actions/order.txt", "action:3", "action:7",
+                           "response-order:responses/order.txt", "response:3" } );
+
+    // Edited in place: the content folder's actions file follows, with a readable history.
+    const auto status = QStringLiteral( "actions/7.json" );
+    auto item = QJsonDocument::fromJson( manager.manage( "pack_read", id, { { "path", status } } )
+                                             .payload[ "content" ]
+                                             .toString()
+                                             .toUtf8() )
+                    .object();
+    item[ "description" ] = "Mine";
+    REQUIRE( edit( manager, status, item ).isEmpty() );
+    CHECK( listed( contentActions( content ), "actions", 7 ).value( "description" ) == "Mine" );
+    CHECK( manager.manage( "pack_history", id, { { "path", status } } )
+               .payload[ "commits" ]
+               .toList()
+               .first()
+               .toMap()[ "message" ]
+           == "Edit action 'Status'" );
+    auto response = QJsonDocument::fromJson(
+                        manager.manage( "pack_read", id, { { "path", "responses/3.json" } } )
+                            .payload[ "content" ]
+                            .toString()
+                            .toUtf8() )
+                        .object();
+    response[ "description" ] = "Mine too";
+    REQUIRE( edit( manager, "responses/3.json", response ).isEmpty() );
+    CHECK( manager.manage( "pack_history", id, { { "path", "responses/3.json" } } )
+               .payload[ "commits" ]
+               .toList()
+               .first()
+               .toMap()[ "message" ]
+           == "Edit response 'After boot'" );
+    // The id is the item's identity, and every item stays one CILogg reads.
+    for ( const auto& otherId : { QJsonValue( 8 ), QJsonValue( "7" ), QJsonValue( 7.5 ) } ) {
+        auto other = item;
+        other[ "id" ] = otherId;
+        CHECK( edit( manager, status, other )
+               == "The action's id must stay the same (copy it to make another)." );
+    }
+    auto unnamed = item;
+    unnamed[ "name" ] = "";
+    CHECK( edit( manager, status, unnamed ).contains( "needs a name" ) );
+    auto elsewhere = response;
+    elsewhere[ "response" ] = QJsonObject{ { "action_id", 9 } };
+    CHECK( edit( manager, "responses/3.json", elsewhere ).contains( "which is not in the file" ) );
+    // An action a response runs is not removed; one no response runs can be, and reset brings
+    // it back.
+    CHECK( manager.manage( "pack_edit", id, { { "path", status }, { "remove", true } } )
+               .error.contains( "which is not in the file" ) );
+    REQUIRE(
+        manager.manage( "pack_edit", id, { { "path", "responses/3.json" }, { "remove", true } } )
+            .ok() );
+    REQUIRE( manager.manage( "pack_edit", id, { { "path", status }, { "remove", true } } ).ok() );
+    CHECK( contentIds( content, "actions" ) == QList<int>{ 3 } );
+    CHECK( contentIds( content, "responses" ).isEmpty() );
+    REQUIRE( manager.manage( "pack_reset", id, { { "path", status } } ).ok() );
+    REQUIRE( manager.manage( "pack_reset", id, { { "path", "responses/3.json" } } ).ok() );
+    CHECK( contentIds( content, "actions" ) == QList<int>{ 3, 7 } );
+    CHECK( contentIds( content, "responses" ) == QList<int>{ 3 } );
+    // The orders are edited as text, never deleted.
+    REQUIRE(
+        manager
+            .manage( "pack_edit", id, { { "path", "actions/order.txt" }, { "content", "7\n3\n" } } )
+            .ok() );
+    CHECK( contentIds( content, "actions" ) == QList<int>{ 7, 3 } );
+    CHECK( manager.manage( "pack_history", id, { { "path", "actions/order.txt" } } )
+               .payload[ "commits" ]
+               .toList()
+               .first()
+               .toMap()[ "message" ]
+           == "Edit the action order" );
+    for ( const auto* order : { "actions/order.txt", "responses/order.txt" } ) {
+        CHECK( !manager.manage( "pack_edit", id, { { "path", order }, { "remove", true } } ).ok() );
+    }
+    REQUIRE( manager.manage( "pack_reset", id, { { "path", "actions/order.txt" } } ).ok() );
+    // The reset took the edit with it: edited again for the updates below.
+    REQUIRE( edit( manager, status, item ).isEmpty() );
+
+    // A new version that renames the edited action and adds one merges field by field.
+    auto v2Json = withAction( SomeActions, 7, "name", "Status report" );
+    {
+        auto root2 = QJsonDocument::fromJson( v2Json ).object();
+        auto actions = root2[ "actions" ].toArray();
+        actions.append( QJsonObject{
+            { "id", 12 },
+            { "order", 2 },
+            { "name", "Version" },
+            { "sequence", QJsonObject{ { "type", "string" }, { "value", "version\r\n" } } } } );
+        root2[ "actions" ] = actions;
+        v2Json = QJsonDocument( root2 ).toJson();
+    }
+    const auto v2 = writeActionPackage( root.filePath( "v2" ), "1.1.0", v2Json );
+    REQUIRE( finished( manager, manager.manage( "install", {}, { { "path", v2 } } ) )[ "state" ]
+             == "completed" );
+    CHECK( contentIds( content, "actions" ) == QList<int>{ 3, 7, 12 } ); // the new version's order
+    const auto merged = listed( contentActions( content ), "actions", 7 );
+    CHECK( merged.value( "description" ) == "Mine" );
+    CHECK( merged.value( "name" ) == "Status report" );
+
+    // A version that changes the edited field: a conflict on that field of that action.
+    const auto v3Json = withAction( v2Json, 7, "description", "Theirs" );
+    const auto v3 = writeActionPackage( root.filePath( "v3" ), "1.2.0", v3Json );
+    const auto refused = finished( manager, manager.manage( "install", {}, { { "path", v3 } } ) );
+    REQUIRE( refused[ "state" ] == "failed" );
+    const auto conflicts = refused[ "result" ].toMap()[ "conflicts" ].toList();
+    REQUIRE( conflicts.size() == 1 );
+    CHECK( conflicts.first().toMap()[ "kind" ] == "action" );
+    CHECK( conflicts.first().toMap()[ "item" ] == "7" );
+    CHECK( conflicts.first().toMap()[ "field" ] == "description" );
+    const auto revision = refused[ "result" ].toMap()[ "revision" ];
+    // A resolution never changes the id, and the whole action keeps it.
+    for ( const auto& resolution :
+          { QVariantMap{ { "path", status }, { "field", "id" }, { "value", 8 } },
+            QVariantMap{ { "path", status },
+                         { "field", QString{} },
+                         { "value", QVariantMap{ { "id", 8 }, { "name", "X" } } } } } ) {
+        const auto job
+            = finished( manager, manager.manage( "install", {},
+                                                 { { "path", v3 },
+                                                   { "resolutions", QVariantList{ resolution } },
+                                                   { "revision", revision } } ) );
+        CHECK( job[ "error" ].toString().startsWith( "Invalid merge resolution" ) );
+    }
+    // A resolution that would make an action CILogg cannot read is refused with the reason.
+    const auto unreadable = finished(
+        manager, manager.manage(
+                     "install", {},
+                     { { "path", v3 },
+                       { "resolutions",
+                         QVariantList{ QVariantMap{ { "path", status },
+                                                    { "field", QString{} },
+                                                    { "value", QVariantMap{ { "id", 7 } } } } } },
+                       { "revision", revision } } ) );
+    CHECK( unreadable[ "error" ].toString().contains( "needs a name" ) );
+    REQUIRE( finished( manager,
+                       manager.manage(
+                           "install", {},
+                           { { "path", v3 },
+                             { "resolutions", QVariantList{ QVariantMap{ { "path", status },
+                                                                         { "field", "description" },
+                                                                         { "value", "Both" } } } },
+                             { "revision", revision } } ) )[ "state" ]
+             == "completed" );
+    CHECK( listed( contentActions( content ), "actions", 7 ).value( "description" ) == "Both" );
+
+    // A version without an actions file takes the actions and responses with it, edits too, and
+    // says so.
+    const auto v4 = writeActionPackage( root.filePath( "v4" ), "2.0.0", {} );
+    const auto job = finished( manager, manager.manage( "install", {}, { { "path", v4 } } ) );
+    REQUIRE( job[ "state" ] == "completed" );
+    CHECK( job[ "result" ].toMap()[ "droppedEdits" ].toStringList().contains( "action 7" ) );
+    for ( const auto& file : manager.manage( "pack_files", id, {} ).payload[ "files" ].toList() ) {
+        CHECK( !file.toMap()[ "kind" ].toString().startsWith( "action" ) );
+        CHECK( !file.toMap()[ "kind" ].toString().startsWith( "response" ) );
+    }
+    CHECK( !QFileInfo::exists( content + "/actions.json" ) );
+    CHECK( manager.plugins().first().toMap()[ "packActions" ] == 0 );
+    CHECK( manager.plugins().first().toMap()[ "packResponses" ] == 0 );
+}
+
 TEST_CASE( "A pack store from before E16c reads its filters and highlighters files as items",
            "[packmerge][E16]" )
 {
@@ -2909,5 +3409,68 @@ TEST_CASE( "A pack store from before E16c reads its filters and highlighters fil
         // The content folder gets it back unchanged, never an empty filters file.
         CHECK( readFile( store.contentDirectory() + "/conf/filters.conf" ) == noIds );
         CHECK( contentSets( store.contentDirectory() + "/conf" ).size() == 3 );
+    }
+}
+
+TEST_CASE( "A pack store from before E16c3 reads its actions file as items", "[packmerge][E16]" )
+{
+    // Until E16c3 a pack's actions file was kept as it is, under files/: read as items, it is never
+    // lost, also when an edit or a repair writes the content folder again.
+    auto manifest = packManifest();
+    manifest[ "content" ]
+        = QJsonObject{ { "previews", "previews.json" }, { "actions", "serial/actions.json" } };
+    const QByteArray actions( SomeActions );
+    auto legacy = packcanonical::fromPreviews( Previews );
+    legacy.insert( "files/serial/actions.json", actions );
+    auto items = packcanonical::fromPreviews( Previews );
+    const auto converted = packcanonical::fromActions( actions );
+    for ( auto item = converted.cbegin(); item != converted.cend(); ++item ) {
+        items.insert( item.key(), item.value() );
+    }
+    REQUIRE( items.contains( "actions/7.json" ) );
+
+    SECTION( "the conversion" )
+    {
+        CHECK( packcanonical::fromLegacyDocuments( legacy, manifest ) == items );
+        // Items already there win.
+        auto both = items;
+        both.insert( "files/serial/actions.json", "{}" );
+        CHECK( packcanonical::fromLegacyDocuments( both, manifest ) == items );
+        // A file that is not exactly what Export writes (here: with a comment) stays as it is.
+        auto odd = legacy;
+        odd.insert( "files/serial/actions.json", "// mine\n" + actions );
+        CHECK( packcanonical::fromLegacyDocuments( odd, manifest ) == odd );
+    }
+
+    SECTION( "an unrelated edit keeps them" )
+    {
+        QTemporaryDir root;
+        REQUIRE( root.isValid() );
+        PackStore store( root.path(), "org.example.pack" );
+        REQUIRE( store.install( legacy, manifest, "1.0.0", "Team packs" ).isEmpty() );
+        CHECK( store.files() == items );
+        const auto content = store.contentDirectory() + "/serial";
+        CHECK( contentIds( content, "actions" ) == QList<int>{ 3, 7 } );
+        const auto one = QStringLiteral( "actions/3.json" );
+        auto edited = QJsonDocument::fromJson( store.files().value( one ) ).object();
+        edited[ "description" ] = "Mine";
+        REQUIRE( store.commitEdit( one, packcanonical::itemBytes( edited ), "Edit action 'Reset'" )
+                     .isEmpty() );
+        CHECK( listed( contentActions( content ), "actions", 3 ).value( "description" ) == "Mine" );
+        CHECK( contentIds( content, "responses" ) == QList<int>{ 3 } );
+    }
+
+    SECTION( "a file that is not an export" )
+    {
+        QTemporaryDir root;
+        REQUIRE( root.isValid() );
+        PackStore store( root.path(), "org.example.pack" );
+        auto odd = legacy;
+        const auto commented = "// mine\n" + actions;
+        odd.insert( "files/serial/actions.json", commented );
+        REQUIRE( store.install( odd, manifest, "1.0.0", "Team packs" ).isEmpty() );
+        CHECK( store.files().value( "files/serial/actions.json" ) == commented );
+        // The content folder gets it back unchanged, never an empty actions file.
+        CHECK( readFile( store.contentDirectory() + "/serial/actions.json" ) == commented );
     }
 }

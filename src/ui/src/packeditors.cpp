@@ -575,6 +575,10 @@ void openPackFiles( QWidget* parent, Executor executor, const QString& packId,
                                                { "filter-order", tr( "Filter order" ) },
                                                { "highlight", tr( "Highlighter set" ) },
                                                { "highlight-order", tr( "Highlighter set order" ) },
+                                               { "action", tr( "Action" ) },
+                                               { "action-order", tr( "Action order" ) },
+                                               { "response", tr( "Automatic response" ) },
+                                               { "response-order", tr( "Response order" ) },
                                                { "file", tr( "File" ) } };
     const auto selected = [ table ]( int role ) {
         const auto* cell = table->currentRow() >= 0 ? table->item( table->currentRow(), 0 ) : nullptr;
@@ -734,7 +738,7 @@ bool openPackMerge( QWidget* parent, const QString& packName, const QVariantMap&
         const auto kind = conflict.value( "kind" ).toString();
         const auto path = conflict.value( "path" ).toString();
         if ( kind == "file" || kind == "order" || kind == "filter-order" || kind == "highlight"
-             || kind == "highlight-order" ) {
+             || kind == "highlight-order" || kind == "action-order" || kind == "response-order" ) {
             // Lua and Python, and the orders: Installed, Yours and New version side by side, the
             // result below.
             auto* page = new QWidget( tabs );
@@ -847,10 +851,13 @@ bool openPackMerge( QWidget* parent, const QString& packName, const QVariantMap&
         }
         if ( !parentRow ) {
             parentRow = new QTreeWidgetItem(
-                tree, { QStringLiteral( "%1 %2" ).arg( kind == "preview"  ? tr( "Preview" )
-                                                       : kind == "filter" ? tr( "Filter" )
-                                                                          : tr( "Block" ),
-                                                       conflict.value( "item" ).toString() ) } );
+                tree,
+                { QStringLiteral( "%1 %2" ).arg( kind == "preview"    ? tr( "Preview" )
+                                                 : kind == "filter"   ? tr( "Filter" )
+                                                 : kind == "action"   ? tr( "Action" )
+                                                 : kind == "response" ? tr( "Automatic response" )
+                                                                      : tr( "Block" ),
+                                                 conflict.value( "item" ).toString() ) } );
             parentRow->setData( 0, ConflictRole, QVariantMap{ { "path", path }, { "kind", kind } } );
             parentRow->setExpanded( true );
         }

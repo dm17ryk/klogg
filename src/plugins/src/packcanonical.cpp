@@ -12,7 +12,10 @@
 #include <QSettings>
 #include <QTemporaryDir>
 #include <algorithm>
+#include <cmath>
+#include <limits>
 #include <optional>
+#include <tuple>
 
 namespace cilogg::plugins::packcanonical {
 namespace {
@@ -25,8 +28,14 @@ constexpr char MetaFile[] = "previews/meta.json";
 constexpr char FilterOrderFile[] = "filters/order.txt";
 constexpr char HighlightsDir[] = "highlights/";
 constexpr char HighlightOrderFile[] = "highlights/order.txt";
+constexpr char ActionsDir[] = "actions/";
+constexpr char ActionOrderFile[] = "actions/order.txt";
+constexpr char ResponsesDir[] = "responses/";
+constexpr char ResponseOrderFile[] = "responses/order.txt";
 constexpr char JsonSuffix[] = ".json";
 constexpr char SetSuffix[] = ".set";
+// The actions file's version this CILogg writes (ActionsRepository); it reads 1, 3 and 4.
+constexpr int ActionsVersion = 4;
 // The filters file's group and the newest version this CILogg writes (PredefinedFiltersCollection).
 constexpr char FiltersGroup[] = "PredefinedFiltersCollection";
 constexpr int FiltersVersion = 3;
@@ -159,6 +168,108 @@ bool plain( QChar character )
 QStringList orderLines( const QByteArray& order )
 {
     return QString::fromUtf8( order ).remove( '\r' ).split( '\n' );
+}
+
+// The id of an action or a response: a whole number from 0 that fits an int, as CILogg keeps it.
+std::optional<int> wholeId( const QJsonValue& value )
+{
+    if ( !value.isDouble() ) {
+        return {};
+    }
+    const auto number = value.toDouble();
+    if ( !std::isfinite( number ) || number != std::floor( number ) || number < 0
+         || number > std::numeric_limits<int>::max() ) {
+        return {};
+    }
+    return static_cast<int>( number );
+}
+
+// The id a store path of an action or a response stands for, or nothing when the path does not
+// spell one canonically (decimal, no sign, no leading zeros).
+std::optional<int> pathId( const QString& item )
+{
+    bool ok = false;
+    const auto id = item.toInt( &ok );
+    if ( !ok || id < 0 || QString::number( id ) != item ) {
+        return {};
+    }
+    return id;
+}
+
+// One list of an actions file ("actions" or "responses") in the order CILogg reads it: a stable
+// sort by "order" (an item without one has order 0, one that is not a number its index), each item
+// with its id and without "order". Empty, with `why` set, when an item is not an object with an id
+// and a name, or two items share an id.
+std::optional<QVector<std::pair<int, QJsonObject>>> actionList( const QJsonArray& list,
+                                                                const QString& what, QString* why )
+{
+    QVector<std::tuple<int, int, QJsonObject>> read; // order, id, item
+    QSet<int> ids;
+    for ( qsizetype index = 0; index < list.size(); ++index ) {
+        const auto value = list.at( index );
+        const auto id = value.isObject() ? wholeId( value.toObject().value( "id" ) ) : std::nullopt;
+        if ( !id ) {
+            *why
+                = QStringLiteral( "%1 entry %2 has no id (a pack's actions and responses are known "
+                                  "by their ids, whole numbers from 0)." )
+                      .arg( what )
+                      .arg( index );
+            return {};
+        }
+        if ( ids.contains( *id ) ) {
+            *why = QStringLiteral( "two %1s with the id %2." ).arg( what ).arg( *id );
+            return {};
+        }
+        auto item = value.toObject();
+        const auto name = item.value( "name" );
+        if ( !name.isString() || name.toString().trimmed().isEmpty() ) {
+            *why = QStringLiteral( "%1 %2 needs a name." ).arg( what ).arg( *id );
+            return {};
+        }
+        ids.insert( *id );
+        const auto order = item.contains( "order" )
+                               ? item.value( "order" ).toInt( static_cast<int>( index ) )
+                               : 0;
+        item.remove( "order" );
+        read.append( { order, *id, item } );
+    }
+    std::stable_sort( read.begin(), read.end(), []( const auto& first, const auto& second ) {
+        return std::get<0>( first ) < std::get<0>( second );
+    } );
+    QVector<std::pair<int, QJsonObject>> items;
+    items.reserve( read.size() );
+    for ( const auto& entry : read ) {
+        items.append( { std::get<1>( entry ), std::get<2>( entry ) } );
+    }
+    return items;
+}
+
+// Why a response runs an action that is not in `actions`, or an empty string: its "action_id" and
+// the "action_id" of each step, where they are numbers from 0 (-1 runs no action).
+QString responseLinkError( int id, const QJsonObject& response, const QSet<int>& actions )
+{
+    const auto run = response.value( "response" ).toObject();
+    QVector<QJsonValue> links;
+    if ( run.contains( "action_id" ) ) {
+        links.append( run.value( "action_id" ) );
+    }
+    for ( const auto& step : run.value( "steps" ).toArray() ) {
+        if ( step.toObject().contains( "action_id" ) ) {
+            links.append( step.toObject().value( "action_id" ) );
+        }
+    }
+    for ( const auto& link : links ) {
+        if ( !link.isDouble() ) {
+            return QStringLiteral( "response %1 has an action_id that is not a number." ).arg( id );
+        }
+        const auto action = wholeId( link );
+        if ( link.toDouble() >= 0 && ( !action || !actions.contains( *action ) ) ) {
+            return QStringLiteral( "response %1 runs action %2, which is not in the file." )
+                .arg( id )
+                .arg( QString::number( link.toDouble(), 'g', 17 ) );
+        }
+    }
+    return {};
 }
 
 QByteArray readFile( const QString& path, QString* error )
@@ -721,6 +832,149 @@ QByteArray toHighlights( const PackFiles& files, QString* error )
     return file.readAll();
 }
 
+PackFiles fromActions( const QByteArray& actionsJson, QString* error )
+{
+    const auto reject = [ error ]( const QString& why ) {
+        if ( error ) {
+            *error = QStringLiteral( "The pack's actions file is not valid: %1" ).arg( why );
+        }
+        return PackFiles{};
+    };
+    QJsonParseError parseError;
+    const auto document = QJsonDocument::fromJson( actionsJson, &parseError );
+    if ( parseError.error != QJsonParseError::NoError || !document.isObject() ) {
+        return reject(
+            QStringLiteral( "it is not a JSON object as CILogg exports actions (a pack's "
+                            "actions file has no comments)." ) );
+    }
+    const auto root = document.object();
+    // Exactly the actions and the responses: anything else would be lost on the way to the store.
+    for ( auto key = root.constBegin(); key != root.constEnd(); ++key ) {
+        if ( key.key() != QLatin1String( "version" ) && key.key() != QLatin1String( "actions" )
+             && key.key() != QLatin1String( "responses" ) ) {
+            return reject( QStringLiteral( "it holds more than the actions and responses (%1)." )
+                               .arg( key.key().left( 64 ) ) );
+        }
+    }
+    if ( root.contains( "version" ) ) {
+        const auto version = wholeId( root.value( "version" ) );
+        if ( !version || ( *version != 1 && *version != 3 && *version != ActionsVersion ) ) {
+            return reject( QStringLiteral( "its version is not 1, 3 or 4." ) );
+        }
+    }
+    if ( !root.value( "actions" ).isArray() || !root.value( "responses" ).isArray() ) {
+        return reject( QStringLiteral( "it needs an \"actions\" and a \"responses\" list." ) );
+    }
+    const auto actionValues = root.value( "actions" ).toArray();
+    const auto responseValues = root.value( "responses" ).toArray();
+    if ( actionValues.size() > MaxPackActionItems
+         || responseValues.size() > MaxPackResponseItems ) {
+        return reject( QStringLiteral( "more than %1 actions or %2 responses." )
+                           .arg( MaxPackActionItems )
+                           .arg( MaxPackResponseItems ) );
+    }
+    QString why;
+    const auto actions = actionList( actionValues, QStringLiteral( "action" ), &why );
+    if ( !actions ) {
+        return reject( why );
+    }
+    const auto responses = actionList( responseValues, QStringLiteral( "response" ), &why );
+    if ( !responses ) {
+        return reject( why );
+    }
+    // A response runs actions of its own file: the pack's actions are its own.
+    QSet<int> actionIds;
+    for ( const auto& action : *actions ) {
+        actionIds.insert( action.first );
+    }
+    for ( const auto& response : *responses ) {
+        const auto link = responseLinkError( response.first, response.second, actionIds );
+        if ( !link.isEmpty() ) {
+            return reject( link );
+        }
+    }
+    PackFiles files;
+    const auto add = [ &files ]( const QVector<std::pair<int, QJsonObject>>& items,
+                                 const char* folder, const char* orderFile ) {
+        QStringList order;
+        for ( const auto& item : items ) {
+            order.append( QString::number( item.first ) );
+            files.insert( folder + QString::number( item.first ) + JsonSuffix,
+                          itemBytes( item.second ) );
+        }
+        files.insert( orderFile,
+                      order.isEmpty() ? QByteArray{} : ( order.join( '\n' ) + '\n' ).toUtf8() );
+    };
+    add( *actions, ActionsDir, ActionOrderFile );
+    add( *responses, ResponsesDir, ResponseOrderFile );
+    return files;
+}
+
+QByteArray toActions( const PackFiles& files, QString* error )
+{
+    const auto failed = [ error ]( const QString& why ) {
+        if ( error ) {
+            *error
+                = QStringLiteral( "The pack's actions file could not be written: %1" ).arg( why );
+        }
+        return QByteArray{};
+    };
+    QJsonObject root{ { "version", ActionsVersion } };
+    const struct {
+        QLatin1String kind;
+        QLatin1String list;
+        QLatin1String orderFile;
+    } lists[] = {
+        { QLatin1String( "action" ), QLatin1String( "actions" ), QLatin1String( ActionOrderFile ) },
+        { QLatin1String( "response" ), QLatin1String( "responses" ),
+          QLatin1String( ResponseOrderFile ) },
+    };
+    for ( const auto& list : lists ) {
+        // By id: the items missing from the order follow in id order.
+        QMap<int, QJsonObject> items;
+        for ( auto file = files.cbegin(); file != files.cend(); ++file ) {
+            if ( kindOf( file.key() ) != list.kind ) {
+                continue;
+            }
+            const auto id = pathId( itemOf( file.key() ) );
+            QJsonParseError parseError;
+            const auto document = QJsonDocument::fromJson( file.value(), &parseError );
+            if ( !id || parseError.error != QJsonParseError::NoError || !document.isObject() ) {
+                return failed( QStringLiteral( "%1 %2 is not a JSON object." )
+                                   .arg( list.kind, itemOf( file.key() ).left( 64 ) ) );
+            }
+            items.insert( *id, document.object() );
+        }
+        QVector<std::pair<int, QJsonObject>> ordered;
+        for ( const auto& line : orderLines( files.value( list.orderFile ) ) ) {
+            const auto id = pathId( line );
+            if ( id && items.contains( *id ) ) {
+                ordered.append( { *id, items.take( *id ) } );
+            }
+        }
+        for ( auto item = items.cbegin(); item != items.cend(); ++item ) {
+            ordered.append( { item.key(), item.value() } );
+        }
+        // An item's id is its store path's (pack_edit keeps the two the same), and the list order
+        // is the order CILogg reads.
+        QJsonArray array;
+        for ( qsizetype index = 0; index < ordered.size(); ++index ) {
+            auto item = ordered.at( index ).second;
+            item[ "id" ] = ordered.at( index ).first;
+            item[ "order" ] = static_cast<int>( index );
+            array.append( item );
+        }
+        root[ list.list ] = array;
+    }
+    return QJsonDocument( root ).toJson( QJsonDocument::Indented );
+}
+
+QString itemIdText( const QJsonValue& id )
+{
+    const auto whole = wholeId( id );
+    return whole ? QString::number( *whole ) : QString{};
+}
+
 QString highlightSetError( const QByteArray& setText, const QString& id )
 {
     QString why;
@@ -754,17 +1008,14 @@ QStringList listedFiles( const QJsonObject& manifest )
     if ( !validatePackManifest( manifest, &content ).isEmpty() ) {
         return {};
     }
-    // The manifest check keeps these paths relative and inside the pack. Actions are carried as a
-    // file until E16c3 gives them a canonical form of their own, as filters and highlights have.
+    // The manifest check keeps these paths relative and inside the pack. Filters, highlights and
+    // actions have a canonical form of their own (E16c).
     QStringList paths;
     for ( const auto& file : content.luaLoad ) {
         paths.append( filePath( content.luaFolder + '/' + file ) );
     }
     for ( const auto& decoder : content.pythonDecoders ) {
         paths.append( filePath( decoder.module ) );
-    }
-    if ( !content.actions.isEmpty() && !paths.contains( filePath( content.actions ) ) ) {
-        paths.append( filePath( content.actions ) );
     }
     return paths;
 }
@@ -783,6 +1034,11 @@ bool isCanonical( const QString& storePath )
     }
     if ( kind == QLatin1String( "highlight" ) ) {
         return storePath == HighlightsDir + encodeName( itemOf( storePath ) ) + SetSuffix;
+    }
+    if ( kind == QLatin1String( "action" ) || kind == QLatin1String( "response" ) ) {
+        const auto id = pathId( itemOf( storePath ) );
+        const QLatin1String folder( kind == QLatin1String( "action" ) ? ActionsDir : ResponsesDir );
+        return id && storePath == folder + QString::number( *id ) + JsonSuffix;
     }
     if ( kind == QLatin1String( "file" ) ) {
         const auto relative = itemOf( storePath );
@@ -807,6 +1063,7 @@ PackFiles fromLegacyDocuments( PackFiles files, const QJsonObject& manifest )
     const Document documents[] = {
         { content.filters, QLatin1String( FilterOrderFile ), &fromFilters },
         { content.highlights, QLatin1String( HighlightOrderFile ), &fromHighlights },
+        { content.actions, QLatin1String( ActionOrderFile ), &fromActions },
     };
     for ( const auto& document : documents ) {
         const auto legacy = filePath( document.path );
@@ -860,6 +1117,13 @@ PackFiles fromPackFolder( const QJsonObject& manifest, const QString& directory,
             files.insert( set.key(), set.value() );
         }
     }
+    if ( !content.actions.isEmpty() && readError.isEmpty() ) {
+        const auto items = fromActions(
+            readFile( QDir( directory ).filePath( content.actions ), &readError ), &readError );
+        for ( auto item = items.cbegin(); item != items.cend(); ++item ) {
+            files.insert( item.key(), item.value() );
+        }
+    }
     for ( const auto& storePath : listedFiles( manifest ) ) {
         files.insert( storePath,
                       readFile( QDir( directory ).filePath( itemOf( storePath ) ), &readError ) );
@@ -903,6 +1167,20 @@ QString kindOf( const QString& storePath )
          && !storePath.mid( 8 ).contains( '/' ) ) {
         return QStringLiteral( "filter" );
     }
+    if ( storePath == ActionOrderFile ) {
+        return QStringLiteral( "action-order" );
+    }
+    if ( storePath == ResponseOrderFile ) {
+        return QStringLiteral( "response-order" );
+    }
+    if ( storePath.startsWith( ActionsDir ) && storePath.endsWith( JsonSuffix )
+         && !storePath.mid( 8 ).contains( '/' ) ) {
+        return QStringLiteral( "action" );
+    }
+    if ( storePath.startsWith( ResponsesDir ) && storePath.endsWith( JsonSuffix )
+         && !storePath.mid( 10 ).contains( '/' ) ) {
+        return QStringLiteral( "response" );
+    }
     if ( storePath.startsWith( FilesDir ) ) {
         return QStringLiteral( "file" );
     }
@@ -923,6 +1201,12 @@ QString itemOf( const QString& storePath )
     }
     if ( kind == "highlight" ) {
         return decodeName( storePath.mid( 11, storePath.size() - 11 - 4 ) );
+    }
+    if ( kind == "action" ) {
+        return decodeName( storePath.mid( 8, storePath.size() - 8 - 5 ) );
+    }
+    if ( kind == "response" ) {
+        return decodeName( storePath.mid( 10, storePath.size() - 10 - 5 ) );
     }
     if ( kind == "file" ) {
         return storePath.mid( 6 );
