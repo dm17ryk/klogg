@@ -1652,7 +1652,8 @@ void PluginView::apply( Node& node, const QJsonObject& incoming, bool fromRoot )
             node.formCaption->setEnabled( props.value( "enabled" ).toBool( true ) ); // E17f
         }
     }
-    if ( props.contains( "visible" ) ) {
+    // E17f: a tab's `visible` hides its tab (updateTabHeader); its page is the tab widget's.
+    if ( props.contains( "visible" ) && node.type != QLatin1String( "tab" ) ) {
         node.outer->setVisible( props.value( "visible" ).toBool( true ) );
         if ( node.formCaption ) {
             node.formCaption->setVisible( props.value( "visible" ).toBool( true ) );

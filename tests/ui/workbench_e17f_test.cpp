@@ -252,6 +252,15 @@ TEST_CASE( "E17f layout containers: tabs, splitter, form, grid, separators and s
     fixture.view.setRoot( layoutRoot() );
     REQUIRE( fixture.get<QTabWidget>( "tabs" ) == tabs );
     REQUIRE( tabs->currentIndex() == 0 );
+#if QT_VERSION >= QT_VERSION_CHECK( 5, 15, 0 )
+    // A tab's `visible` hides its tab; showing it again never puts its page over the current one.
+    fixture.patch( { QJsonObject{ { "id", "logs" }, { "set", QJsonObject{ { "visible", false } } } } } );
+    REQUIRE_FALSE( tabs->isTabVisible( 1 ) );
+    fixture.patch( { QJsonObject{ { "id", "logs" }, { "set", QJsonObject{ { "visible", true } } } } } );
+    REQUIRE( tabs->isTabVisible( 1 ) );
+    REQUIRE( tabs->currentIndex() == 0 );
+    REQUIRE_FALSE( tabs->widget( 1 )->isVisible() );
+#endif
     {
         // A root of another shape replaces the tabs. The old tab widget is deleted later and may
         // change its current tab as its pages go: that speaks neither for the new tree nor at all.
@@ -1147,6 +1156,31 @@ TEST_CASE( "E17f a modified view marks its title and asks before closing; button
     REQUIRE( waitFor( [ & ] { return fixture.host()->container( PluginId, "layouts" ) == nullptr; } ) );
     REQUIRE( waitFor( [ & ] { return !closedOf( fixture.folder, "layouts" ).isEmpty(); } ) );
     REQUIRE_FALSE( closedOf( fixture.folder, "layouts" ).contains( "result" ) );
+}
+
+TEST_CASE( "E17f a root does not drop the appends queued before it", "[ui][workbench][E17]" )
+{
+    LayoutsWindow fixture;
+    fixture.open( "layouts" );
+    const auto root = element( "column", "q_body",
+                               { { "children", QJsonArray{ element( "text_view", "q_log",
+                                                                    { { "text", "a\n" } } ) } } } );
+    const auto send = [ & ]( QJsonObject params ) {
+        params.insert( "view_id", "layouts" );
+        Q_EMIT fixture.manager->viewRequest( PluginId, "view/update", params );
+    };
+    send( { { "root", root } } );
+    fixture.host()->flush();
+    auto* browser = qobject_cast<QTextBrowser*>( fixture.host()->view( PluginId, "layouts" )->element( "q_log" ) );
+    REQUIRE( browser );
+    auto* log = qobject_cast<PluginTextView*>( browser->parentWidget() );
+    REQUIRE( log );
+    // An append and then the same root, both queued for one render: the append is applied to
+    // the tree it was sent for, and the root (with the text the plugin last set) keeps it.
+    send( { { "patch", QJsonArray{ QJsonObject{ { "id", "q_log" }, { "append", "b\n" } } } } } );
+    send( { { "root", root } } );
+    fixture.host()->flush();
+    REQUIRE( log->text() == "a\nb\n" );
 }
 
 TEST_CASE( "E17f the answer to Discard changes? is only for the view it asked about",

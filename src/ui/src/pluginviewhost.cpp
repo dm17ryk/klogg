@@ -121,6 +121,19 @@ constexpr char DialogButtonProperty[] = "pluginDialogButton";
 // acts on a view opened again under the same key while the question was open.
 quint64 nextOpenSerial = 0;
 
+// E17f: whether a queued patch holds a step a root cannot restate (section 29.2).
+bool hasSteps( const QJsonArray& patch )
+{
+    for ( const auto& entry : patch ) {
+        const auto object = entry.toObject();
+        if ( object.contains( "append" ) || object.contains( "append_points" )
+             || object.contains( "clear" ) || object.contains( "focus" ) ) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // E17f: the "Discard changes?" question of a view that goes away while it is open.
 void dismissDiscardQuestion( QWidget* window, const QString& pluginId, const QString& viewId )
 {
@@ -1130,6 +1143,11 @@ void PluginViewHost::queueUpdate( const QString& pluginId, const QJsonObject& pa
         return;
     }
     if ( params.value( "root" ).isObject() ) {
+        // E17f: appended text and points, clears and focus are steps a root cannot restate;
+        // queued ones go to the tree they were sent for before the new root replaces it.
+        if ( hasSteps( open.pendingPatch ) ) {
+            render( open );
+        }
         open.pendingRoot = params.value( "root" ).toObject();
         open.pendingPatch = {};
     }

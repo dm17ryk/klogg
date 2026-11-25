@@ -1759,7 +1759,8 @@ follows.
   `currentIndex` on the `tabs` element), the plugin gets `changed` with `value` the tab's id (null
   for a tab without an id) and `index`. A `current` set by the plugin sends nothing.
 - **`tab`.** `title`, `icon`, `badge` (at most 64 characters, shown after the title in
-  parentheses) and `children`, laid out as a column.
+  parentheses) and `children`, laid out as a column. `visible: false` hides the tab itself (Qt
+  5.15 and later); the tab widget shows only the current tab's page.
 - **`splitter`.** `orientation` is `horizontal` (children side by side, the default) or
   `vertical`; each child is a pane. `sizes` are pixels per pane. When the user drags a handle, the
   sizes are kept per plugin, view and element (half a second later, in the store of section 27's
@@ -1800,7 +1801,8 @@ follows.
   The patch entry `{"id", "append": "..."}` adds text at the end (at most 65,536 characters; a
   longer append is refused with a warning). A same-shaped root replaces the text only when it
   differs from the text the plugin last set, so appended text stays; `set: {text}` always replaces
-  it. Appended Markdown is rendered once per turn of the event loop, however many appends arrive
+  it. Appends, points, clears and focus entries still queued when a root arrives are applied
+  before it, to the tree they were sent for. Appended Markdown is rendered once per turn of the event loop, however many appends arrive
   in it. Ctrl+F opens a find bar (`<element>_find`): the text claims the key while it has the
   focus, so CILogg's own Find shortcut neither fires nor makes it ambiguous; Enter finds the next
   match, Shift+Enter the previous one, Esc closes it. `get_ui` reads the text as `plainText`

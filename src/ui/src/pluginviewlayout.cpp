@@ -465,6 +465,11 @@ void PluginView::updateTabHeader( Node& tab )
     tabs->setTabText( index, label.replace( QLatin1Char( '&' ), QStringLiteral( "&&" ) ) );
     tabs->setTabIcon( index, iconFor( tab.props.value( "icon" ) ) );
     tabs->setTabToolTip( index, plainToolTip( text( tab.props, "tooltip" ) ) );
+    // `visible` hides the tab itself: its page is the tab widget's to show (apply() never
+    // shows a tab's page, which would cover the current one).
+#if QT_VERSION >= QT_VERSION_CHECK( 5, 15, 0 )
+    tabs->setTabVisible( index, tab.props.value( "visible" ).toBool( true ) );
+#endif
 }
 
 void PluginView::applyLayout( Node& node, const QJsonObject& props, const QJsonObject& previous,
@@ -506,7 +511,7 @@ void PluginView::applyLayout( Node& node, const QJsonObject& props, const QJsonO
     }
     else if ( type == "tab" ) {
         if ( props.contains( "title" ) || props.contains( "badge" ) || props.contains( "icon" )
-             || props.contains( "tooltip" ) ) {
+             || props.contains( "tooltip" ) || props.contains( "visible" ) ) {
             updateTabHeader( node );
         }
     }
