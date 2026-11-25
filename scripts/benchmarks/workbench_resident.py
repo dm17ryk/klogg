@@ -6,11 +6,14 @@ import math
 import os
 import subprocess
 from time import perf_counter as clock
+from time import sleep
 
 from workbench_runtime import RunError
 
 LOG = logging.getLogger("workbench.resident")
 MAX_PROCESSES = 256
+MEMBER_QUERY_ATTEMPTS = 3
+MEMBER_RETRY_SECONDS = 0.001
 INTERVAL_SECONDS = 0.01
 RESIDENT_BUDGET = {"processTreeSampledRssPeakBytes": 512 * 1024 * 1024}
 
@@ -204,14 +207,10 @@ class _WindowsWorkingSet:
             self.query_failed("wait")
         return False
 
-    def snapshot(self):
-        from ctypes import wintypes
-
-        job = self.owner.job
-        if not job:
-            LOG.error("resident_query_rejected reason=owned-job-closed")
-            raise ResidentError("owned_job_closed")
-        for attempt in range(3):
+    def member_pids(self, job):
+        """Return a consistent job PID list and the members that left meanwhile."""
+        missing = 0  # Largest assigned count seen in a list that lacked PIDs.
+        for attempt in range(MEMBER_QUERY_ATTEMPTS):
             members = self.members_type()
             success = self.kernel.QueryInformationJobObject(
                 job, 3, ctypes.byref(members), ctypes.sizeof(members), None
@@ -223,33 +222,65 @@ class _WindowsWorkingSet:
                     MAX_PROCESSES,
                 )
                 raise ResidentError("resident_process_limit")
-            if success:
-                break
-            if ctypes.get_last_error() != 234:  # ERROR_MORE_DATA
-                self.query_failed("members")
+            if not success:
+                if ctypes.get_last_error() != 234:  # ERROR_MORE_DATA
+                    self.query_failed("members")
+                LOG.debug(
+                    "resident_members_retry attempt=%d assigned=%d",
+                    attempt,
+                    members.assigned,
+                )
+                continue
+            pids = list(members.pids[: members.count])
+            if (
+                members.count > members.assigned
+                or members.count > MAX_PROCESSES
+                or len(set(pids)) != len(pids)
+                or any(not 0 < pid <= 0xFFFFFFFF for pid in pids)
+            ):
+                LOG.error(
+                    "resident_members_rejected assigned=%d returned=%d",
+                    members.assigned,
+                    members.count,
+                )
+                raise ResidentError("invalid_resident_members")
+            if members.count == members.assigned:
+                # A member that left the job between queries was never measured.
+                return pids, max(0, missing - members.assigned)
+            # An exiting member can still count as assigned after the kernel
+            # has left its PID out of the list (issue #167). Query again.
+            missing = max(missing, members.assigned)
             LOG.debug(
-                "resident_members_retry attempt=%d assigned=%d",
+                "resident_member_exited phase=list attempt=%d assigned=%d returned=%d",
                 attempt,
-                members.assigned,
-            )
-        else:
-            LOG.error("resident_members_rejected reason=unstable-list attempts=3")
-            raise ResidentError("resident_member_list_unstable")
-        pids = list(members.pids[: members.count])
-        if (
-            members.count != members.assigned
-            or members.count > MAX_PROCESSES
-            or len(set(pids)) != len(pids)
-            or any(not 0 < pid <= 0xFFFFFFFF for pid in pids)
-        ):
-            LOG.error(
-                "resident_members_rejected assigned=%d returned=%d",
                 members.assigned,
                 members.count,
             )
+            if attempt + 1 < MEMBER_QUERY_ATTEMPTS:
+                sleep(MEMBER_RETRY_SECONDS)
+        if success:
+            LOG.error(
+                "resident_members_rejected assigned=%d returned=%d attempts=%d",
+                members.assigned,
+                members.count,
+                MEMBER_QUERY_ATTEMPTS,
+            )
             raise ResidentError("invalid_resident_members")
+        LOG.error(
+            "resident_members_rejected reason=unstable-list attempts=%d",
+            MEMBER_QUERY_ATTEMPTS,
+        )
+        raise ResidentError("resident_member_list_unstable")
+
+    def snapshot(self):
+        from ctypes import wintypes
+
+        job = self.owner.job
+        if not job:
+            LOG.error("resident_query_rejected reason=owned-job-closed")
+            raise ResidentError("owned_job_closed")
+        pids, races = self.member_pids(job)
         values = {}
-        races = 0
         for pid in pids:
             # PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, never VM write access.
             handle = self.kernel.OpenProcess(0x1000 | 0x100000, False, pid)
