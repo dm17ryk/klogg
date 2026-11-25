@@ -23,13 +23,19 @@ QString sourceLabel( const QVariantMap& plugin );
 // The repository's state for its group header and the Repositories table.
 QString repositoryStateText( const QVariantMap& repository );
 
-// Configuration pack Lua is unrestricted local code (docs/plugin-repositories.md 4.3). Every GUI
-// path asks before it can run: when a pack with Lua is enabled, and when an install or update
-// replaces an enabled pack with a version that has Lua. `contents` lists the content types of
-// the package being enabled or installed (catalog `contents`, or those of its manifest). True
-// when there is nothing to ask or the user agrees.
+// Configuration pack Lua and Python decoders are unrestricted local code
+// (docs/plugin-repositories.md 4.3, 4.4). Every GUI path asks before they can run: when a pack
+// with Lua or Python decoders is enabled, and when an install or update replaces an enabled pack
+// with a version that has them. `contents` lists the content types of the package being enabled
+// or installed (catalog `contents`, or those of its manifest). True when there is nothing to ask
+// or the user agrees.
 bool confirmPackLua( QWidget* parent, cilogg::plugins::PluginManager* manager, const QString& id,
                      const QString& name, const QStringList& contents, bool enabling );
+// The Installed tab's text for a pack's Python decoders (get_plugins `pythonDecoders` and
+// `pythonDecodersActive`), following the host's `python_decoders` feature in `hostFeatures`
+// (MD03b): "requires a newer CILogg" without it, the count, "(inactive)" while they do not run;
+// empty for a pack without Python decoders.
+QString pythonDecodersState( const QVariantMap& plugin, const QVariantMap& hostFeatures );
 // The content types of the catalog entry `entryId`; empty when unknown or not a pack.
 QStringList catalogContents( cilogg::plugins::PluginManager* manager, const QString& entryId );
 

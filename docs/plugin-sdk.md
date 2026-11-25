@@ -1034,14 +1034,27 @@ packs](plugin-repositories.md) section 4). The example is
   the user's permissions, so the GUI asks before a pack with Lua is enabled or updated.
 - `decoder_routes` (`previewRoutes` naming the pack's own previews, `protocolRoutes`) sit below
   the user's routes; the merged lists keep 128 and 32 routes.
-- `python_decoders` are installed and updated with the pack and shown as needing a newer CILogg
-  until the decoder contract of task MD03 runs them. `actions`, `highlights` and `filters` are
-  validated as files and loaded by a later slice (E16c).
+- `python_decoders` (`{ "id", "module" }`, a `.py` file of the pack) run in the preview's Python
+  decoder backend (MD03b) while the pack is enabled. A route `{ "python": "<pack-id>/<id>" }` in
+  `decoder_routes` sends a preview (or an assembled protocol) to one; the user's routes may name
+  them too (`python:<pack-id>/<id>` in Preview Decoder Settings). CILogg calls
+  `decode(payload, context)` with the preview's bytes and a `dict` (`preview`, `protocol`,
+  `inputEncoding`, `direction`, `decoder`); it returns rows `{name, value, raw, pos, size, depth,
+  attributes}` or `{fields, messageCompleteness, messageIntegrity}`, or `None` for bytes that are
+  not its message (Automatic mode then falls back to JSON). Each pack's modules import each other
+  relatively (`from . import common`) in a namespace of their own, so list helper modules too; the
+  worker uses the standard library only, keeps 512 rows of depth 32, and ends a decoder that runs
+  past the preview's deadline together with its child processes. Pack Python runs with the user's
+  permissions, so the GUI asks as for Lua. The host feature `python_decoders` says a CILogg runs
+  them (see [plugin repositories](plugin-repositories.md) section 4.4 and
+  [plugins/examples/python-decoder-pack](../plugins/examples/python-decoder-pack)).
+  `actions`, `highlights` and `filters` are validated as files and loaded by a later slice (E16c).
 - No content file may be `plugin.json` or the previews file (compared ignoring case): CILogg
   writes both itself for the pack's content with your edits. Two content files may not differ
   only in case either (one file on Windows and macOS).
 - `get_plugins` adds `contents` and the counts `previews`, `luaFiles` and `pythonDecoders` for a
-  pack, `localEdits` (the edited items) and `needsMerge` (the version an update could not merge).
+  pack, `pythonDecodersActive`, `localEdits` (the edited items) and `needsMerge` (the version an
+  update could not merge), and reports the host's features with their versions in `hostFeatures`.
   Catalog entries of packs use `os: any` and `arch: any`.
 
 ### Local edits and updates

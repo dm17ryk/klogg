@@ -43,6 +43,8 @@ struct PackContent {
 };
 
 bool isConfigPack( const QJsonObject& manifest );
+// A decoder route's Python target (MD03b): `<pack-id>/<decoder-id>`, both in their ID formats.
+bool pythonDecoderTarget( const QString& target );
 // Keys a pack must not declare at the top level: a pack has no process and no settings.
 QStringList packProcessKeys();
 // The pack-specific manifest rules (pack_format, process keys, `content`), without file

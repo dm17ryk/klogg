@@ -4,6 +4,7 @@
 #include "log.h"
 #include "mainwindow.h"
 #include "packeditors.h"
+#include "pluginfeatures.h"
 #include "pluginicons.h"
 #include "pluginmenus.h"
 #include "pluginsandpacks.h"
@@ -1005,9 +1006,11 @@ QWidget* PluginUiController::createInstalledTab( QWidget* parent )
                           || decoder.value( "tshark" ).toString().isEmpty() ) ) {
                     state += QStringLiteral( " · " ) + tr( "Needs TShark (Preview Decoder Settings)" );
                 }
-                if ( p.value( "pythonDecoders" ).toInt() > 0 ) {
-                    state += QStringLiteral( " · " )
-                             + tr( "Python decoders: requires a newer CILogg" );
+                // MD03b: follows the host's `python_decoders` feature and the pack's state.
+                const auto python = pluginsui::pythonDecodersState(
+                    p, cilogg::plugins::hostFeatureVersions().toVariantMap() );
+                if ( !python.isEmpty() ) {
+                    state += QStringLiteral( " · " ) + python;
                 }
                 // Local edits and an update that waits for a merge (design 3.3, 4.6).
                 if ( p.value( "localEdits" ).toInt() > 0 ) {

@@ -205,13 +205,17 @@ an unchanged plugin changes nothing, and a changed plugin with the same version 
 For several packages, list them in a `sources.json` file and pass `--sources sources.json`.
 
 **Configuration packs** are packages without a program: `"kind": "config-pack"` and a `content`
-object that lists preview definitions (`previews.json` format), Lua files for TShark and their
-decoder routes, and Python decoders (carried now, run by a later CILogg). They install, update,
-enable and remove like plugins, from the same repositories; build them with `--os any --arch
-any`. Pack previews appear in the previews dialog with the pack's name, and **Copy to My
-Previews** makes your own copy. CILogg asks before it enables a pack with Lua, because that Lua
-runs on your computer. The [plugin SDK](docs/plugin-sdk.md#configuration-packs) describes the
-format; [plugins/examples/protocol-pack](plugins/examples/protocol-pack) is a complete example.
+object that lists preview definitions (`previews.json` format), Lua files for TShark, Python
+decoders and their decoder routes. They install, update, enable and remove like plugins, from the
+same repositories; build them with `--os any --arch any`. Pack previews appear in the previews
+dialog with the pack's name, and **Copy to My Previews** makes your own copy. A preview routed to a
+pack's Python decoder is decoded by that decoder's `decode(payload, context)`; the preview pane
+shows `python_decoder` and the decoder's name. CILogg asks before it enables a pack with Lua or
+Python, because that code runs on your computer. The
+[plugin SDK](docs/plugin-sdk.md#configuration-packs) describes the format;
+[plugins/examples/protocol-pack](plugins/examples/protocol-pack) (Lua) and
+[plugins/examples/python-decoder-pack](plugins/examples/python-decoder-pack) (Python) are complete
+examples.
 
 **Editing a pack in place.** Select a pack preview in the previews dialog and click **Edit…**, or
 select the pack on the Installed tab and click **Pack Files…** to edit any of its previews, blocks
