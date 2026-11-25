@@ -713,23 +713,53 @@ QWidget* createAvailableTab( QWidget* parent, cilogg::plugins::PluginManager* ma
 bool confirmPackLua( QWidget* parent, cilogg::plugins::PluginManager* manager, const QString& id,
                      const QString& name, const QStringList& contents, bool enabling )
 {
-    if ( !manager || !contents.contains( QStringLiteral( "lua" ) ) ) {
+    const bool lua = contents.contains( QStringLiteral( "lua" ) );
+    // MD03b: a pack's Python decoders are local code too (design 4.4).
+    const bool python = contents.contains( QStringLiteral( "python_decoders" ) );
+    if ( !manager || ( !lua && !python ) ) {
         return true;
     }
-    // A pack that is not enabled runs no Lua: installing or updating it is asked about when it
+    // A pack that is not enabled runs no code: installing or updating it is asked about when it
     // is enabled.
     if ( !enabling && !manager->enabledPacks().contains( id ) ) {
         return true;
     }
-    return confirm( parent, tr( "Configuration Pack Lua" ),
-                    ( enabling ? tr( "\"%1\" contains Lua code that runs on this computer, with "
-                                     "your permissions, whenever TShark decodes a preview. "
-                                     "Enable it only if you trust its source." )
-                               : tr( "This version of \"%1\" contains Lua code that runs on this "
-                                     "computer, with your permissions, whenever TShark decodes "
-                                     "a preview, as soon as it is installed. Install it only if "
+    const auto label = name.isEmpty() ? id : name;
+    if ( !python ) {
+        return confirm( parent, tr( "Configuration Pack Lua" ),
+                        ( enabling ? tr( "\"%1\" contains Lua code that runs on this computer, with "
+                                         "your permissions, whenever TShark decodes a preview. "
+                                         "Enable it only if you trust its source." )
+                                   : tr( "This version of \"%1\" contains Lua code that runs on "
+                                         "this computer, with your permissions, whenever TShark "
+                                         "decodes a preview, as soon as it is installed. Install "
+                                         "it only if you trust its source." ) )
+                            .arg( label ) );
+    }
+    const auto code = lua ? tr( "Lua and Python code" ) : tr( "Python code" );
+    return confirm( parent, lua ? tr( "Configuration Pack Code" ) : tr( "Configuration Pack Python" ),
+                    ( enabling ? tr( "\"%1\" contains %2 that runs on this computer, with your "
+                                     "permissions, whenever it decodes a preview. Enable it only "
+                                     "if you trust its source." )
+                               : tr( "This version of \"%1\" contains %2 that runs on this "
+                                     "computer, with your permissions, whenever it decodes a "
+                                     "preview, as soon as it is installed. Install it only if "
                                      "you trust its source." ) )
-                        .arg( name.isEmpty() ? id : name ) );
+                        .arg( label, code ) );
+}
+
+QString pythonDecodersState( const QVariantMap& plugin, const QVariantMap& hostFeatures )
+{
+    const auto count = plugin.value( "pythonDecoders" ).toInt();
+    if ( count <= 0 ) {
+        return {};
+    }
+    if ( !hostFeatures.contains( QStringLiteral( "python_decoders" ) ) ) {
+        return tr( "Python decoders: requires a newer CILogg" );
+    }
+    return plugin.value( "pythonDecodersActive" ).toBool()
+               ? tr( "Python decoders: %1" ).arg( count )
+               : tr( "Python decoders: %1 (inactive)" ).arg( count );
 }
 
 QStringList catalogContents( cilogg::plugins::PluginManager* manager, const QString& entryId )

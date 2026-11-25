@@ -1,0 +1,22 @@
+{
+  "id": "org.cilogg.example.python-decoder-pack",
+  "name": "Example Python decoder pack",
+  "version": "1.0.0",
+  "protocol_version": 1,
+  "kind": "config-pack",
+  "pack_format": 1,
+  "description": "A configuration pack for a synthetic demo record: a JSON preview, a Python decoder and the route between them.",
+  "requires": { "host_features": ["python_decoders"] },
+  "content": {
+    "previews": "previews.json",
+    "python_decoders": [
+      { "id": "record", "module": "python/record.py" },
+      { "id": "common", "module": "python/common.py" }
+    ],
+    "decoder_routes": {
+      "previewRoutes": {
+        "Demo record": { "python": "org.cilogg.example.python-decoder-pack/record" }
+      }
+    }
+  }
+}

@@ -1791,11 +1791,14 @@ void PreviewMessageTab::presentResult( const QVariantMap& result )
     result_ = result;
     cancel_->setEnabled( false );
     previewTree_->clear();
-    const bool engine = result.value( "backend" ) == "tshark_lua";
+    const bool python = result.value( "backend" ) == "python_decoder";
+    const bool engine = result.value( "backend" ) == "tshark_lua" || python;
     previewTree_->headerItem()->setText( 3, engine ? tr( "Offset (decoded buffer)" )
                                                    : tr( "Offset" ) );
     previewTree_->setToolTip(
-        engine
+        python ? tr( "Python decoder offsets refer to the bytes the decoder received. Source / log "
+                     "mapping is unavailable." )
+        : engine
             ? tr( "TShark offsets refer to a decoded buffer. Source / log mapping is unavailable." )
             : QString() );
     QVector<QTreeWidgetItem*> parents;
@@ -1830,6 +1833,11 @@ void PreviewMessageTab::presentResult( const QVariantMap& result )
     const auto reason = result.value( "reason" ).toString();
     if ( !reason.isEmpty() )
         status += " - " + reason.left( 256 );
+    // A Python decoder names its decoder, and the place of a failure.
+    if ( python )
+        status += " - " + result.value( "decoder" ).toString().left( 256 );
+    if ( !result.value( "detail" ).toString().isEmpty() )
+        status += " (" + result.value( "detail" ).toString().left( 256 ) + ")";
     const auto fallback = result.value( "fallbackReason" ).toString();
     if ( !fallback.isEmpty() )
         status += tr( " - fallback: %1" ).arg( fallback );

@@ -538,6 +538,8 @@ optional, and a pack may carry only previews, only Lua, or everything:
 - `decoder_routes` uses the format of the TShark decoder routes. Its `previewRoutes` keys must be
   names of the pack's own previews; its `protocolRoutes` keys are assembled protocol names, as in
   the user's routes. Each list keeps the decoder's limits (128 preview routes, 32 protocol routes).
+  A route goes to a TShark `dissector` or, with `{ "python": "<pack-id>/<decoder-id>" }`, to one of
+  the pack's own `python_decoders` (section 4.4).
 - `python_decoders` is described in section 4.4; actions, highlighters and filters in section 4.5.
 
 Packs install, update, enable, disable and remove exactly like plugins, from the same repositories
@@ -614,12 +616,90 @@ for packs. Packs are platform independent, so their catalog entries use `os: any
 
 ### 4.4 Python decoders
 
-CILogg has no Python decoder backend for the preview pane yet: the Python helper that ships today
-only carries data between CILogg and TShark. Task MD03 plans the supervised decoder contract. Until
-it exists, a pack's `python_decoders` are installed and updated with the pack and listed as
-"Requires a newer CILogg"; nothing runs them. MD03 activates them without changing the pack format.
-A Python decoder that is needed sooner can be shipped as an ordinary process plugin (a `converter`
-or `tool`).
+A pack's `python_decoders` run in the preview's **Python decoder backend** (slice MD03b, issue
+#159), a narrow part of task MD03 like MD03a was for TShark and Lua. The pack format is unchanged:
+each item is `{ "id", "module" }`, the module a `.py` file inside the pack. The full MD03 decoder
+contract (datasets, conversations, scans) stays planned; this backend uses the existing
+PreviewService result version 1. A Python decoder that needs more than a preview can still be
+shipped as an ordinary process plugin (a `converter` or `tool`).
+
+**Entry point.** CILogg calls the module's `decode(payload, context)`:
+
+- `payload` is `bytes`: the preview's buffer (its `bufferCapture`, decoded by its buffer type or the
+  request's encoding), or the assembled message for a protocol route; 1 byte to 64 KiB.
+- `context` is a `dict`: `preview` (the preview's name, empty for a protocol route), `protocol` (the
+  assembled protocol, or empty), `inputEncoding` (how the log text became `payload`: `utf8`, `hex`,
+  `base64`, `bin` or `bytes`), `direction` (`unknown` until a source reports one; `rx` and `tx` are
+  reserved) and `decoder` (`<pack-id>/<decoder-id>`).
+- It returns the rows, or an object `{ "fields": [rows], "messageCompleteness", "messageIntegrity" }`.
+  A row is `{ "name", "value", "raw", "pos", "size", "depth", "attributes" }`: only `name` is
+  required; `value` is text, a number (integers exactly), a boolean or `None`; `raw` is `bytes`
+  (shown as hex) or text; `pos` and `size` are integers or text, offsets in `payload`; `depth`
+  starts at 0 and grows by at most one from row to row (preorder); `attributes` is an object of at
+  most 64 values. `messageCompleteness` is `complete`, `incomplete` or `not_reported`,
+  `messageIntegrity` `valid`, `invalid` or `not_reported` (the default); they are independent of the
+  result's own `complete`, which only says whether every row was kept.
+- It returns `None` when the bytes are not its message ("not dispatched").
+- A module's suffix may be `.py` in any case, as the pack's manifest check takes it.
+
+**Result.** PreviewService result version 1 with `backend: "python_decoder"`, `decoder`,
+`offsetSpace: "decoder_payload"`, `moduleSha256` (the session copy that decoded) and `enginePid`
+(metadata only). Rows keep the MD03a limits: 512 rows, depth 32 and 64 Ki UTF-16 units per text,
+then `limited` with the reason `rendered_field_limit`, `depth_limit` or `field_text_limit`; the
+whole response stays within 128 KiB (`response_limit`, an exact prefix of the rows). A failure is
+`decoder_failed` (the function raised), `decoder_load_failed` (the module did not import or has no
+`decode`) or `invalid_decoder_result`, with `detail` naming the exception type and the file and line
+in the pack, never the message text or the data.
+
+**Worker.** One supervised Python worker per preview session (the preview owner, as for TShark), at
+most two warm, on the MD03a transport (`message_decoder_python_worker.py`, framed JSON over stdio).
+The host starts it in a process group (Unix) or job object (Windows) of its own before sending
+anything, so ending it ends its descendants; it is not a sandbox. Deadlines are the preview's: 3 s
+by default, 10 s at most, from the request's start. A deadline, a cancellation, a crash or a
+protocol error ends the worker and fails that request; the next request starts a new worker. A
+decoder failure fails only its request; the worker and its modules stay. `print()` and a child
+process's output go to the worker's diagnostics, never into the protocol, and are bounded at 64
+KiB per request. The interpreter is chosen as for plugins (#141): `CILOGG_SCRIPT_PYTHON`, a bundled
+interpreter, then `python.exe` before `python3.exe` and launcher scripts on `PATH`. It runs with
+`-I -S`, so decoders use the standard library only.
+
+**Routing.** A decoder route names `{ "python": "<pack-id>/<decoder-id>" }` instead of a
+`dissector`, in `previewRoutes` (a preview name) or `protocolRoutes` (an assembled protocol, with an
+optional `inputEncoding`). A pack's routes name its own decoders; the user's routes (Preview Decoder
+Settings, where the decoder column takes `python:<pack-id>/<decoder-id>`) may name any pack's. In
+Automatic mode a Python route has the place a TShark route has: an assembled protocol's route
+first, then routed previews before other matching JSON previews, then the TShark default dissector,
+then JSON. A Python route applies while its decoder's pack is enabled, whether TShark is configured
+or not; a route whose decoder is not loaded does not apply. Automatic mode falls back to JSON only
+when the decoder returns `None` (`fallbackReason: "decoder_not_dispatched"`, `decoderAttempts:
+["python_decoder", "json_preview"]`); a failure, a deadline or a limit stays visible. Explicit JSON
+ignores the routes; explicit TShark, or a dissector named in the request, never uses a Python route.
+
+**Loading and isolation.** When a session starts, the worker copies every enabled pack's listed
+modules into its own folder, at most 1 MiB each and 64 in all (the pack check refuses a pack that
+would exceed 64), and hashes them; later changes of the pack's files reach the next session. Each
+pack is a package of its own whose path is its copy, so a module imports the pack's other listed
+modules relatively (`from . import common`) and two packs' modules of the same name never collide.
+Only listed modules are part of a pack (its store keeps only them), so a helper module is listed
+too. Each folder of a listed module is a package of the pack, also when its name has a `.`; a
+module and a folder of the same name (`sub.py` beside `sub/`) are refused when the session starts.
+Enabling, disabling or updating a pack starts new sessions.
+
+**Trust.** Pack Python is local code with the user's permissions. The install, enable and update
+confirmations of pack Lua cover it ("contains Python code that runs on this computer"; "Lua and
+Python code" for both), and auto-update of such a pack is the same trust decision as for a process
+plugin. A repository install or update asks from the catalog entry's `contents`, so staging
+refuses a pack package whose entry leaves out its `lua` or `python_decoders` ("The package has
+python_decoders, which its catalog entry's contents do not list"); `build_catalog.py` lists them
+from the manifest.
+
+**Capability.** The host feature `python_decoders` (version 1) says this CILogg runs pack Python
+decoders: `get_plugins` reports it in `hostFeatures`, and per pack `pythonDecodersActive` (the pack
+is enabled, has Python decoders and the host has the feature). The Installed tab shows
+"Python decoders: N", "(inactive)" while the pack is disabled, and "requires a newer CILogg" on a
+host without the feature; a pack can also say `"requires": { "host_features": ["python_decoders"] }`
+so that an older CILogg lists it as requiring a newer one. The example
+`plugins/examples/python-decoder-pack` shows a decoder with a helper module and its route.
 
 **As built (E16a1).** `Manifest::parse` reads `kind` first and checks a pack with
 `validatePackManifest` (`src/plugins/configpack.*`); `Manifest::read` then checks its files
@@ -1147,7 +1227,10 @@ the Git Credential Manager they already use for that organization.
   profile snapshot only while enabled, copied, hashed and loaded in order, never written into the
   saved configuration, in a per-pack environment where two packs with the same global keep their
   own values; the 32-file and route limits; warm sessions discarded on update; JSON fallback
-  without TShark; `python_decoders` listed and inactive; pack actions, highlighters and filters
+  without TShark; `python_decoders` run by the Python decoder backend (MD03b: the worker's deadline,
+  crash restart, limits and the end of its descendants, routing and the JSON fallback only when not
+  dispatched, one import namespace per pack, the trust prompts, the `python_decoders` host feature
+  and an end-to-end pack preview); pack actions, highlighters and filters
   listed with the pack's name, Copy to My..., user precedence, collisions between packs refused, store limits,
   exports without pack items; pack automatic responses off after install and their on or off choice
   kept across an update. Local edits and merge: the installed version unchanged by edits; Reset to Pack Version; every three-way case per item (not edited,
@@ -1188,7 +1271,8 @@ the Git Credential Manager they already use for that organization.
   text merge, the optional external merge tool, Reset to Pack Version and the automation
   strategies, for previews, blocks and Lua or Python files. Delivered as two PRs (2026-11-19):
   **E16a1** the pack kind, previews, Lua and routes, and **E16a2** the store and merge.
-- **E16b:** Python decoders, activated with MD03.
+- **E16b:** Python decoders, activated by the MD03b Python preview backend (section 4.4; a plan
+  change approved on 2026-11-24, instead of waiting for the full MD03 contract).
 - **E16c:** actions with automatic responses (off until enabled), highlighters and predefined
   filters in packs, with their canonical forms, local edits and merge, and the Packs… buttons in
   their windows.
@@ -1218,7 +1302,8 @@ approved every remaining recommendation: "yes, approve all 11 recommended".
 3. **Updates:** notify only. Auto-update is a per-repository switch, off by default, and stays
    within the installed major version.
 4. **PAT storage:** QtKeychain on all platforms.
-5. **Python decoders:** carried in packs now and activated by MD03.
+5. **Python decoders:** carried in packs now and activated by MD03 (as built: the MD03b Python
+   preview backend, approved by Dmitry on 2026-11-24, section 4.4).
 6. **Package signing:** not in E15; SHA-256 from an authenticated repository is the integrity check.
    Signing could be added later as a catalog key.
 7. **Repository order:** a priority. Browse groups by it, and a new install of a plugin offered by

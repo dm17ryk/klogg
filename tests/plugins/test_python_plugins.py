@@ -174,9 +174,11 @@ class PortableExamples(unittest.TestCase):
                     # A pack has no program: no SDK, and every listed content file is packed.
                     self.assertNotIn("cilogg_plugin.py", package.namelist())
                     self.assertIn(manifest["content"]["previews"], package.namelist())
-                    for name in manifest["content"]["lua"]["load"]:
-                        self.assertIn(manifest["content"]["lua"]["folder"] + "/" + name,
-                                      package.namelist())
+                    lua = manifest["content"].get("lua", {})
+                    for name in lua.get("load", []):
+                        self.assertIn(lua["folder"] + "/" + name, package.namelist())
+                    for decoder in manifest["content"].get("python_decoders", []):
+                        self.assertIn(decoder["module"], package.namelist())
                     continue
                 self.assertIn("cilogg_plugin.py", package.namelist())
                 entry_point = (manifest["arguments"][0] if manifest["executable"] == "python"

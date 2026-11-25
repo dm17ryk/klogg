@@ -18,6 +18,7 @@
 #include <QVBoxLayout>
 
 namespace {
+const QString PythonPrefix = QStringLiteral( "python:" );
 void identity( QWidget* widget, const QString& name, const QString& label )
 {
     widget->setObjectName( name );
@@ -36,7 +37,17 @@ QVariantMap routes( QTableWidget* table, bool protocol, QString* error )
             *error = QObject::tr( "Each route needs a unique, nonempty name." );
             return {};
         }
-        QVariantMap route{ { "dissector", text( 1 ) }, { "protocol", text( 2 ) } };
+        // A pack's Python decoder is written `python:<pack-id>/<decoder-id>` (MD03b); it takes
+        // no PDML protocol, so one given is kept for the settings to refuse.
+        const auto target = text( 1 ).trimmed();
+        QVariantMap route;
+        if ( target.startsWith( PythonPrefix ) ) {
+            route[ "python" ] = target.mid( PythonPrefix.size() );
+            if ( !text( 2 ).isEmpty() )
+                route[ "protocol" ] = text( 2 );
+        }
+        else
+            route = { { "dissector", text( 1 ) }, { "protocol", text( 2 ) } };
         if ( protocol && !text( 3 ).isEmpty() )
             route[ "inputEncoding" ] = text( 3 );
         result[ name ] = route;
@@ -50,8 +61,10 @@ void populate( QTableWidget* table, const QVariantMap& values, bool protocol )
         const auto route = it.value().toMap();
         const int row = table->rowCount();
         table->insertRow( row );
-        const QStringList cells{ it.key(), route.value( "dissector" ).toString(),
-                                 route.value( "protocol" ).toString(),
+        const auto target = route.contains( "python" )
+                                ? PythonPrefix + route.value( "python" ).toString()
+                                : route.value( "dissector" ).toString();
+        const QStringList cells{ it.key(), target, route.value( "protocol" ).toString(),
                                  route.value( "inputEncoding" ).toString() };
         for ( int column = 0; column < ( protocol ? 4 : 3 ); ++column )
             table->setItem( row, column, new QTableWidgetItem( cells[ column ] ) );
@@ -146,7 +159,8 @@ PreviewDecoderSettingsDialog::PreviewDecoderSettingsDialog( QWidget* parent )
         auto* table = new QTableWidget( 0, protocol ? 4 : 3, page );
         identity( table, name, title );
         QStringList headers{ protocol ? tr( "Assembly protocol" ) : tr( "Preview definition" ),
-                             tr( "Named dissector" ), tr( "PDML protocol (optional)" ) };
+                             tr( "Named dissector or python:<pack>/<decoder>" ),
+                             tr( "PDML protocol (optional)" ) };
         if ( protocol )
             headers << tr( "Encoding (utf8/hex/base64)" );
         table->setHorizontalHeaderLabels( headers );
