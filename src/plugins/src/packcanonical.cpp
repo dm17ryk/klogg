@@ -574,6 +574,14 @@ PackFiles fromHighlights( const QByteArray& highlightsConf, QString* error )
         }
         for ( int rule = 1; rule <= ruleCounts.value( index ); ++rule ) {
             const auto rulePrefix = prefix + QStringLiteral( "highlighters/%1/" ).arg( rule );
+            // Every counted rule is there, its pattern at least (CILogg always writes it): a count
+            // alone would make thousands of rules out of a few bytes. The other members an older
+            // export lacks take the defaults CILogg reads them with.
+            if ( !settings.contains( rulePrefix + QStringLiteral( "regexp" ) ) ) {
+                return reject( QStringLiteral( "rule %1 of set \"%2\" has no pattern (regexp)." )
+                                   .arg( rule )
+                                   .arg( set.id.left( 64 ) ) );
+            }
             // The defaults HighlighterSet reads a missing member with.
             const QJsonObject defaults{ { "back_colour", "" },   { "color_variance", 15 },
                                         { "fore_colour", "" },   { "ignore_case", false },

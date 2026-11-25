@@ -1,6 +1,7 @@
 // Configuration packs, slice E16a1 (docs/plugin-repositories.md sections 4.1-4.4).
 #include <catch2/catch.hpp>
 
+#include <QCoreApplication>
 #include <QDialogButtonBox>
 #include <QDir>
 #include <QFile>
@@ -1462,6 +1463,32 @@ TEST_CASE( "Pack highlighter sets join the Highlighters menu and dialog with the
         CHECK( mine.at( 2 ).id() == "h-one" );
         REQUIRE( mine.at( 2 ).highlighters().size() == 1 );
         CHECK( mine.at( 2 ).highlighters().at( 0 ).pattern() == "ERROR" );
+        CHECK( HighlighterSetCollection::get().activeSetIds() == QStringList{ "h-one" } );
+        CHECK( HighlighterSetCollection::get().currentActiveSet().highlighters().size() == 1 );
+    }
+
+    // Removing that copy lists the pack's set again, still active: the copy kept its id
+    // (independent review of #169).
+    {
+        HighlightersDialog dialog;
+        auto* list = dialogWidget<QListWidget>( dialog, "highlighterListWidget" );
+        auto* remove = dialogWidget<QToolButton>( dialog, "removeHighlighterButton" );
+        REQUIRE( ( list && remove ) );
+        REQUIRE( list->count() == 5 );
+        REQUIRE( list->item( 2 )->text() == "Errors" );
+        list->setCurrentRow( 2 );
+        REQUIRE( remove->isEnabled() );
+        remove->click();
+        // The removal is queued (the dialog's own pattern for row changes).
+        for ( int round = 0; round < 10 && list->count() != 4; ++round ) {
+            QCoreApplication::processEvents();
+        }
+        REQUIRE( list->count() == 4 );
+        CHECK( list->item( 2 )->text() == "Errors (Pack a.pack)" );
+        dialog.findChild<QDialogButtonBox*>( "buttonBox" )
+            ->button( QDialogButtonBox::Apply )
+            ->click();
+        CHECK( HighlighterSetCollection::getSynced().highlighterSets().size() == 2 );
         CHECK( HighlighterSetCollection::get().activeSetIds() == QStringList{ "h-one" } );
         CHECK( HighlighterSetCollection::get().currentActiveSet().highlighters().size() == 1 );
     }

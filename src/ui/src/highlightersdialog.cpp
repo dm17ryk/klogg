@@ -373,8 +373,18 @@ void HighlightersDialog::removeHighlighterSet()
                     return;
                 }
                 {
+                    // A copy of a pack set keeps its id: removed, the pack's set is listed again
+                    // and stays active if the copy was (as Copy to My Highlighters keeps it).
                     const auto& set = highlighterSetCollection_.highlighters_.at( index );
-                    highlighterSetCollection_.deactivateSet( set.id() );
+                    const auto id = set.id();
+                    const bool packHasIt
+                        = std::any_of( packRows_.cbegin(), packRows_.cend(),
+                                       [ &id ]( const ListedHighlighterSet& listed ) {
+                                           return listed.set.id() == id;
+                                       } );
+                    if ( !packHasIt ) {
+                        highlighterSetCollection_.deactivateSet( id );
+                    }
                 }
 
                 {

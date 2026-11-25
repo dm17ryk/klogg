@@ -1051,10 +1051,11 @@ packs](plugin-repositories.md) section 4). The example is
 - `highlights` is a highlighters file as CILogg exports it (**Export** in the Highlighters
   dialog: INI, group `HighlighterSetCollection`, version 1 or 2, at most 4,096 sets of at most
   4,096 rules). Every set needs an `id` (unique in the pack: it is the set's identity) and a
-  `name`; each rule has the eight keys **Export** writes (`regexp`, `ignore_case`, `match_only`,
-  `use_regex`, `variate_colors`, `color_variance`, `fore_colour`, `back_colour`), and the file
-  holds nothing else apart from the exported `active_sets` and color labels (`quick`), which a
-  pack does not carry. Pack sets join the Highlighters menu and dialog after your own, with the
+  `name`; each rule needs its pattern (`regexp`), and the other members **Export** writes
+  (`ignore_case`, `match_only`, `use_regex`, `variate_colors`, `color_variance`, `fore_colour`,
+  `back_colour`) take CILogg's defaults when an older export lacks them. The file holds nothing
+  else apart from the exported `active_sets` and color labels (`quick`), which a pack does not
+  carry. Pack sets join the Highlighters menu and dialog after your own, with the
   pack's name, and highlight after yours; which sets are active stays yours (kept by id, also
   across pack updates and while the pack is disabled). A set of yours with a pack set's id
   replaces it (**Copy to My Highlighters** keeps the id); two enabled packs never share a set id;

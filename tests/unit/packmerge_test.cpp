@@ -555,12 +555,40 @@ TEST_CASE( "Pack highlighter sets have a canonical one-set-per-file form", "[pac
               SomeSets,
               { { "HighlighterSetCollection/sets/1/HighlighterSet/highlighters/1/color_variance",
                   "x" } } ) },
+        // Every counted rule is there: a count alone would make thousands of rules out of a few
+        // bytes (independent review of #169).
+        { "rules counted but not there",
+          highlightsConf(
+              SomeSets,
+              { { "HighlighterSetCollection/sets/2/HighlighterSet/highlighters/size", 4096 } } ) },
     };
     for ( const auto& [ why, bytes ] : bad ) {
         INFO( why );
         QString refused;
         CHECK( packcanonical::fromHighlights( bytes, &refused ).isEmpty() );
         CHECK( refused.startsWith( "The pack's highlighters file is not valid" ) );
+    }
+    // An older export without the rule members CILogg added later still reads, with the defaults
+    // CILogg reads them with; only the pattern of every counted rule must be there.
+    {
+        QByteArray older;
+        for ( const auto& line : highlightsConf( SomeSets ).split( '\n' ) ) {
+            if ( !line.contains( "match_only" ) && !line.contains( "variate_colors" )
+                 && !line.contains( "color_variance" ) ) {
+                older += line + '\n';
+            }
+        }
+        QString olderError;
+        const auto olderFiles = packcanonical::fromHighlights( older, &olderError );
+        CHECK( olderError.isEmpty() );
+        CHECK( olderFiles.value( "highlights/s-one.set" ).contains( "\"color_variance\":15" ) );
+        QByteArray noPattern;
+        for ( const auto& line : highlightsConf( SomeSets ).split( '\n' ) ) {
+            if ( !line.contains( "highlighters\\2\\regexp" ) ) {
+                noPattern += line + '\n';
+            }
+        }
+        CHECK( packcanonical::fromHighlights( noPattern ).isEmpty() );
     }
     // A set's text that is not one CILogg writes is not a set.
     CHECK(

@@ -1255,6 +1255,15 @@
         "findings": [
           "P1 (fixed): stores from before E16c lost their filters and highlighters files on the next content write; converted on read by packcanonical::fromLegacyDocuments"
         ]
+      },
+      {
+        "head": "698f1e22",
+        "reviewer": "independent Claude review (cpp-reviewer); Codex bot over its usage limit, local Codex CLI out of credits",
+        "findings": [
+          "P2 (fixed): a counted rule missing from the highlighters file was made from defaults, so a small file could declare millions of rules",
+          "P3 (fixed): removing the user's copy of a pack set deactivated the pack's set",
+          "P3 (answered): a pre-E16c highlighters file hand-edited into an unreadable form loses that edit on the next update (reported in droppedEdits) and the pack's sets until Reset to Pack Version; such an edit never had an effect before E16c2"
+        ]
       }
     ]
   }

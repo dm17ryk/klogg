@@ -708,9 +708,11 @@ dialog). `get_plugins` counts a pack's `filters`.
 **As built (E16c2, highlighter sets).** A pack's `highlights` file is the INI file **Export**
 writes (group `HighlighterSetCollection`, version 1 or 2; each set `HighlighterSet` version 1 to 3);
 `packcanonical::fromHighlights` refuses one that is not exactly that (a set without a unique `id`
-or a name, a rule without the eight keys CILogg writes or with a value CILogg would not read back,
-any other key, more than 4,096 sets or 4,096 rules in a set) and drops the exported `active_sets`
-and color labels, which are the user's. In the store each set is one text file,
+or a name, a counted rule without its `regexp`, a value CILogg would not read back, any other key,
+more than 4,096 sets or 4,096 rules in a set) and drops the exported `active_sets` and color
+labels, which are the user's. Rule members an older export lacks take the defaults CILogg reads
+them with (the store's set text carries all eight); requiring every counted rule's pattern keeps
+the work bounded by the file's size, so a count alone cannot make millions of rules. In the store each set is one text file,
 `highlights/<id>.set`: an `id` line, a `name` line and one `rule` line per rule (the rule as JSON
 with sorted keys), with the set order in `highlights/order.txt`. A set merges as text (diff3), so
 edits of different rules merge and edits of the same or adjacent lines conflict; Keep Mine or Take
@@ -732,7 +734,8 @@ dialog). No other content file may be the highlighters file (`checkReservedPaths
 Highlighters menu shows pack sets as "<name> (<pack name>)" and follows `PackHighlighters::changed`;
 the Highlighters dialog lists them after the user's, read only (the set editor disabled), marked
 "replaced by your set" when a set of the user's has the id, with **Copy to My Highlighters** (a
-set of the user's with the same id, which stays active if the pack's was), **Edit...** (the pack
+set of the user's with the same id, which stays active if the pack's was; removing that copy lists
+the pack's set again, still active if the copy was), **Edit...** (the pack
 item editor on `highlights/<id>.set`) and **Packs...**. `get_plugins` counts a pack's
 `highlighterSets`. Stores written before E16c kept the filters and highlighters files as they
 are, under `files/<path>`: every read of a store commit converts such a file to its items, with the
