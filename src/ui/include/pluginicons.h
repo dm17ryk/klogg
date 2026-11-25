@@ -59,6 +59,12 @@ public:
                       const QJsonValue& reference );
     // A registered picture (`"picture": true`), for the image element.
     QImage picture( const QString& pluginId, const QString& id ) const;
+    // E17f: any reference as a picture (`image` elements, Markdown images). A registered picture
+    // has its own size; other references are icons of about `size`, or, with an invalid size,
+    // of their largest size (a scalable icon: DefaultPictureSide), at most MaxPicturePixels.
+    static constexpr int DefaultPictureSide = 256;
+    QImage pictureFor( const QString& pluginId, const QString& directory,
+                       const QJsonValue& reference, const QSize& size );
 
     // SVG text that refers to anything but data: URIs (or fragments of itself) is refused.
     static bool safeSvg( const QByteArray& svg );

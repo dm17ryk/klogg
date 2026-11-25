@@ -1225,6 +1225,139 @@
     },
     "note": "E17 stays in progress: E17f to E17i are planned (E17i after its separate approval). PR #140 makes the E13 cancel-grace and E17a tooltip-cache tests deterministic and renames shadowed lambda captures in pluginuicontroller.cpp (no behaviour change); its one open review point became issue #157. E16 stays in progress: E16a1 and E16a2 are merged, E16b waits for MD03 (the user chose the narrow MD03b slice, issue https://github.com/dm17ryk/klogg/issues/159), E16c1 is in review and E16c2 to E16e are planned (issue https://github.com/dm17ryk/klogg/issues/156)."
   },
+  "e17fChecks": {
+    "date": "2026-11-24",
+    "task": "E17",
+    "slice": "E17f",
+    "decision": "D17",
+    "issue": "https://github.com/dm17ryk/klogg/issues/150",
+    "pullRequest": "https://github.com/dm17ryk/klogg/pull/158",
+    "basedOn": "45cfa335, merged with master 52e21ee7 and fca40970",
+    "taskStatus": "in_progress",
+    "hardDagAndRequirementsUnchanged": true,
+    "otherTaskRecordsPreserved": true,
+    "productCodeChanged": true,
+    "productBuildRun": true,
+    "newThirdPartyDependency": null,
+    "hashesRefreshed": [
+      "PLAN_VALIDATION.json",
+      "PROGRESS.json",
+      "README.md",
+      "TASK_INDEX.json",
+      "tasks/E17.md"
+    ],
+    "gateHead": "f1e14206",
+    "msvcW4WX": "passed",
+    "clangWarningSet": "clean on every changed C++ file",
+    "unitCases": 531,
+    "e17UiCasesEach": 75,
+    "uiSuiteCases": 268,
+    "pythonTests": 472,
+    "pythonSkipped": 48,
+    "mypyStrict": "clean",
+    "mcpTests": 128,
+    "mcpSkipped": 1,
+    "parityE17Cases": 6,
+    "hostIntegration": "passed",
+    "reviewRounds": [
+      {
+        "round": 1,
+        "head": "dff21a85",
+        "reviewer": "fresh-context Claude reviewers (C++ and Python); the Codex bot over its usage limit, the local Codex CLI out of credits",
+        "findings": 14,
+        "fixed": 10,
+        "answered": 4,
+        "fixedIn": "190dd5ce"
+      },
+      {
+        "round": 2,
+        "head": "b3566ac8",
+        "reviewer": "fresh-context Claude reviewers (C++ and Python); the Codex bot over its usage limit, the local Codex CLI out of credits",
+        "findings": 9,
+        "fixed": 8,
+        "answered": 1,
+        "fixedIn": "b150a9d5"
+      },
+      {
+        "round": 3,
+        "head": "121067e1",
+        "reviewer": "fresh-context Claude reviewers (C++ and Python; the Python review clean); the Codex bot over its usage limit, the local Codex CLI out of credits",
+        "findings": 6,
+        "fixed": 3,
+        "answered": 3,
+        "fixedIn": "634c4b8a"
+      },
+      {
+        "round": 4,
+        "head": "4dd9fb3b",
+        "reviewer": "fresh-context Claude reviewers (C++ and Python; no P1 or P2); the Codex bot over its usage limit, the local Codex CLI out of credits",
+        "findings": 8,
+        "fixed": 6,
+        "answered": 2,
+        "fixedIn": "06bf0351"
+      },
+      {
+        "round": 5,
+        "head": "f7b41b4d",
+        "reviewer": "fresh-context Claude reviewers (C++ and Python; no P1); the Codex bot over its usage limit, the local Codex CLI out of credits",
+        "findings": 5,
+        "fixed": 3,
+        "answered": 2,
+        "fixedIn": "c8b60564"
+      },
+      {
+        "round": 6,
+        "head": "eeb18e28",
+        "reviewer": "fresh-context Claude reviewers (C++ and Python; the Python review clean); the Codex bot over its usage limit, the local Codex CLI out of credits",
+        "findings": 4,
+        "fixed": 2,
+        "answered": 2,
+        "fixedIn": "18497bf1"
+      },
+      {
+        "round": 7,
+        "head": "435699ac",
+        "reviewer": "fresh-context Claude reviewers (C++ and Python), both clean; the Codex bot over its usage limit, the local Codex CLI out of credits",
+        "findings": 0,
+        "fixed": 0,
+        "answered": 0,
+        "followUpIssue": "https://github.com/dm17ryk/klogg/issues/168"
+      },
+      {
+        "round": 8,
+        "head": "bd97bec9",
+        "reviewer": "the GitHub Codex bot (back from its usage limit)",
+        "findings": 5,
+        "fixed": 5,
+        "answered": 0,
+        "fixedIn": "426791d4"
+      },
+      {
+        "round": 9,
+        "head": "62e8eef4",
+        "reviewer": "the GitHub Codex bot",
+        "findings": 2,
+        "fixed": 2,
+        "answered": 0,
+        "fixedIn": "6ef4ee6a"
+      },
+      {
+        "round": 10,
+        "head": "7367c3c5",
+        "reviewer": "the GitHub Codex bot",
+        "findings": 0,
+        "fixed": 0,
+        "answered": 0,
+        "result": "no major issues"
+      }
+    ],
+    "unitSuite": "passed (531 cases)",
+    "loadFlakeIssues": [
+      "https://github.com/dm17ryk/klogg/issues/171",
+      "https://github.com/dm17ryk/klogg/issues/172",
+      "https://github.com/dm17ryk/klogg/issues/174"
+    ]
+  },
   "md03bChecks": {
     "date": "2026-11-25",
     "task": "MD03",

@@ -85,4 +85,16 @@ constexpr int MaxFileTreeRoots = 16;
 // MaxTreeChildrenNodes in all and MaxTreeDepth deep; null or no nodes give an empty object
 // ("nothing": the node has no children). The nodes themselves are checked when the tree uses them.
 QJsonObject sanitizeTreeChildren( const QJsonValue& answer, QString* error );
+
+// Layout and content (section 12, E17f): text views, charts, sparklines and dialog buttons.
+constexpr int MaxTextViewChars = 1024 * 1024;  // the whole text of one text_view
+constexpr int MaxTextAppendChars = 64 * 1024;  // one `append` patch
+constexpr int MaxTextViewLines = 100000;       // `max_lines`
+constexpr int MaxChartSeries = 8;
+constexpr int MaxChartPoints = 10000;          // per series
+constexpr int MaxSparklineValues = 1024;
+constexpr int MaxGridColumns = 12;
+constexpr int MaxImageSide = 4096;
+// The buttons a dialog view may declare (manifest `buttons`), in the order a button box shows them.
+const QStringList& dialogButtonNames();
 } // namespace cilogg::plugins

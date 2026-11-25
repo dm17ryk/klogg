@@ -180,6 +180,47 @@ QString validateActions( const QJsonArray& actions, const QJsonArray& capabiliti
     return {};
 }
 
+// E17f dialog buttons (docs/plugin-sdk-advanced.md section 29.3): `buttons`, `default` and
+// `confirm_by_plugin` on dialog views only. An older host ignores the keys.
+static QString validateDialogButtons( const QJsonObject& view, const QString& id,
+                                      const QString& kind )
+{
+    const bool declared = view.contains( "buttons" ) || view.contains( "default" )
+                          || view.contains( "confirm_by_plugin" );
+    if ( !declared ) {
+        return {};
+    }
+    if ( kind != QLatin1String( "dialog" ) ) {
+        return QStringLiteral( "Only dialog views take buttons, default and confirm_by_plugin: %1" )
+            .arg( id );
+    }
+    QStringList names;
+    if ( view.contains( "buttons" ) ) {
+        if ( !view.value( "buttons" ).isArray() ) {
+            return QStringLiteral( "Invalid dialog buttons: %1" ).arg( id );
+        }
+        for ( const auto& value : view.value( "buttons" ).toArray() ) {
+            const auto name = value.toString();
+            if ( !value.isString() || !dialogButtonNames().contains( name )
+                 || names.contains( name ) ) {
+                return QStringLiteral( "Invalid dialog buttons (ok, cancel, apply, close, yes, no, "
+                                       "each once): %1" )
+                    .arg( id );
+            }
+            names.append( name );
+        }
+    }
+    if ( view.contains( "default" )
+         && ( !view.value( "default" ).isString()
+              || !names.contains( view.value( "default" ).toString() ) ) ) {
+        return QStringLiteral( "The dialog default must be one of its buttons: %1" ).arg( id );
+    }
+    if ( view.contains( "confirm_by_plugin" ) && !view.value( "confirm_by_plugin" ).isBool() ) {
+        return QStringLiteral( "Invalid confirm_by_plugin flag: %1" ).arg( id );
+    }
+    return {};
+}
+
 QString validateViews( const QJsonArray& views )
 {
     if ( views.size() > MaxViewsPerPlugin ) {
@@ -221,6 +262,10 @@ QString validateViews( const QJsonArray& views )
         const auto presentation = validatePresentation( view, id, false );
         if ( !presentation.isEmpty() ) {
             return presentation;
+        }
+        const auto dialog = validateDialogButtons( view, id, kind );
+        if ( !dialog.isEmpty() ) {
+            return dialog;
         }
         ids.insert( id );
     }

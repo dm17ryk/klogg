@@ -85,6 +85,15 @@ public:
 private:
     struct Open;
     struct Message;
+    // E17f (docs/plugin-sdk-advanced.md section 29.3): dialog buttons, Esc and the title bar's
+    // close button of a dialog, the "Discard changes?" question and the title mark.
+    void dialogButton( const QString& key, const QString& name );
+    void dialogRejected( const QString& key );
+    // True when the view may close: it is not modified, or the user chose Discard.
+    bool confirmDiscard( const QString& key );
+    void updateTitle( Open& open );
+    void syncButtons( Open& open );
+    QJsonObject closedExtra( const Open& open ) const;
     void handleRequest( const QString& pluginId, const QString& method, const QJsonObject& params );
     void queueUpdate( const QString& pluginId, const QJsonObject& params );
     void render( Open& open );

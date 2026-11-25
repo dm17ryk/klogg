@@ -170,6 +170,19 @@ def exercise(cases, cli, command, finish, rows, normalized, catalog, artifacts):
                 json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8"
             )
             continue
+        if case.get("kind") == "e17-layout":
+            from workbench_layout import exercise_layout
+            from workbench_sources import run_fixtures
+
+            result = exercise_layout(
+                cli, command, catalog, artifacts,
+                lambda fixtures: run_fixtures(cli, artifacts, fixtures),
+            )
+            results.append(dict(result, id=name))
+            (artifacts / "case-results.json").write_text(
+                json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            continue
         if case.get("kind") == "e17-trees":
             from workbench_sources import run_fixtures
             from workbench_trees import exercise_trees
@@ -294,7 +307,7 @@ def main(arguments=None):
         kinds = {case.get("kind") for case in cases}
         if kinds & {"plugin-views", "pane-operations", "u15-docks", "u15b-sources",
                     "e15a-repositories", "e17-tooltips", "e17-menus", "e17-choices",
-                    "e17-tables", "e17-trees"}:
+                    "e17-tables", "e17-trees", "e17-layout"}:
             import os
 
             # Plugin views, the pane case's Python API script and the U15 and E15 Python
@@ -306,11 +319,11 @@ def main(arguments=None):
 
             steps.append(install_view_demo)
         if kinds & {"u15-docks", "u15b-sources", "e15a-repositories", "e17-tooltips", "e17-menus",
-                    "e17-choices", "e17-tables", "e17-trees"}:
+                    "e17-choices", "e17-tables", "e17-trees", "e17-layout"}:
             from workbench_sources import install_python_runtime
 
             steps.append(install_python_runtime)
-        if kinds & {"e17-tooltips", "e17-menus", "e17-choices", "e17-tables", "e17-trees"}:
+        if kinds & {"e17-tooltips", "e17-menus", "e17-choices", "e17-tables", "e17-trees", "e17-layout"}:
             from workbench_tooltips import install_ui_gallery
 
             steps.append(install_ui_gallery)

@@ -68,6 +68,7 @@ Today's panels (`src/ui/src/pluginuicontroller.cpp:644-735`) have these limits:
 | `floating` | bool | false | Docks only: start as a floating dock window. |
 | `width`, `height` | pixels | the content's own size | Starting size for windows, dialogs and floating docks. The host remembers the user's size. |
 | `modal` | bool | false | Dialogs only: modal to the CILogg window. |
+| `buttons`, `default`, `confirm_by_plugin` | names from `ok`, `cancel`, `apply`, `close`, `yes`, `no`; one of them; bool | none | Dialogs only (E17f): a button box below the view; see [the advanced SDK](plugin-sdk-advanced.md), section 29.3. |
 | `menu` | bool | true | Adds the **Plugins → <title>** entry. |
 | `toolbar` | bool | false | Adds a button for the view to the main toolbar. |
 | `icon` | relative path | the generic icon | Icon of the menu entry and the toolbar button. See below. |
@@ -173,6 +174,19 @@ under absolute `roots` with the native file model, with `filters`, `selection`, 
 folders or both) and `checkboxes`; its `value` (the selected or checked paths) is an input and
 comes with `selected`, and a double-click on a file sends `activated`. The host announces these as
 `tree` and `file_tree`.
+
+Since E17f ([advanced plugin SDK](plugin-sdk-advanced.md), sections 12 and 29), views have layout
+containers (`tabs` of `tab`s, `splitter`, `form`, `grid`, `separator`, `spacer`) and size hints on
+every element (`stretch`, `min_width`, `max_width`, `min_height`, `max_height`, `align`), and four
+content elements: `text_view` (plain text or Markdown with HTML off, `append` patches, a line
+limit, following new text, Ctrl+F, links sent as `link` events), `image` (an icon reference or a
+registered picture), `sparkline` and `chart` (`append_points` and `clear` patches). Buttons take
+`icon`, `style`, a drop-down `menu`, `checkable` and `checked`, `shortcut` and `default`; every
+container takes a busy overlay (`busy`, `busy_text`, `busy_cancel`, which sends `cancel`); the
+root's `modified` marks the title and makes closing ask "Discard changes?"; a dialog declares
+`buttons` in `plugin.json`, whose clicks come from `#buttons` and whose `view/closed` carries
+`result` and `inputs`; and a patch `{id, focus: true}` moves the focus while the view is active.
+The host announces these as `layout`, `text_view`, `images`, `charts` and `view_dialogs`.
 
 #### `multichoice` fields
 

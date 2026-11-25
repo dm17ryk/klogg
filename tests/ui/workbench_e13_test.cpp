@@ -599,7 +599,8 @@ TEST_CASE( "E13 ignores unknown elements and enforces element and cell limits",
         { { "type", "column" },
           { "children",
             QJsonArray{
-                QJsonObject{ { "type", "chart" }, { "id", "unknown" } },
+                // An element type no host knows (`chart` became one in E17f).
+                QJsonObject{ { "type", "not_an_element" }, { "id", "unknown" } },
                 QJsonObject{
                     { "type", "label" }, { "id", "known" }, { "text", "k" }, { "color", "red" } },
                 QJsonObject{ { "type", "label" }, { "id", "known" }, { "text", "duplicate" } },
