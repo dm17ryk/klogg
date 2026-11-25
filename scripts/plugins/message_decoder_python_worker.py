@@ -283,9 +283,12 @@ def normalize_result(result):
             raise InvalidResult(place + ": attributes are an object of at most 64 entries")
         converted = {}
         for key, value in attributes.items():
-            if type(key) is not str or not bounded_text(clean_text(key), ATTRIBUTE_KEY_LIMIT):
+            name = clean_text(key) if type(key) is str else None
+            if name is None or not bounded_text(name, ATTRIBUTE_KEY_LIMIT):
                 raise InvalidResult(place + ": attribute names are text of at most 128 characters")
-            converted[clean_text(key)] = cut(scalar_text(value, place + " attribute"))
+            if name in converted:
+                raise InvalidResult(place + ": two attribute names are the same text")
+            converted[name] = cut(scalar_text(value, place + " attribute"))
         fields.append(
             {
                 "columns": [

@@ -370,6 +370,13 @@ class ResultTests(Case):
         self.assertEqual(row["attributes"], {"a�": "a�"})
         json.dumps(response, ensure_ascii=False).encode("utf-8")  # strict: no lone surrogates
 
+    def test_attribute_names_that_clean_alike_are_refused(self):
+        response = self.decode("""
+            def decode(payload, context):
+                return [{"name": "a", "attributes": {"k\\udc80": 1, "k\\udc81": 2}}]
+        """)
+        self.assertEqual(response["reason"], "invalid_decoder_result", response)
+
     def test_text_limits_count_utf16_units_as_the_host_does(self):
         wide = "\U0001F600" * 3
         self.assertEqual(worker.utf16_length(wide), 6)
