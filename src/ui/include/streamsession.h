@@ -154,8 +154,9 @@ private:
     bool destroying_ = false;
     bool writePolicyExhausted_ = false;
 #endif
-    // Test-only: receives the bytes handed to the serial transport (the worker's sendData, or a
-    // write admitted by the checked writer), for tests without a serial device.
+    // Test-only, for tests without a serial device; never set in production. In the default
+    // build it REPLACES the hand-off to the worker's sendData; with KLOGG_SHARED_SERIAL_WRITER it
+    // OBSERVES each write the checked writer admitted (the real path continues).
     std::function<void( const QByteArray&, bool )> transportSinkForTests_;
 
     SerialCaptureSettings settings_;

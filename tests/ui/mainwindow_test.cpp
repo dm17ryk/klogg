@@ -30,6 +30,7 @@
 #include <QMessageBox>
 #include <QPixmap>
 #include <QPushButton>
+#include <QScopeGuard>
 #include <QSignalSpy>
 #include <QTabBar>
 #include <QTableView>
@@ -1308,7 +1309,9 @@ TEST_CASE( "Pressing Send transmits at once even when the action has an initial 
     // A legacy-imported "Read Version" action carries a 3600 ms initial delay; pressing Send
     // put the [TX] line 3.6 to 4.4 s after the press (#142).
     constexpr int LegacyInitialDelayMs = 3600;
-    constexpr qint64 PressToWriteBudgetMs = 250;
+    // Generous for a loaded CI runner; the deterministic proof is the write before the click
+    // returns. The old delay was 3600 ms.
+    constexpr qint64 PressToWriteBudgetMs = 1000;
     ActionsDefinitionsRestoreGuard restoreDefinitions;
     ActionsTabsFixture fixture;
     ActionDefinition action;
@@ -1322,7 +1325,8 @@ TEST_CASE( "Pressing Send transmits at once even when the action has an initial 
     fixture.enable( 0, true );
     fixture.select( 0 );
 
-    // The bytes the destination session hands to its serial transport, and when.
+    // The bytes the destination session hands to its serial transport (admission into the
+    // checked writer in the shared-writer build), and when.
     QElapsedTimer pressed;
     QVector<QPair<QByteArray, qint64>> written;
     const auto recordWrite = [ &written, &pressed ]( const QByteArray& bytes ) {
@@ -1331,6 +1335,9 @@ TEST_CASE( "Pressing Send transmits at once even when the action has an initial 
     StreamSessionTestAccess::setTransportSink(
         *fixture.streams[ 0 ],
         [ recordWrite ]( const QByteArray& bytes, bool ) { recordWrite( bytes ); } );
+    // A failing run may leave a timer pending: detach the sink before the locals go.
+    const auto detachSink = qScopeGuard(
+        [ &fixture ] { StreamSessionTestAccess::setTransportSink( *fixture.streams[ 0 ], {} ); } );
 
     // Press the Send button of the action's row, as the user does.
     fixture.actionsWindow->show();

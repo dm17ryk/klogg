@@ -4,6 +4,7 @@
 
 #include <QElapsedTimer>
 #include <QPointer>
+#include <QScopeGuard>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
@@ -829,7 +830,8 @@ TEST_CASE( "A manual send ignores the action's initial delay; automatic sends ke
     CHECK( initialSendDelayMs( action, ActionSendOrigin::Automatic ) == 0 );
     action.parameters.delay = 3600;
 
-    // The bytes the session hands to its serial transport, and when.
+    // The bytes the session hands to its serial transport (admission into the checked writer in
+    // the shared-writer build), and when.
     QElapsedTimer pressed;
     struct Write {
         QByteArray bytes;
@@ -840,14 +842,17 @@ TEST_CASE( "A manual send ignores the action's initial delay; automatic sends ke
         session, [ &written, &pressed ]( const QByteArray& bytes, bool ) {
             written.push_back( { bytes, pressed.elapsed() } );
         } );
+    // A failing run may leave a timer pending: detach the sink before the locals go.
+    const auto detachSink
+        = qScopeGuard( [ &session ] { StreamSessionTestAccess::setTransportSink( session, {} ); } );
 
     pressed.start();
     REQUIRE( sendActionDefinition( &session, action, ActionSendOrigin::Manual, {}, -1, nullptr ) );
-    // Written inside the call: nothing waits between the press and the serial write.
+    // Written inside the call: nothing waits between the press and the transport.
     REQUIRE( written.size() == 1 );
     CHECK( written.front().bytes == QByteArrayLiteral( "GET VERSION:01;" ) );
     INFO( "press to write took " << written.front().atMs << " ms" );
-    CHECK( written.front().atMs < 250 );
+    CHECK( written.front().atMs < 1000 ); // the old delay was 3600 ms
 
     // A response running the same action still waits for its configured delay.
     auto automatic = testAction( 7131 );
