@@ -69,8 +69,15 @@ QString highlightSetError( const QByteArray& setText, const QString& id );
 // The set's text as CILogg writes it (canonical lines), or empty when it is not a set's text.
 QByteArray canonicalHighlightSet( const QByteArray& setText );
 
-// A whole pack: its previews and filters documents and the files the manifest lists (Lua and
-// Python, and actions and highlights for now), read from the installed folder.
+// Stores written before E16c (E16a2) keep a pack's filters and highlighters files as they are,
+// under files/<path>. Such a file becomes its items (the form above), with any edit made to it;
+// where the items are already there they win and the file goes. A file that is not exactly what
+// Export writes stays as it is (the content folder gets it back unchanged). Other files are left
+// as they are.
+PackFiles fromLegacyDocuments( PackFiles files, const QJsonObject& manifest );
+
+// A whole pack: its previews, filters and highlighters documents and the files the manifest lists
+// (Lua and Python, and actions for now), read from the installed folder.
 PackFiles fromPackFolder( const QJsonObject& manifest, const QString& directory,
                           QString* error = nullptr );
 // The store-relative path of a pack file such as "lua/common.lua".

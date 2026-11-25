@@ -734,7 +734,12 @@ the Highlighters dialog lists them after the user's, read only (the set editor d
 "replaced by your set" when a set of the user's has the id, with **Copy to My Highlighters** (a
 set of the user's with the same id, which stays active if the pack's was), **Edit...** (the pack
 item editor on `highlights/<id>.set`) and **Packs...**. `get_plugins` counts a pack's
-`highlighterSets`.
+`highlighterSets`. Stores written before E16c kept the filters and highlighters files as they
+are, under `files/<path>`: every read of a store commit converts such a file to its items, with the
+commit's own manifest and any edit made to the file (`packcanonical::fromLegacyDocuments`), so
+the merge base, the local edits and the content folder see one form and the next commit is in it.
+A file that is not exactly what Export writes (an older export without ids) stays as it is and the
+content folder gets it back unchanged, never an empty file in its place.
 
 ### 4.6 Local edits and merge on update
 

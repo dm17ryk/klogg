@@ -772,6 +772,43 @@ bool isCanonical( const QString& storePath )
     return !kind.isEmpty();
 }
 
+PackFiles fromLegacyDocuments( PackFiles files, const QJsonObject& manifest )
+{
+    PackContent content;
+    if ( !validatePackManifest( manifest, &content ).isEmpty() ) {
+        return files;
+    }
+    struct Document {
+        QString path;
+        QLatin1String order;
+        PackFiles ( *convert )( const QByteArray&, QString* );
+    };
+    const Document documents[] = {
+        { content.filters, QLatin1String( FilterOrderFile ), &fromFilters },
+        { content.highlights, QLatin1String( HighlightOrderFile ), &fromHighlights },
+    };
+    for ( const auto& document : documents ) {
+        const auto legacy = filePath( document.path );
+        if ( document.path.isEmpty() || !files.contains( legacy ) ) {
+            continue;
+        }
+        if ( files.contains( document.order ) ) {
+            files.remove( legacy );
+            continue;
+        }
+        QString error;
+        const auto items = document.convert( files.value( legacy ), &error );
+        if ( !error.isEmpty() ) {
+            continue;
+        }
+        files.remove( legacy );
+        for ( auto item = items.cbegin(); item != items.cend(); ++item ) {
+            files.insert( item.key(), item.value() );
+        }
+    }
+    return files;
+}
+
 PackFiles fromPackFolder( const QJsonObject& manifest, const QString& directory, QString* error )
 {
     PackContent content;

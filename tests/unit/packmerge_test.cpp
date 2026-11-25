@@ -2748,3 +2748,115 @@ TEST_CASE( "Pack highlighter sets install, edit and update through the local sto
                .error.contains( "no highlighters file" ) );
     CHECK( manager.plugins().first().toMap()[ "highlighterSets" ] == 0 );
 }
+
+TEST_CASE( "A pack store from before E16c reads its filters and highlighters files as items",
+           "[packmerge][E16]" )
+{
+    // E16a2 kept a pack's filters and highlighters files as they are, under files/ (Codex review
+    // of #169): read as items, those files are never lost, also when an edit or a repair writes
+    // the content folder again.
+    auto manifest = packManifest();
+    manifest[ "content" ] = QJsonObject{ { "filters", "conf/filters.conf" },
+                                         { "highlights", "conf/highlights.conf" } };
+    const auto filters = filtersConf( SomeFilters );
+    const auto highlights = highlightsConf( SomeSets );
+    const PackFiles legacy{ { "files/conf/filters.conf", filters },
+                            { "files/conf/highlights.conf", highlights } };
+    auto items = packcanonical::fromFilters( filters );
+    const auto sets = packcanonical::fromHighlights( highlights );
+    for ( auto set = sets.cbegin(); set != sets.cend(); ++set ) {
+        items.insert( set.key(), set.value() );
+    }
+    REQUIRE( items.contains( "filters/f-one.json" ) );
+    REQUIRE( items.contains( "highlights/s-one.set" ) );
+
+    SECTION( "the conversion" )
+    {
+        CHECK( packcanonical::fromLegacyDocuments( legacy, manifest ) == items );
+        // Items already there win; other files and other kinds are left as they are.
+        auto both = items;
+        both.insert( "files/conf/filters.conf", "[stale]\n" );
+        both.insert( "files/lua/a.lua", "-- a\n" );
+        auto expected = items;
+        expected.insert( "files/lua/a.lua", "-- a\n" );
+        CHECK( packcanonical::fromLegacyDocuments( both, manifest ) == expected );
+        // A file that is not exactly what Export writes stays as it is.
+        const auto noIds = filtersConf( { { QString{}, "Old", "old", true } } );
+        const PackFiles odd{ { "files/conf/filters.conf", noIds } };
+        CHECK( packcanonical::fromLegacyDocuments( odd, manifest ) == odd );
+        // A manifest without those documents keeps the files.
+        CHECK( packcanonical::fromLegacyDocuments( legacy, packManifest() ) == legacy );
+    }
+
+    SECTION( "an unrelated edit and an update keep them" )
+    {
+        QTemporaryDir root;
+        REQUIRE( root.isValid() );
+        PackStore store( root.path(), "org.example.pack" );
+        REQUIRE( store.install( legacy, manifest, "1.0.0", "Team packs" ).isEmpty() );
+        CHECK( store.files() == items );
+        CHECK( store.upstreamFiles() == items );
+        CHECK( store.localEdits().isEmpty() );
+        const auto content = store.contentDirectory() + "/conf";
+        CHECK( contentFilters( content ).size() == 2 );
+        CHECK( contentSets( content ).size() == 3 ); // two sets and the order
+
+        // An edit of one set rewrites the content folder: the filters and the other set stay.
+        const auto one = QStringLiteral( "highlights/s-one.set" );
+        auto edited = store.files().value( one );
+        edited.replace( "\"ERROR\"", "\"ERROR|PANIC\"" );
+        REQUIRE( store.commitEdit( one, edited, "Edit highlighter set 'Errors'" ).isEmpty() );
+        CHECK( store.localEdits() == QStringList{ one } );
+        CHECK( contentFilters( content ).size() == 2 );
+        CHECK( contentSets( content ).size() == 3 );
+        CHECK( contentSets( content ).value( one ).contains( "ERROR|PANIC" ) );
+
+        // A new version in the item form merges with that edit item by item.
+        auto next = items;
+        next.insert( "highlights/s-three.set",
+                     packcanonical::fromHighlights( highlightsConf( { { "s-three", "New", {} } } ) )
+                         .value( "highlights/s-three.set" ) );
+        next.insert( "highlights/order.txt", "s-one\ns-two\ns-three\n" );
+        const auto plan = store.planUpdate( next, MergeStrategy::Fail );
+        CHECK( plan.conflicts.isEmpty() );
+        CHECK( plan.merged.value( one ).contains( "ERROR|PANIC" ) );
+        CHECK( plan.merged.contains( "highlights/s-three.set" ) );
+        CHECK( !plan.merged.contains( "files/conf/highlights.conf" ) );
+    }
+
+    SECTION( "a local edit made to the file itself" )
+    {
+        QTemporaryDir root;
+        REQUIRE( root.isValid() );
+        PackStore store( root.path(), "org.example.pack" );
+        REQUIRE( store.install( legacy, manifest, "1.0.0", "Team packs" ).isEmpty() );
+        // E16a2 committed an edit of the filters file as the whole file.
+        auto mine = legacy;
+        auto rows = SomeFilters;
+        rows[ 0 ].filter = "ERROR|PANIC";
+        mine.insert( "files/conf/filters.conf", filtersConf( rows ) );
+        REQUIRE( store.applyUpdate( legacy, mine, manifest, "1.0.0", "Team packs" ).isEmpty() );
+        CHECK( store.localEdits() == QStringList{ "filters/f-one.json" } );
+        CHECK( store.files().value( "filters/f-one.json" ).contains( "ERROR|PANIC" ) );
+        CHECK( contentFilters( store.contentDirectory() + "/conf" )
+                   .first()
+                   .value( "filter" )
+                   .toString()
+               == "ERROR|PANIC" );
+    }
+
+    SECTION( "a file that is not an export" )
+    {
+        QTemporaryDir root;
+        REQUIRE( root.isValid() );
+        PackStore store( root.path(), "org.example.pack" );
+        const auto noIds = filtersConf( { { QString{}, "Old", "old", true } } );
+        auto odd = legacy;
+        odd.insert( "files/conf/filters.conf", noIds );
+        REQUIRE( store.install( odd, manifest, "1.0.0", "Team packs" ).isEmpty() );
+        CHECK( store.files().value( "files/conf/filters.conf" ) == noIds );
+        // The content folder gets it back unchanged, never an empty filters file.
+        CHECK( readFile( store.contentDirectory() + "/conf/filters.conf" ) == noIds );
+        CHECK( contentSets( store.contentDirectory() + "/conf" ).size() == 3 );
+    }
+}
