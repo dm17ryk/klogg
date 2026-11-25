@@ -415,7 +415,14 @@ PackFiles PackStore::filesAt( const QString& reference, bool* complete ) const
     if ( complete ) {
         *complete = walked == 0;
     }
-    return walked == 0 ? files : PackFiles{};
+    if ( walked != 0 ) {
+        return {};
+    }
+    // A commit made before E16c keeps the filters and highlighters files as they are: read as
+    // items (with the commit's own manifest), so the merge base, the edits and the content folder
+    // all see one form, and the next commit is in it.
+    const auto manifest = QJsonDocument::fromJson( files.value( ManifestPath ) ).object();
+    return packcanonical::fromLegacyDocuments( std::move( files ), manifest );
 }
 
 PackFiles PackStore::files() const
@@ -443,7 +450,7 @@ QStringList PackStore::localEdits() const
     return edited;
 }
 
-QString PackStore::writeFolder( const QString& folder, const PackFiles& files,
+QString PackStore::writeFolder( const QString& folder, const PackFiles& stored,
                                 const QJsonObject& manifest )
 {
     PackContent content;
@@ -451,6 +458,15 @@ QString PackStore::writeFolder( const QString& folder, const PackFiles& files,
     if ( !invalid.isEmpty() ) {
         return invalid;
     }
+    // Files of a store from before E16c in the item form; a filters or highlighters file that is
+    // not exactly an export is still there as it is, and is written back unchanged (never as an
+    // empty file in its place).
+    const auto files = packcanonical::fromLegacyDocuments( stored, manifest );
+    const auto document
+        = [ &files ]( const QString& path, auto toDocument, QString* error ) -> QByteArray {
+        const auto legacy = files.constFind( packcanonical::filePath( path ) );
+        return legacy != files.cend() ? legacy.value() : toDocument( files, error );
+    };
     // Written into an empty folder only: a file left there (one held open while it was cleared)
     // would be published with the pack's content.
     if ( !clearFolder( folder ) ) {
@@ -476,11 +492,20 @@ QString PackStore::writeFolder( const QString& folder, const PackFiles& files,
     }
     if ( !content.filters.isEmpty() ) {
         QString error;
-        const auto filters = packcanonical::toFilters( files, &error );
+        const auto filters = document( content.filters, &packcanonical::toFilters, &error );
         if ( !error.isEmpty() ) {
             return error;
         }
         ok = ok && write( content.filters, filters );
+    }
+    if ( !content.highlights.isEmpty() ) {
+        QString error;
+        const auto highlights
+            = document( content.highlights, &packcanonical::toHighlights, &error );
+        if ( !error.isEmpty() ) {
+            return error;
+        }
+        ok = ok && write( content.highlights, highlights );
     }
     // Exactly the files the manifest lists: a listed file missing from `files` is an error, and
     // anything else under files/ is not written.
@@ -809,19 +834,25 @@ QString PackStore::planRestore( const QString& storePath, const QString& commitI
         const auto manifest = QJsonDocument::fromJson( current.value( ManifestPath ) ).object();
         const bool filters
             = kind == QLatin1String( "filter" ) || kind == QLatin1String( "filter-order" );
+        const bool highlights
+            = kind == QLatin1String( "highlight" ) || kind == QLatin1String( "highlight-order" );
+        // The document an item of this kind belongs to: without it, it never reaches the content
+        // folder.
+        const auto document = filters      ? std::pair{ &content.filters, "filters file" }
+                              : highlights ? std::pair{ &content.highlights, "highlighters file" }
+                                           : std::pair{ &content.previews, "previews document" };
         if ( kind != QLatin1String( "file" )
              && ( !validatePackManifest( manifest, &content ).isEmpty()
-                  || ( filters ? content.filters : content.previews ).isEmpty() ) ) {
-            return filters
-                       ? QStringLiteral( "This version of the pack has no filters file; its "
-                                         "manifest decides what the pack has." )
-                       : QStringLiteral( "This version of the pack has no previews document; its "
-                                         "manifest decides what the pack has." );
+                  || document.first->isEmpty() ) ) {
+            return QStringLiteral( "This version of the pack has no %1; its manifest decides what "
+                                   "the pack has." )
+                .arg( QLatin1String( document.second ) );
         }
         stored->insert( storePath, target.value( storePath ) );
     }
     else if ( kind == QLatin1String( "file" ) || kind == QLatin1String( "order" )
-              || kind == QLatin1String( "filter-order" ) || kind == QLatin1String( "meta" ) ) {
+              || kind == QLatin1String( "filter-order" )
+              || kind == QLatin1String( "highlight-order" ) || kind == QLatin1String( "meta" ) ) {
         // The manifest decides which files a pack has; they are edited, never removed.
         if ( current.contains( storePath ) ) {
             return QStringLiteral( "That version has no such file, and this version of the pack "

@@ -45,6 +45,7 @@
 #include <random>
 #include <utility>
 
+#include <QSet>
 #include <QSettings>
 
 #include <simdutf.h>
@@ -513,8 +514,16 @@ void HighlighterSetCollection::setHighlighterSets( const QList<HighlighterSet>& 
 {
     highlighters_ = highlighters;
 
+    // An enabled pack's set stays active too (E16c2): which sets are active is the user's state.
+    const auto listed = listedSets();
     activeSets_.erase( std::remove_if( activeSets_.begin(), activeSets_.end(),
-                                       [ this ]( const auto& setId ) { return !hasSet( setId ); } ),
+                                       [ &listed ]( const auto& setId ) {
+                                           return std::none_of(
+                                               listed.cbegin(), listed.cend(),
+                                               [ &setId ]( const ListedHighlighterSet& item ) {
+                                                   return item.set.id() == setId;
+                                               } );
+                                       } ),
                        activeSets_.end() );
     updateCombinedSet();
 }
@@ -524,15 +533,65 @@ const HighlighterSet& HighlighterSetCollection::currentActiveSet() const
     return combinedActiveSet_;
 }
 
+PackHighlighters& PackHighlighters::instance()
+{
+    static PackHighlighters highlighters;
+    return highlighters;
+}
+
+void PackHighlighters::setSets( const QList<ListedHighlighterSet>& sets )
+{
+    sets_ = sets;
+    LOG_INFO << "Pack highlighter sets applied sets=" << sets_.size();
+    // The active pack sets highlight with their new rules at once. The registry applies the packs
+    // before CILogg first reads the user's highlighters (KloggApp attaches it before main syncs
+    // them); that first read combines the pack sets itself.
+    if ( HighlighterSetCollection::isInitialized() ) {
+        HighlighterSetCollection::get().refreshPackSets();
+    }
+    Q_EMIT changed();
+}
+
+QList<ListedHighlighterSet> HighlighterSetCollection::listedSets() const
+{
+    QList<ListedHighlighterSet> sets;
+    QSet<QString> ids;
+    for ( const auto& set : highlighters_ ) {
+        sets.append( { set, QString{}, QString{} } );
+        ids.insert( set.id() );
+    }
+    QList<ListedHighlighterSet> packs;
+    for ( const auto& listed : PackHighlighters::instance().sets() ) {
+        if ( !ids.contains( listed.set.id() ) ) {
+            packs.append( listed );
+        }
+    }
+    // The user's sets grew past the limit after the packs were enabled (enabling is checked):
+    // the packs' sets give way, never the user's.
+    if ( sets.size() + packs.size() > MaxListedHighlighterSets ) {
+        LOG_WARNING << "Pack highlighter sets not listed: own=" << sets.size()
+                    << " packs=" << packs.size() << " limit=" << MaxListedHighlighterSets;
+        return sets;
+    }
+    sets.append( packs );
+    return sets;
+}
+
+void HighlighterSetCollection::refreshPackSets()
+{
+    updateCombinedSet();
+}
+
 void HighlighterSetCollection::updateCombinedSet()
 {
     combinedActiveSet_.highlighterList_.clear();
 
-    for ( const HighlighterSet& set : klogg::as_const( highlighters_ ) ) {
-        if ( !activeSets_.contains( set.id() ) ) {
+    // The user's sets and the enabled packs' (E16c2), in list order.
+    for ( const auto& listed : listedSets() ) {
+        if ( !activeSets_.contains( listed.set.id() ) ) {
             continue;
         }
-        combinedActiveSet_.highlighterList_.append( set.highlighterList_ );
+        combinedActiveSet_.highlighterList_.append( listed.set.highlighterList_ );
     }
 
     // Avoid expensive regex compilation during startup/settings load.
@@ -548,7 +607,12 @@ QStringList HighlighterSetCollection::activeSetIds() const
 void HighlighterSetCollection::activateSet( const QString& setId )
 {
     LOG_INFO << "activating set " << setId;
-    if ( !hasSet( setId ) || activeSets_.contains( setId ) ) {
+    // The user's sets and the enabled packs' (E16c2) can be activated.
+    const auto listed = listedSets();
+    const bool known = std::any_of( listed.cbegin(), listed.cend(), [ &setId ]( const auto& item ) {
+        return item.set.id() == setId;
+    } );
+    if ( !known || activeSets_.contains( setId ) ) {
         LOG_WARNING << "Set not found or already active";
         return;
     }
