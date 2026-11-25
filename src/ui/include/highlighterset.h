@@ -40,7 +40,9 @@
 #define highlighterSet_H
 
 #include <QColor>
+#include <QList>
 #include <QMetaType>
+#include <QObject>
 #include <QRegularExpression>
 #include <QVector>
 #include <memory>
@@ -177,6 +179,41 @@ struct QuickHighlighter {
     bool useInCycle;
 };
 
+// A highlighter set as the lists offer it (E16c2): the user's own (packId empty) or a set of an
+// enabled configuration pack (docs/plugin-repositories.md 4.5), with its pack's ID and name.
+struct ListedHighlighterSet {
+    HighlighterSet set;
+    QString packId;
+    QString packName;
+};
+
+// The most highlighter sets the lists offer, the user's and the enabled packs' together: as many
+// as a configuration import takes. Enabling a pack past it is refused; when the user's own sets
+// grow past it, the packs' sets give way (as their previews and filters do).
+constexpr int MaxListedHighlighterSets = 4096;
+
+// The highlighter sets of the enabled configuration packs, set by PreviewPackRegistry. They are
+// kept apart from the user's sets: never saved, exported or put in a project snapshot. Which of
+// them are active is the user's state (HighlighterSetCollection's active sets, by id).
+class PackHighlighters final : public QObject {
+    Q_OBJECT
+  public:
+    static PackHighlighters& instance();
+    // The packs' sets (packs in ID order, each in its own order), with packId and packName.
+    void setSets( const QList<ListedHighlighterSet>& sets );
+    const QList<ListedHighlighterSet>& sets() const
+    {
+        return sets_;
+    }
+
+  Q_SIGNALS:
+    void changed();
+
+  private:
+    PackHighlighters() = default;
+    QList<ListedHighlighterSet> sets_;
+};
+
 class HighlighterSetCollection final : public Persistable<HighlighterSetCollection> {
   public:
     static const char* persistableName()
@@ -184,9 +221,16 @@ class HighlighterSetCollection final : public Persistable<HighlighterSetCollecti
         return "HighlighterSetCollection";
     }
 
+    // The user's own sets (saved, exported, put in project snapshots).
     const QList<HighlighterSet>& highlighterSets() const;
     QList<HighlighterSet>& highlighterSets();
     void setHighlighterSets( const QList<HighlighterSet>& highlighters );
+
+    // The sets the lists offer: the user's, then the enabled packs' whose id the user has not
+    // taken (E16c2), unless the packs' sets give way past MaxListedHighlighterSets.
+    QList<ListedHighlighterSet> listedSets() const;
+    // Applies a change of the packs' sets to the active highlighting.
+    void refreshPackSets();
 
     const HighlighterSet& currentActiveSet() const;
 

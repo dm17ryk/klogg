@@ -573,6 +573,8 @@ void openPackFiles( QWidget* parent, Executor executor, const QString& packId,
                                                { "meta", tr( "Previews settings" ) },
                                                { "filter", tr( "Filter" ) },
                                                { "filter-order", tr( "Filter order" ) },
+                                               { "highlight", tr( "Highlighter set" ) },
+                                               { "highlight-order", tr( "Highlighter set order" ) },
                                                { "file", tr( "File" ) } };
     const auto selected = [ table ]( int role ) {
         const auto* cell = table->currentRow() >= 0 ? table->item( table->currentRow(), 0 ) : nullptr;
@@ -731,7 +733,8 @@ bool openPackMerge( QWidget* parent, const QString& packName, const QVariantMap&
         const auto conflict = value.toMap();
         const auto kind = conflict.value( "kind" ).toString();
         const auto path = conflict.value( "path" ).toString();
-        if ( kind == "file" || kind == "order" || kind == "filter-order" ) {
+        if ( kind == "file" || kind == "order" || kind == "filter-order" || kind == "highlight"
+             || kind == "highlight-order" ) {
             // Lua and Python, and the orders: Installed, Yours and New version side by side, the
             // result below.
             auto* page = new QWidget( tabs );

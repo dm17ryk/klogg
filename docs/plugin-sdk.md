@@ -1186,7 +1186,7 @@ packs](plugin-repositories.md) section 4). The example is
   permissions, so the GUI asks as for Lua. The host feature `python_decoders` says a CILogg runs
   them (see [plugin repositories](plugin-repositories.md) section 4.4 and
   [plugins/examples/python-decoder-pack](../plugins/examples/python-decoder-pack)).
-  `actions` and `highlights` are validated as files and loaded by later slices (E16c2 and E16c3).
+  `actions` is validated as a file and loaded by a later slice (E16c3).
 - `filters` is a predefined filters file as CILogg exports it (**Export** in the Predefined
   Filters dialog: INI, group `PredefinedFiltersCollection`, version 1 to 3, at most 4,096 filters).
   Every filter needs an `id` (unique in the pack: it is the filter's identity), a `name` and a
@@ -1198,13 +1198,34 @@ packs](plugin-repositories.md) section 4). The example is
   more than 4,096 is refused. Your own filters are not limited: when they grow past that, the
   packs' filters are not listed until you have fewer (as pack previews give way). Exports and
   project snapshots contain your filters only.
-- No content file may be `plugin.json`, the previews file or the filters file (compared ignoring
-  case): CILogg writes them itself for the pack's content with your edits. Two content files may not differ
-  only in case either (one file on Windows and macOS).
-- `get_plugins` adds `contents` and the counts `previews`, `filters`, `luaFiles` and
-  `pythonDecoders` for a pack, `pythonDecodersActive`, `localEdits` (the edited items) and
-  `needsMerge` (the version an update could not merge), and reports the host's features with their
-  versions in `hostFeatures`. Catalog entries of packs use `os: any` and `arch: any`.
+- `highlights` is a highlighters file as CILogg exports it (**Export** in the Highlighters
+  dialog: INI, group `HighlighterSetCollection`, version 1 or 2, at most 4,096 sets of at most
+  4,096 rules). Every set needs an `id` (unique in the pack: it is the set's identity) and a
+  `name`; each rule needs its pattern (`regexp`), and the other members **Export** writes
+  (`ignore_case`, `match_only`, `use_regex`, `variate_colors`, `color_variance`, `fore_colour`,
+  `back_colour`) take CILogg's defaults when an older export lacks them; `color_variance` is 0 to
+  100, and a value with a comma is quoted, as Export writes it (unquoted, QSettings reads it as a
+  list). The file holds nothing else apart from the exported `active_sets` and color labels
+  (`quick`), which a pack does not carry. Pack sets join the Highlighters menu and dialog after your own, with the
+  pack's name, and highlight after yours; which sets are active stays yours (kept by id, also
+  across pack updates and while the pack is disabled). A set of yours with a pack set's id
+  replaces it (**Copy to My Highlighters** keeps the id); two enabled packs never share a set id;
+  enabling or updating a pack that would make your sets and all enabled packs' more than 4,096 is
+  refused, and when your own grow past that the packs' sets are not listed until you have fewer
+  (a set of yours that replaces a pack set counts once). Exports and project snapshots contain
+  your sets only; a project snapshot keeps which sets were on, pack sets included, by id.
+- A filters or highlighters file that is not exactly what Export writes is refused when a pack is
+  installed, updated or enabled. A pack enabled before E16c may still carry one: its other
+  content applies, that file's items are left out, and `get_plugins` says why in
+  `contentWarnings`.
+- No content file may be `plugin.json`, the previews file, the filters file or the highlighters
+  file (compared ignoring case): CILogg writes them itself for the pack's content with your
+  edits. Two content files may not differ only in case either (one file on Windows and macOS).
+- `get_plugins` adds `contents` and the counts `previews`, `filters`, `highlighterSets`,
+  `luaFiles` and `pythonDecoders` for a pack, `pythonDecodersActive`, `contentWarnings` (only when
+  a filters or highlighters file cannot be read), `localEdits` (the edited items) and `needsMerge`
+  (the version an update could not merge), and reports the host's features with their versions in
+  `hostFeatures`. Catalog entries of packs use `os: any` and `arch: any`.
 
 ### Local edits and updates
 
@@ -1212,13 +1233,16 @@ Users edit pack items in place; each pack has a local store (a Git repository ke
 libgit2, never shown to users) whose `upstream` branch holds the versions as shipped and whose
 `local` branch holds the edits. Items are stored one per file: `previews/<name>.json`,
 `blocks/<name>.json`, `previews/order.txt` (evaluation order), `previews/meta.json`,
-`filters/<id>.json` (`filter`, `id`, `name`, `regex`), `filters/order.txt` (list order) and
+`filters/<id>.json` (`filter`, `id`, `name`, `regex`), `filters/order.txt` (list order),
+`highlights/<id>.set` (a highlighter set as text: an `id` line, a `name` line and one `rule` line
+per rule, each value JSON), `highlights/order.txt` (set order) and
 `files/<path>` for Lua and Python, names and ids percent-encoded outside `[a-z0-9._-]`. An install
 or update merges the new version with the edits: an item not edited takes the new version, fields
 changed on one side merge, the same new value on both sides is no conflict, and the same field
 changed differently, or deleted on one side and changed on the other, is a conflict. Preview
-`fields` merge by `name`. Lua and Python files and the two orders merge as text, like
-`git merge-file`.
+`fields` merge by `name`. Lua and Python files, highlighter sets and the orders merge as text, like
+`git merge-file`: edits of different rules of a set merge, and edits of the same or adjacent
+lines are a conflict.
 
 `plugin_manage` operations for packs (GUI, CLI, native MCP and Python alike):
 

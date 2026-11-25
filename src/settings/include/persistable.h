@@ -44,6 +44,12 @@ class Persistable {
         return persistable;
     }
 
+    // Whether get() can be used: getSynced() has run at least once.
+    static bool isInitialized()
+    {
+        return initializedFlag();
+    }
+
     void save() const
     {
         auto& settings = PersistentInfo::getSettings( SettingsType{} );
@@ -51,9 +57,15 @@ class Persistable {
     }
 
   private:
-    static T& getPersistable( bool willBeInitialized = false )
+    static bool& initializedFlag()
     {
         static bool persistableInitialized = false;
+        return persistableInitialized;
+    }
+
+    static T& getPersistable( bool willBeInitialized = false )
+    {
+        auto& persistableInitialized = initializedFlag();
         if ( !persistableInitialized && !willBeInitialized ) {
             LOG_ERROR << "Access to not initialized persistable " << T::persistableName();
             throw std::logic_error( "Access to not initialized persistable" );

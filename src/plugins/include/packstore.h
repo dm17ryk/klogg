@@ -97,10 +97,12 @@ public:
     // removes a store that did not exist then.
     PackTips tips() const;
     QString rollback( const PackTips& tips );
-    // Writes `files` in the pack's own layout into `folder` (replaced): plugin.json, the
-    // previews document and exactly the files the manifest lists. The content folder is written
-    // this way, and so is a merge result that is checked before it is installed.
-    static QString writeFolder( const QString& folder, const PackFiles& files,
+    // Writes `stored` in the pack's own layout into `folder` (replaced): plugin.json, the
+    // previews, filters and highlighters documents and exactly the files the manifest lists. The
+    // content folder is written this way, and so is a merge result that is checked before it is
+    // installed. Files of a store from before E16c are read as packcanonical::fromLegacyDocuments
+    // says.
+    static QString writeFolder( const QString& folder, const PackFiles& stored,
                                 const QJsonObject& manifest );
     // Writes the effective content again when its folder is missing or holds another commit (a
     // write that failed after its commit).

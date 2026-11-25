@@ -751,8 +751,9 @@
     "productBuildRun": true,
     "testsWrittenFirst": "the packmerge_test filter canonical form and store cases and the configpack_test pack filter list, dialog and count cases were written before the implementation (they did not build without it)",
     "localClangCheck": "clang-cl -fsyntax-only with the Unix warning set, -Wshadow-all and -Werror on every changed C++ file: clean (PredefinedFilter kept as it was, so no aggregate initializer gains missing fields)",
-    "qualification": "local_gates_passed_hosted_pending",
-    "pullRequest": "https://github.com/dm17ryk/klogg/pull/165"
+    "qualification": "merged",
+    "pullRequest": "https://github.com/dm17ryk/klogg/pull/165",
+    "mergedAs": "45cfa33589e6e00b0301afa939f14f449a5c987d"
   },
   "d18Checks": {
     "date": "2026-11-19",
@@ -1382,5 +1383,67 @@
     "independentReview": "839d77b: Codex bot over its usage limit and the local Codex CLI out of credits, so independent fresh-context Claude reviews (cpp-reviewer 4 low, python-reviewer 2 medium 5 low), fixed in 64965066 and aef02ae6 with tests (round 2: 3 low, 1 fixed; round 3: clean). The Codex bot then reviewed ef63b99 (P1: a repository install judged the pack code prompt from unverified catalog contents; P2: .PY suffixes; P2: an early timeout named TShark for a Python route) and aef02ae6 (P2: KeyboardInterrupt and GeneratorExit from a decoder; P2: relative imports in folders whose names are escaped), all fixed with tests: staging refuses a pack whose catalog entry leaves out its lua or python_decoders, suffixes in any case, the route's engine named before the timeout check, any BaseException from a decoder is a request failure, folders registered as packages at their real paths. Kept by design: modules copied at session start (as pack Lua), moduleSha256 of the routed module, strict row types. Later heads, while the Codex bot was over its limit again: cpp-reviewer on 6bc5e31 (2 low, fixed in 40cfb65: module paths that differ only in case refused everywhere, the staging refusal names the catalog fix) and python-reviewer on 40cfb65 (no defect; one low note on Unicode case folding answered)",
     "qualification": "local_gates_passed_hosted_pending",
     "pullRequest": "https://github.com/dm17ryk/klogg/pull/163"
+  },
+  "e16c2Checks": {
+    "date": "2026-11-25",
+    "task": "E16",
+    "slice": "E16c2",
+    "decision": "D16",
+    "deliverySplit": "E16c delivered as E16c1 (predefined filters, merged in #165), E16c2 (highlighter sets) and E16c3 (actions with automatic responses), decided by the user on 2026-11-24",
+    "issues": [
+      "https://github.com/dm17ryk/klogg/issues/147 (part)"
+    ],
+    "basedOn": "45cfa335",
+    "taskStatus": "in_progress",
+    "hardDagAndRequirementsUnchanged": true,
+    "otherTaskRecordsPreserved": true,
+    "productCodeChanged": true,
+    "productBuildRun": true,
+    "testsWrittenFirst": "the packmerge_test highlighter canonical form and store cases and the configpack_test reserved-file cases were written before the plugins layer; the configpack_test registry, menu, dialog, check and give-way case was written after the UI layer and run against it",
+    "highRiskSymbols": [
+      "HighlighterSetCollection (GitNexus: HIGH, 19 direct users): highlighterSets() and hasSet() stay the user's sets only, so saving, export, project snapshots and import are unchanged; only listedSets(), activateSet(), setHighlighterSets() pruning and the combined set take pack sets",
+      "Persistable (GitNexus: HIGH, 116 impacted through every persistable): isInitialized() added; the initialized flag moved into a function-local static with the same lifetime, get() and getSynced() unchanged"
+    ],
+    "localClangCheck": "clang-cl -fsyntax-only with the Unix warning set, -Wshadow-all and -Werror on every changed C++ file",
+    "qualification": "local_gates_passed_hosted_pending",
+    "pullRequest": "https://github.com/dm17ryk/klogg/pull/169",
+    "reviewRounds": [
+      {
+        "head": "d610e925",
+        "reviewer": "GitHub Codex review bot",
+        "findings": [
+          "P1 (fixed): stores from before E16c lost their filters and highlighters files on the next content write; converted on read by packcanonical::fromLegacyDocuments"
+        ]
+      },
+      {
+        "head": "698f1e22",
+        "reviewer": "independent Claude review (cpp-reviewer); Codex bot over its usage limit, local Codex CLI out of credits",
+        "findings": [
+          "P2 (fixed): a counted rule missing from the highlighters file was made from defaults, so a small file could declare millions of rules",
+          "P3 (fixed): removing the user's copy of a pack set deactivated the pack's set",
+          "P3 (answered): a pre-E16c highlighters file hand-edited into an unreadable form loses that edit on the next update (reported in droppedEdits) and the pack's sets until Reset to Pack Version; such an edit never had an effect before E16c2"
+        ]
+      },
+      {
+        "head": "7cddef8c",
+        "reviewer": "independent Claude review (cpp-reviewer); Codex bot over its usage limit, local Codex CLI out of credits",
+        "findings": [
+          "P3 (fixed): a value with an unquoted comma read as a list became an empty pattern",
+          "P3 (fixed): color_variance outside 0..100 accepted (user-import side: issue #170)",
+          "P3 (fixed): highlightsInvalid did not compare the read-back sets with the store's"
+        ]
+      },
+      {
+        "head": "ec49b95c",
+        "reviewer": "independent Claude review (cpp-reviewer); Codex bot over its usage limit, local Codex CLI out of credits",
+        "findings": [
+          "P2 (fixed): an enabled pack with a filters or highlighters file that is not an export lost its whole contribution; now only that file's items, with contentWarnings and a refusal at enable or update",
+          "P3 (fixed): the pack check counted pack sets and filters replaced by the user's items",
+          "P3 (answered, docs clarified): a project snapshot keeps active pack set ids by design"
+        ]
+      }
+    ],
+    "masterMergedAt": "52e21ee7 (MD03b, #163)",
+    "mergeConflictResolved": "DOCUMENTATION.md and docs/plugin-sdk.md keep both the MD03b Python decoder text and the E16c2 highlighter set text; PROGRESS.json, PLAN_VALIDATION.json and PACKAGE_SHA256.json took master's version with the E16c2 entries re-applied by build_tmp ledger scripts and hashes recomputed"
   }
 }

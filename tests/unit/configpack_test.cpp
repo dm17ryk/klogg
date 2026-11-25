@@ -1,13 +1,18 @@
 // Configuration packs, slice E16a1 (docs/plugin-repositories.md sections 4.1-4.4).
 #include <catch2/catch.hpp>
 
+#include <QCoreApplication>
+#include <QDateTime>
 #include <QDialogButtonBox>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QLineEdit>
+#include <QListWidget>
 #include <QPushButton>
+#include <QSettings>
 #include <QSignalSpy>
 #include <QStandardItemModel>
 #include <QTableView>
@@ -20,6 +25,9 @@
 #include <tuple>
 
 #include "configpack.h"
+#include "highlightersdialog.h"
+#include "highlighterset.h"
+#include "highlightersmenu.h"
 #include "importpreviewsdialog.h"
 #include "plugincatalog.h"
 #include "pluginmanager.h"
@@ -269,8 +277,15 @@ TEST_CASE( "Configuration pack manifests follow the pack rules", "[plugins][E16]
                    .contains( filtersFile ) );
         CHECK( manifestError( withContent( valid, "filters", "python/summary.py" ) )
                    .contains( filtersFile ) );
+        // The highlighters file is written by CILogg as well (E16c2).
+        const auto highlightsFile = QStringLiteral( "is the pack's highlighters file" );
         CHECK( manifestError( withContent( withContent( valid, "actions", "a.json" ), "highlights",
                                            "a.json" ) )
+                   .contains( highlightsFile ) );
+        CHECK( manifestError( withContent( valid, "highlights", "python/summary.py" ) )
+                   .contains( highlightsFile ) );
+        CHECK( manifestError( withContent( withContent( valid, "actions", "a.json" ), "highlights",
+                                           "h.conf" ) )
                    .isEmpty() );
     }
     SECTION( "Python decoders need an id and a .py module" )
@@ -1103,8 +1118,9 @@ TEST_CASE( "Pack filters join the predefined filters with the pack's name", "[pl
             .contains(
                 "\"Pack b.pack\" and \"Pack a.pack\" both have a filter with the id \"f-one\"" ) );
     {
+        // Your 2 filters, a.pack's listed 1 (your f-two replaces its f-two) and c.pack's 4,094.
         QVector<std::tuple<QString, QString, QString>> many;
-        for ( int index = 0; index < 4093; ++index ) {
+        for ( int index = 0; index < 4094; ++index ) {
             many.append( { QStringLiteral( "m%1" ).arg( index ), "M", "m" } );
         }
         const auto large = writeFilterPack( root.path(), "c.pack", filtersFile( many ) );
@@ -1113,6 +1129,13 @@ TEST_CASE( "Pack filters join the predefined filters with the pack's name", "[pl
         many.removeLast();
         const auto fits = writeFilterPack( root.path(), "c.pack", filtersFile( many ) );
         CHECK( registry.check( "c.pack", fits, Manifest::read( fits ).json ).isEmpty() );
+        // Without your f-two the pack's counts: 4,097 again (independent review of #169).
+        collection.saveToStorage(
+            { { "mine", "Mine", "mine", false }, { "other", "Other", "other", true } } );
+        CHECK( registry.check( "c.pack", fits, Manifest::read( fits ).json )
+                   .contains( "would make 4097 predefined filters" ) );
+        collection.saveToStorage(
+            { { "mine", "Mine", "mine", false }, { "f-two", "My reset", "my reset", true } } );
     }
 
     // The Filters dialog: your filters, then the pack's with its name, read only and never saved.
@@ -1213,4 +1236,393 @@ TEST_CASE( "Pack filters join the predefined filters with the pack's name", "[pl
         == 3 );
     registry.attach( nullptr );
     collection.saveToStorage( saved );
+}
+
+namespace {
+// A highlighters file as CILogg exports it, one regex rule per set (id, name, pattern).
+QByteArray highlightersFile( const QVector<std::tuple<QString, QString, QString>>& sets )
+{
+    QTemporaryDir folder;
+    REQUIRE( folder.isValid() );
+    const auto path = folder.filePath( "highlights.conf" );
+    {
+        QSettings settings( path, QSettings::IniFormat );
+        settings.beginGroup( "HighlighterSetCollection" );
+        settings.setValue( "version", 2 );
+        settings.beginWriteArray( "sets" );
+        int index = 0;
+        for ( const auto& [ id, name, pattern ] : sets ) {
+            settings.setArrayIndex( index++ );
+            settings.beginGroup( "HighlighterSet" );
+            settings.setValue( "version", 3 );
+            settings.setValue( "id", id );
+            settings.setValue( "name", name );
+            settings.beginWriteArray( "highlighters" );
+            settings.setArrayIndex( 0 );
+            settings.setValue( "regexp", pattern );
+            settings.setValue( "ignore_case", false );
+            settings.setValue( "match_only", false );
+            settings.setValue( "use_regex", true );
+            settings.setValue( "variate_colors", false );
+            settings.setValue( "color_variance", 15 );
+            settings.setValue( "fore_colour", "#ff000000" );
+            settings.setValue( "back_colour", "#ffffff00" );
+            settings.endArray();
+            settings.endGroup();
+        }
+        settings.endArray();
+        settings.endGroup();
+        settings.sync();
+        REQUIRE( settings.status() == QSettings::NoError );
+    }
+    QFile file( path );
+    REQUIRE( file.open( QIODevice::ReadOnly ) );
+    return file.readAll();
+}
+
+// An installed pack with highlighter sets only (E16c2).
+QString writeHighlightPack( const QString& root, const QString& id, const QByteArray& highlights )
+{
+    auto manifest = packManifest( id, 0 );
+    for ( const auto* key : { "previews", "decoder_routes", "python_decoders" } ) {
+        manifest = withContent( manifest, QLatin1String( key ), QJsonValue::Undefined );
+    }
+    manifest = withContent( manifest, "highlights", "highlights.conf" );
+    const auto folder = QDir( root ).filePath( "plugins/" + id );
+    writeFile( folder + "/plugin.json", QJsonDocument( manifest ).toJson() );
+    writeFile( folder + "/highlights.conf", highlights );
+    return folder;
+}
+
+// Saves these as the user's highlighter sets, none active.
+void saveUserSets( const QList<HighlighterSet>& sets )
+{
+    auto& collection = HighlighterSetCollection::getSynced();
+    collection.setHighlighterSets( sets );
+    collection.deactivateAll();
+    collection.save();
+}
+
+// The user's sets with these ids and names, read as CILogg reads its own.
+QList<HighlighterSet> userSets( const QVector<std::tuple<QString, QString, QString>>& sets )
+{
+    QTemporaryDir folder;
+    REQUIRE( folder.isValid() );
+    const auto path = folder.filePath( "mine.conf" );
+    writeFile( path, highlightersFile( sets ) );
+    QSettings settings( path, QSettings::IniFormat );
+    HighlighterSetCollection collection;
+    collection.retrieveFromStorage( settings );
+    return collection.highlighterSets();
+}
+
+// A widget of the Highlighters dialog itself, not of the set editor in it (they share names).
+template <typename T>
+T* dialogWidget( QWidget& dialog, const QString& name )
+{
+    for ( auto* widget : dialog.findChildren<T*>( name ) ) {
+        bool inEditor = false;
+        for ( auto* parent = widget->parentWidget(); parent && parent != &dialog;
+              parent = parent->parentWidget() ) {
+            inEditor = inEditor || parent->inherits( "HighlighterSetEdit" );
+        }
+        if ( !inEditor ) {
+            return widget;
+        }
+    }
+    return nullptr;
+}
+} // namespace
+
+TEST_CASE( "Pack highlighter sets join the Highlighters menu and dialog with the pack's name",
+           "[plugins][E16]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    const HighlighterSetCollection saved = HighlighterSetCollection::getSynced();
+    saveUserSets( userSets( { { "mine", "Mine", "mine" }, { "h-two", "My reset", "my reset" } } ) );
+    writeHighlightPack(
+        root.path(), "a.pack",
+        highlightersFile( { { "h-one", "Errors", "ERROR" }, { "h-two", "Reset", "reset" } } ) );
+    PluginManager manager( root.path(), QDir( root.path() ).filePath( "none" ) );
+    manager.discover();
+    auto& registry = PreviewPackRegistry::instance();
+    registry.attach( &manager );
+    QSignalSpy changed( &PackHighlighters::instance(), &PackHighlighters::changed );
+    REQUIRE( manager.manage( "enable", "a.pack", {} ).ok() );
+    CHECK( changed.count() >= 1 );
+    REQUIRE( registry.contributions().size() == 1 );
+    CHECK( registry.contributions().first().highlighterSets.size() == 2 );
+
+    // Yours first, then the pack's; your set with a pack set's id replaces it.
+    auto& collection = HighlighterSetCollection::get();
+    {
+        const auto listed = collection.listedSets();
+        REQUIRE( listed.size() == 3 );
+        CHECK( listed.at( 0 ).set.id() == "mine" );
+        CHECK( listed.at( 1 ).set.name() == "My reset" );
+        CHECK( listed.at( 1 ).packId.isEmpty() );
+        CHECK( listed.at( 2 ).set.id() == "h-one" );
+        CHECK( listed.at( 2 ).packId == "a.pack" );
+        CHECK( listed.at( 2 ).packName == "Pack a.pack" );
+        // Your sets, saved and exported, never hold the pack's.
+        CHECK( collection.highlighterSets().size() == 2 );
+    }
+
+    // A pack set is activated like yours and highlights with its rules; which sets are active
+    // stays yours, saved with your sets.
+    collection.activateSet( "h-one" );
+    collection.save();
+    CHECK( collection.activeSetIds() == QStringList{ "h-one" } );
+    REQUIRE( collection.currentActiveSet().highlighters().size() == 1 );
+    CHECK( collection.currentActiveSet().highlighters().at( 0 ).pattern() == "ERROR" );
+    CHECK( HighlighterSetCollection::getSynced().highlighterSets().size() == 2 );
+    CHECK( HighlighterSetCollection::get().activeSetIds() == QStringList{ "h-one" } );
+
+    // The Highlighters menu offers it with the pack's name, ticked.
+    {
+        HighlightersMenu menu( "Highlighters", nullptr );
+        menu.createHighlightersMenu();
+        menu.populateHighlightersMenu();
+        QStringList texts;
+        const QAction* packAction = nullptr;
+        for ( const auto* action : menu.actions() ) {
+            if ( !action->isSeparator() ) {
+                texts.append( action->text() );
+            }
+            if ( action->data().toString() == "h-one" ) {
+                packAction = action;
+            }
+        }
+        CHECK( texts == QStringList{ "None", "Mine", "My reset", "Errors (Pack a.pack)" } );
+        REQUIRE( packAction );
+        CHECK( packAction->isChecked() );
+    }
+
+    // Two enabled packs never share a set id.
+    {
+        const auto other = writeHighlightPack( root.path(), "b.pack",
+                                               highlightersFile( { { "h-one", "Other", "E" } } ) );
+        CHECK( registry.check( "b.pack", other, Manifest::read( other ).json )
+                   .contains( "\"Pack b.pack\" and \"Pack a.pack\" both have a highlighter set "
+                              "with the id \"h-one\"" ) );
+    }
+
+    // The Highlighters dialog: your sets, then the pack's with its name, read only and never saved.
+    {
+        HighlightersDialog dialog;
+        auto* list = dialogWidget<QListWidget>( dialog, "highlighterListWidget" );
+        auto* remove = dialogWidget<QToolButton>( dialog, "removeHighlighterButton" );
+        auto* copy = dialog.findChild<QToolButton*>( "copyPackSetButton" );
+        auto* edit = dialog.findChild<QToolButton*>( "editPackSetButton" );
+        auto* packs = dialog.findChild<QToolButton*>( "packsButton" );
+        auto* nameEdit = dialog.findChild<QLineEdit*>( "nameEdit" );
+        REQUIRE( ( list && remove && copy && edit && packs && nameEdit ) );
+        REQUIRE( list->count() == 4 );
+        CHECK( list->item( 1 )->text() == "My reset" );
+        CHECK( list->item( 2 )->text() == "Errors (Pack a.pack)" );
+        CHECK( list->item( 3 )->text() == "Reset (Pack a.pack, replaced by your set)" );
+        // Edit... and Packs... appear once the main window gives them something to open.
+        CHECK( edit->isHidden() );
+        CHECK( packs->isHidden() );
+        QString editedPack;
+        QString editedPath;
+        dialog.setPackItemEditor( [ & ]( QWidget*, const QString& pack, const QString& path ) {
+            editedPack = pack;
+            editedPath = path;
+        } );
+        int packsOpened = 0;
+        dialog.setPacksOpener( [ &packsOpened ] { ++packsOpened; } );
+        CHECK( !edit->isHidden() );
+        CHECK( !packs->isHidden() );
+        packs->click();
+        CHECK( packsOpened == 1 );
+
+        // A pack set is shown, not edited here: Edit... opens its store item.
+        list->setCurrentRow( 2 );
+        CHECK( nameEdit->text() == "Errors" );
+        CHECK( !nameEdit->isEnabled() );
+        CHECK( copy->isEnabled() );
+        CHECK( edit->isEnabled() );
+        CHECK( !remove->isEnabled() );
+        edit->click();
+        CHECK( editedPack == "a.pack" );
+        CHECK( editedPath == "highlights/h-one.set" );
+        // A pack set your set replaces is neither copied nor edited.
+        list->setCurrentRow( 3 );
+        CHECK( !copy->isEnabled() );
+        CHECK( !edit->isEnabled() );
+        list->setCurrentRow( 0 );
+        CHECK( nameEdit->isEnabled() );
+        CHECK( remove->isEnabled() );
+        CHECK( !copy->isEnabled() );
+
+        // Copy to My Highlighters: your set with the pack set's id, which replaces it and stays
+        // active.
+        list->setCurrentRow( 2 );
+        copy->click();
+        REQUIRE( list->count() == 5 );
+        CHECK( list->item( 2 )->text() == "Errors" );
+        CHECK( list->item( 3 )->text() == "Errors (Pack a.pack, replaced by your set)" );
+        dialog.findChild<QDialogButtonBox*>( "buttonBox" )
+            ->button( QDialogButtonBox::Apply )
+            ->click();
+        const auto mine = HighlighterSetCollection::getSynced().highlighterSets();
+        REQUIRE( mine.size() == 3 );
+        CHECK( mine.at( 2 ).id() == "h-one" );
+        REQUIRE( mine.at( 2 ).highlighters().size() == 1 );
+        CHECK( mine.at( 2 ).highlighters().at( 0 ).pattern() == "ERROR" );
+        CHECK( HighlighterSetCollection::get().activeSetIds() == QStringList{ "h-one" } );
+        CHECK( HighlighterSetCollection::get().currentActiveSet().highlighters().size() == 1 );
+    }
+
+    // Removing that copy lists the pack's set again, still active: the copy kept its id
+    // (independent review of #169).
+    {
+        HighlightersDialog dialog;
+        auto* list = dialogWidget<QListWidget>( dialog, "highlighterListWidget" );
+        auto* remove = dialogWidget<QToolButton>( dialog, "removeHighlighterButton" );
+        REQUIRE( ( list && remove ) );
+        REQUIRE( list->count() == 5 );
+        REQUIRE( list->item( 2 )->text() == "Errors" );
+        list->setCurrentRow( 2 );
+        REQUIRE( remove->isEnabled() );
+        remove->click();
+        // The removal is queued (the dialog's own pattern for row changes).
+        for ( int round = 0; round < 10 && list->count() != 4; ++round ) {
+            QCoreApplication::processEvents();
+        }
+        REQUIRE( list->count() == 4 );
+        CHECK( list->item( 2 )->text() == "Errors (Pack a.pack)" );
+        dialog.findChild<QDialogButtonBox*>( "buttonBox" )
+            ->button( QDialogButtonBox::Apply )
+            ->click();
+        CHECK( HighlighterSetCollection::getSynced().highlighterSets().size() == 2 );
+        CHECK( HighlighterSetCollection::get().activeSetIds() == QStringList{ "h-one" } );
+        CHECK( HighlighterSetCollection::get().currentActiveSet().highlighters().size() == 1 );
+    }
+
+    // Your own sets are not limited: grown past 4,096 with the packs' (enabling is checked), the
+    // packs' sets give way in the menu and the highlighting, never yours.
+    {
+        QList<HighlighterSet> many;
+        for ( int index = 0; index < MaxListedHighlighterSets - 2; ++index ) {
+            many.append( HighlighterSet::createNewSet( QStringLiteral( "U%1" ).arg( index ) ) );
+        }
+        saveUserSets( many ); // 4,094 of yours and the pack's 2: 4,096
+        CHECK( HighlighterSetCollection::get().listedSets().size() == MaxListedHighlighterSets );
+        const auto third = writeHighlightPack( root.path(), "c.pack",
+                                               highlightersFile( { { "h-three", "T", "t" } } ) );
+        CHECK( registry.check( "c.pack", third, Manifest::read( third ).json )
+                   .contains( "would make 4097 highlighter sets (at most 4096" ) );
+        many.append( HighlighterSet::createNewSet( "U-last" ) );
+        saveUserSets( many ); // 4,095 and 2: the pack's give way
+        CHECK( HighlighterSetCollection::get().listedSets().size()
+               == MaxListedHighlighterSets - 1 );
+        {
+            HighlightersDialog dialog;
+            auto* list = dialogWidget<QListWidget>( dialog, "highlighterListWidget" );
+            REQUIRE( list );
+            REQUIRE( list->count() == MaxListedHighlighterSets + 1 );
+            CHECK( list->item( MaxListedHighlighterSets - 1 )->text()
+                   == "Errors (Pack a.pack, not listed: more than 4096 sets)" );
+        }
+        many.erase( many.end() - 3, many.end() ); // 4,092, the pack's 2 and c.pack's 1: they fit
+        saveUserSets( many );
+        CHECK( registry.check( "c.pack", third, Manifest::read( third ).json ).isEmpty() );
+        // A set of yours that replaces a pack set (a copy keeps its id) is counted once: 4,093 and
+        // your copies of a.pack's two sets, a.pack's none listed and c.pack's 1 make 4,096
+        // (independent review of #169).
+        many.append( HighlighterSet::createNewSet( "U-again" ) );
+        saveUserSets(
+            many + userSets( { { "h-one", "Errors", "ERROR" }, { "h-two", "Reset", "reset" } } ) );
+        CHECK( HighlighterSetCollection::get().highlighterSets().size()
+               == MaxListedHighlighterSets - 1 );
+        CHECK( registry.check( "c.pack", third, Manifest::read( third ).json ).isEmpty() );
+    }
+
+    // Disabled, the pack's sets are gone; an active one stays in your active sets and highlights
+    // again once the pack is enabled.
+    saveUserSets( {} );
+    HighlighterSetCollection::get().activateSet( "h-one" );
+    HighlighterSetCollection::get().save();
+    changed.clear();
+    REQUIRE( manager.manage( "disable", "a.pack", {} ).ok() );
+    CHECK( changed.count() >= 1 );
+    CHECK( PackHighlighters::instance().sets().isEmpty() );
+    CHECK( HighlighterSetCollection::get().listedSets().isEmpty() );
+    CHECK( HighlighterSetCollection::get().currentActiveSet().highlighters().isEmpty() );
+    CHECK( HighlighterSetCollection::get().activeSetIds() == QStringList{ "h-one" } );
+    REQUIRE( manager.manage( "enable", "a.pack", {} ).ok() );
+    CHECK( HighlighterSetCollection::get().currentActiveSet().highlighters().size() == 1 );
+    REQUIRE( manager.manage( "disable", "a.pack", {} ).ok() );
+    registry.attach( nullptr );
+    HighlighterSetCollection::get() = saved;
+    HighlighterSetCollection::get().refreshPackSets();
+    HighlighterSetCollection::get().save();
+}
+
+TEST_CASE( "A pack whose filters or highlighters file is not an export keeps its other content",
+           "[plugins][E16]" )
+{
+    // A pack enabled before E16c could carry a filters or highlighters file that is not exactly
+    // what Export writes (an older export without ids): only that file's items are left out, not
+    // the pack's previews, Lua, decoders or other items (independent review of #169).
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    HighlighterSetCollection::getSynced();
+    const auto id = QStringLiteral( "d.pack" );
+    auto manifest = packManifest( id, 0 );
+    for ( const auto* key : { "decoder_routes", "python_decoders" } ) {
+        manifest = withContent( manifest, QLatin1String( key ), QJsonValue::Undefined );
+    }
+    manifest = withContent( manifest, "filters", "filters.conf" );
+    manifest = withContent( manifest, "highlights", "highlights.conf" );
+    const auto folder = QDir( root.path() ).filePath( "plugins/" + id );
+    writeFile( folder + "/plugin.json", QJsonDocument( manifest ).toJson() );
+    writeFile( folder + "/previews.json", packPreviews() );
+    writeFile( folder + "/filters.conf", filtersFile( { { "f-d", "D", "d" } } ) );
+    writeFile( folder + "/highlights.conf", highlightersFile( { { "h-d", "D", "d" } } ) );
+    PluginManager manager( root.path(), QDir( root.path() ).filePath( "none" ) );
+    manager.discover();
+    auto& registry = PreviewPackRegistry::instance();
+    registry.attach( &manager );
+    REQUIRE( manager.manage( "enable", id, {} ).ok() );
+    REQUIRE( PackFilters::instance().filters().size() == 1 );
+    REQUIRE( PackHighlighters::instance().sets().size() == 1 );
+
+    // The highlighters file is one CILogg does not read as an export (a set without an id).
+    const auto noIds = highlightersFile( { { QString{}, "Old", "old" } } );
+    writeFile( folder + "/highlights.conf", noIds );
+    {
+        // The pack's folder changed (as after an update of CILogg): it is read again.
+        QFile file( folder + "/plugin.json" );
+        REQUIRE( file.open( QIODevice::ReadWrite ) );
+        REQUIRE( file.setFileTime( QDateTime::currentDateTime().addSecs( 60 ),
+                                   QFileDevice::FileModificationTime ) );
+    }
+    const auto read = PreviewPackRegistry::read( id, folder, manifest );
+    CHECK( read.error.isEmpty() );
+    CHECK( read.previews.previews.size() == 1 );
+    CHECK( read.filters.size() == 1 );
+    CHECK( read.highlighterSets.isEmpty() );
+    REQUIRE( read.warnings.size() == 1 );
+    CHECK( read.warnings.first().contains( "highlighters" ) );
+    registry.refresh();
+    REQUIRE( registry.contributions().size() == 1 );
+    CHECK( PackFilters::instance().filters().size() == 1 );
+    CHECK( PackHighlighters::instance().sets().isEmpty() );
+    CHECK( findIn( PreviewManager::instance().effective(), "Pack frame" ) != nullptr );
+    // get_plugins says why the pack has no highlighter sets.
+    const auto summary = packSummary( manifest, folder );
+    CHECK( summary.value( "highlighterSets" ).toInt() == 0 );
+    CHECK( summary.value( "filters" ).toInt() == 1 );
+    REQUIRE( summary.value( "contentWarnings" ).toStringList().size() == 1 );
+    CHECK( summary.value( "contentWarnings" ).toStringList().first().contains( "highlighters" ) );
+    // Enabling it again (or installing an update like it) is refused with the reason.
+    REQUIRE( manager.manage( "disable", id, {} ).ok() );
+    const auto refused = manager.manage( "enable", id, {} );
+    CHECK( !refused.ok() );
+    CHECK( refused.error.contains( "highlighters" ) );
+    registry.attach( nullptr );
 }
