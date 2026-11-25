@@ -289,6 +289,14 @@ QVariantList PluginManager::plugins() const
                            : entry->process                 ? entry->process->error()
                                                             : QString{};
         value[ "diagnostics" ] = entry->diagnostics;
+        if ( !entry->pack.isEmpty() ) {
+            // MD03b: a pack's Python decoders run while the pack is enabled, on a host with the
+            // Python decoder backend (the `python_decoders` host feature, design 4.4).
+            value[ "pythonDecodersActive" ]
+                = entry->pack.value( "pythonDecoders" ).toInt() > 0
+                  && value.value( "enabled" ).toBool() && value.value( "error" ).toString().isEmpty()
+                  && hostFeatureVersions().contains( QStringLiteral( "python_decoders" ) );
+        }
         const auto config = QJsonDocument::fromJson(
             settings_.value( configurationKey( id ) + "configuration", "{}" ).toByteArray() );
         auto configValues = config.object().toVariantMap();

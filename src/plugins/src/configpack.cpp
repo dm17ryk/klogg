@@ -39,7 +39,9 @@ bool contentPath( const QJsonValue& value, const QString& suffix = {} )
            && ( suffix.isEmpty() || text.endsWith( suffix, Qt::CaseInsensitive ) );
 }
 
-// The rules of PreviewDecoderSettings for the user's routes, so pack routes merge cleanly.
+// The rules of PreviewDecoderSettings for the user's routes, so pack routes merge cleanly. A route
+// goes to a TShark dissector (`dissector`, optional `protocol`) or to a Python decoder (`python`,
+// `<pack-id>/<decoder-id>`, MD03b); protocol routes may also set `inputEncoding`.
 QString validateRoutes( const QJsonObject& routes, bool protocol )
 {
     const auto limit = protocol ? MaxPackProtocolRoutes : MaxPackPreviewRoutes;
@@ -49,12 +51,15 @@ QString validateRoutes( const QJsonObject& routes, bool protocol )
     }
     for ( auto route = routes.begin(); route != routes.end(); ++route ) {
         const auto entry = route.value().toObject();
+        const bool python = entry.contains( "python" );
         bool valid = !route.key().isEmpty() && route.key().size() <= ( protocol ? 128 : 4096 )
                      && !route.key().contains( QChar::Null ) && route.value().isObject()
-                     && dissectorName( entry.value( "dissector" ).toString() );
+                     && ( python ? pythonDecoderTarget( entry.value( "python" ).toString() )
+                                 : dissectorName( entry.value( "dissector" ).toString() ) );
         for ( auto item = entry.begin(); valid && item != entry.end(); ++item ) {
             valid = item.value().isString()
-                    && ( item.key() == "dissector" || item.key() == "protocol"
+                    && ( ( python ? item.key() == "python"
+                                  : item.key() == "dissector" || item.key() == "protocol" )
                          || ( protocol && item.key() == "inputEncoding"
                               && encodingName( item.value().toString() ) ) );
         }
@@ -62,6 +67,33 @@ QString validateRoutes( const QJsonObject& routes, bool protocol )
         if ( !valid || selector.size() > 128 || selector.contains( QChar::Null ) ) {
             return QStringLiteral( "Invalid decoder_routes.%1 entry: %2" )
                 .arg( key, route.key().left( 128 ) );
+        }
+    }
+    return {};
+}
+
+// A pack's Python routes name its own listed decoders (design 4.4).
+QString checkPythonRoutes( const QString& packId, const PackContent& content )
+{
+    for ( const bool protocol : { false, true } ) {
+        const auto& routes = protocol ? content.protocolRoutes : content.previewRoutes;
+        for ( auto route = routes.begin(); route != routes.end(); ++route ) {
+            const auto target = route.value().toObject().value( "python" ).toString();
+            if ( target.isEmpty() ) {
+                continue;
+            }
+            const auto listed = std::any_of(
+                content.pythonDecoders.cbegin(), content.pythonDecoders.cend(),
+                [ & ]( const PackPythonDecoder& decoder ) {
+                    return target == packId + QLatin1Char( '/' ) + decoder.id;
+                } );
+            if ( !listed ) {
+                return QStringLiteral( "decoder_routes.%1 entry %2 names a Python decoder the pack "
+                                       "does not have: %3" )
+                    .arg( protocol ? QStringLiteral( "protocolRoutes" )
+                                   : QStringLiteral( "previewRoutes" ),
+                          route.key().left( 128 ), target.left( 200 ) );
+            }
         }
     }
     return {};
@@ -234,6 +266,14 @@ bool isConfigPack( const QJsonObject& manifest )
     return manifest.value( "kind" ).toString() == QLatin1String( ConfigPackKind );
 }
 
+bool pythonDecoderTarget( const QString& target )
+{
+    // A plugin ID (pluginmanifest.cpp) and a python_decoders ID.
+    static const QRegularExpression pattern( QRegularExpression::anchoredPattern(
+        "[a-z0-9][a-z0-9._-]{0,127}/[a-z0-9][a-z0-9._-]{0,63}" ) );
+    return pattern.match( target ).hasMatch();
+}
+
 QStringList packProcessKeys()
 {
     return { "capabilities", "executable", "arguments",         "actions",
@@ -307,6 +347,10 @@ QString validatePackManifest( const QJsonObject& manifest, PackContent* content 
         if ( !error.isEmpty() ) {
             return error;
         }
+    }
+    if ( const auto error = checkPythonRoutes( manifest.value( "id" ).toString(), parsed );
+         !error.isEmpty() ) {
+        return error;
     }
     if ( const auto error = checkReservedPaths( parsed ); !error.isEmpty() ) {
         return error;
@@ -395,6 +439,22 @@ QStringList packContents( const QJsonObject& manifest )
         }
     }
     return contents;
+}
+
+QStringList packCodeNotInCatalog( const QJsonObject& manifest, const QJsonValue& catalogContents )
+{
+    QStringList hidden;
+    if ( !isConfigPack( manifest ) ) {
+        return hidden;
+    }
+    const auto listed = catalogContents.toArray();
+    for ( const auto& code : packContents( manifest ) ) {
+        if ( ( code == QLatin1String( "lua" ) || code == QLatin1String( "python_decoders" ) )
+             && !listed.contains( QJsonValue( code ) ) ) {
+            hidden.append( code );
+        }
+    }
+    return hidden;
 }
 
 QStringList packPreviewNames( const QByteArray& previewsJson )

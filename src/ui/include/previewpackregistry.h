@@ -38,6 +38,10 @@ public:
         QVariantMap previewRoutes;
         QVariantMap protocolRoutes;
         int pythonDecoders = 0;
+        // MD03b: the folder the pack's content is read from and its Python decoder modules
+        // (`{id, module}`, relative to it).
+        QString root;
+        QVariantList pythonModules;
         // Its predefined filters in its order, with packId and packName (E16c).
         QList<ListedFilter> filters;
         // Its highlighter sets in its order, with packId and packName (E16c2).

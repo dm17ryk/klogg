@@ -10,10 +10,12 @@ struct PreviewDecoderSnapshot {
     QString revision;
 };
 
-// What the enabled configuration packs add to the decoder (docs/plugin-repositories.md 4.3):
-// their Lua files, as `{id, files}` in pack ID order, and their routes. Never saved.
+// What the enabled configuration packs add to the decoder (docs/plugin-repositories.md 4.3, 4.4):
+// their Lua files, as `{id, files}` in pack ID order, their Python decoder modules, as
+// `{id, root, decoders: [{id, module}]}` in pack ID order (MD03b), and their routes. Never saved.
 struct PreviewDecoderPacks {
     QVariantList lua;
+    QVariantList python;
     QVariantMap previewRoutes;
     QVariantMap protocolRoutes;
     // The packs' versions and file states: a new version whose Lua keeps its file names still
@@ -22,7 +24,7 @@ struct PreviewDecoderPacks {
 
     bool operator==( const PreviewDecoderPacks& other ) const
     {
-        return lua == other.lua && previewRoutes == other.previewRoutes
+        return lua == other.lua && python == other.python && previewRoutes == other.previewRoutes
                && protocolRoutes == other.protocolRoutes && key == other.key;
     }
 };
@@ -33,6 +35,8 @@ class PreviewDecoderSettings : public QObject {
 public:
     // The profile limit (design 4.3): the user's 8 scripts and the packs' files together.
     static constexpr int ProfileLuaLimit = 32;
+    // The Python decoder modules of all enabled packs together, copied when a session starts.
+    static constexpr int ProfilePythonLimit = 64;
     static constexpr int PreviewRouteLimit = 128;
     static constexpr int ProtocolRouteLimit = 32;
 
@@ -44,7 +48,7 @@ public:
     bool check( const QVariantMap& configuration, QString* error = nullptr ) const;
     QString revision() const;
     // The configuration a session uses: the user's, with the packs' routes merged below the
-    // user's routes and the packs' Lua under `packLua`.
+    // user's routes, the packs' Lua under `packLua` and their Python modules under `packPython`.
     PreviewDecoderSnapshot snapshot() const;
     PreviewDecoderPacks packs() const;
     // Replaces the pack contributions; a change discards the warm TShark sessions.

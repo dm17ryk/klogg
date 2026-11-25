@@ -15,6 +15,8 @@ Complete implementation package for a general developer logger, visualizer and a
 
 **User request of 2026-11-19 (design accepted on 2026-11-19 with every recommended answer; E17 in progress: E17a merged in PR https://github.com/dm17ryk/klogg/pull/130, E17b in PR https://github.com/dm17ryk/klogg/pull/131, E17c in PR https://github.com/dm17ryk/klogg/pull/134 with its review fixes in PR https://github.com/dm17ryk/klogg/pull/135, E17d in PR https://github.com/dm17ryk/klogg/pull/136 and E17e in PR https://github.com/dm17ryk/klogg/pull/137; E17f is next):** E17 (advanced plugin SDK: plugin menus and submenus under Plugins and in the tab, pane and log context menus with shortcuts; drop-downs with icons, check boxes or radio marks in forms and table cells; check box and radio elements; table icons, cell tooltips and plugin-filled advanced tooltips through host queries with timeouts; Shift/Ctrl selection in tables, trees and a file tree browser; plus capability negotiation, layout and content elements, toolbars, status items, notifications, drag and drop, state, theme, settings pages and typed SDKs with a test harness). Protocol version 1 is kept. See the [design](../../docs/plugin-sdk-advanced.md) and [decision D17](../../docs/workbench/decisions.md). E17 depends on E14 and R04 on E17; it is runnable, and E17i (host commands) is approved as the last slice.
 
+**Plan change of 2026-11-24 (approved by Dmitry):** the narrow [MD03b slice](slices/MD03b-python-preview.md) (issue https://github.com/dm17ryk/klogg/issues/159), a Python preview backend that runs configuration packs' Python decoders on PreviewService result v1 and the MD03a worker transport, comes before the full MD03 contract, which stays planned after MD01. It unblocks E16b (issue https://github.com/dm17ryk/klogg/issues/146).
+
 **Execution status:** P05 is merged through PR #45; the formal runnable gate owner is G02. See [merged roadmap coverage](MERGE_MAP.md), [current execution baseline](../../docs/workbench/baseline.md), [integration decisions](../../docs/workbench/decisions.md), and `PROGRESS.json`. Fixes to a task's tests are recorded in that task's `PROGRESS.json` evidence; for example, the E13 cancel-grace test was made deterministic in PR https://github.com/dm17ryk/klogg/pull/140 and given its lower bound in PR https://github.com/dm17ryk/klogg/pull/145 (issue https://github.com/dm17ryk/klogg/issues/157). This directory is the canonical execution package; the original P00-P24 roadmap remains a linked specification.
 
 ## Start here
@@ -56,7 +58,7 @@ Run `python validate_plan.py .` to validate packaged task IDs, dependency order,
 
 ## Decoder addendum and public tracking
 
-Revision 2 is integrated as MD01–MD08 with 14 DEC requirements. All are planned; [the decoder contract](10-message-decoders.md) records dependencies, compatibility and missing runtime inputs. [Public tracking](PUBLIC_TRACKING.md) maps GitHub milestone issues without replacing the execution ledger.
+Revision 2 is integrated as MD01–MD08 with 14 DEC requirements. All are planned (MD03 has two delivered preview slices: [MD03a](slices/MD03a-preview-integration.md) for TShark/Lua and [MD03b](slices/MD03b-python-preview.md) for pack Python decoders); [the decoder contract](10-message-decoders.md) records dependencies, compatibility and missing runtime inputs. [Public tracking](PUBLIC_TRACKING.md) maps GitHub milestone issues without replacing the execution ledger.
 
 ## Unified terminal addendum
 
