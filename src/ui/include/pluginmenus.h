@@ -51,6 +51,8 @@ struct PluginMenuContext {
     // E17e: a tree's or file tree's menu: the clicked node or path instead of a row and column.
     bool tree = false;
     QString nodeId;
+    // E17f: a button's drop-down menu: neither a row nor a node.
+    bool button = false;
 
     cilogg::plugins::MenuConditionContext conditions() const;
     // The `context` of menu/populate and ui/command. The selected text is added only with

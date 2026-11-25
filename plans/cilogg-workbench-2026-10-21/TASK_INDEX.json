@@ -2957,7 +2957,8 @@
     "2026-11-19: slice E17b (plugin menus, context menus in the tab, pane and log locations, dynamic submenus, ui/command, shortcuts with conflict refusal and rebinding in Options, get_plugin_menus and trigger_plugin_menu) is stacked on E17a as its own pull request.",
     "2026-11-19: slice E17c (choice entries with icons, separators and sections, radio and check box styles, searchable, editable and completing drop-downs, checkbox, radio_group and check_group, new field kinds, validation and requires_valid, cell editor choices) is stacked on E17b as its own pull request.",
     "2026-11-20: slice E17d (rich table cells, row icons and check boxes, column and table options, toggle selection and the selection patch, activated, checked and moved events, Copy and Export CSV, kept columns, element context menus) is based on master after #130 merged, as its own pull request.",
-    "2026-11-20: slice E17e (tree and file_tree elements, lazy tree/children queries, node check boxes with auto_tristate, node patches and events, reordering inside a tree, element menus and tooltips on nodes and paths) is its own pull request (#137), first stacked on E17d (#136) and targeting master since #136 was merged."
+    "2026-11-20: slice E17e (tree and file_tree elements, lazy tree/children queries, node check boxes with auto_tristate, node patches and events, reordering inside a tree, element menus and tooltips on nodes and paths) is its own pull request (#137), first stacked on E17d (#136) and targeting master since #136 was merged.",
+    "2026-11-24: slice E17f (layout containers and size hints, text_view, image, sparkline and chart, button keys, busy overlay, unsaved changes, dialog buttons with a result, focus patches) is its own pull request (#158), based on master f908f0ed."
   ],
   "reconciledDate": "2026-11-04"
 }

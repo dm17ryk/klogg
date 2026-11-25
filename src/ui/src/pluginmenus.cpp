@@ -183,7 +183,7 @@ QJsonObject PluginMenuContext::toJson( bool withText ) const
         if ( tree ) {
             json.insert( "node_id", orNull( nodeId ) ); // E17e (section 28.3)
         }
-        else {
+        else if ( !button ) { // E17f: a button's drop-down has no row (section 29.3)
             json.insert( "row_id", orNull( rowId ) );
             json.insert( "column_id", orNull( columnId ) );
         }

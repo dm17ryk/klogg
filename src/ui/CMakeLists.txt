@@ -78,6 +78,13 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/pluginfiletree.h
   ${CMAKE_CURRENT_SOURCE_DIR}/src/pluginfiletree.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/pluginviewtrees.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/pluginlayout.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/pluginlayout.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/plugintextview.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/plugintextview.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/pluginchart.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/pluginchart.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/pluginviewlayout.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/include/pluginmenuhost.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/pluginmenus.h
   ${CMAKE_CURRENT_SOURCE_DIR}/src/pluginmenus.cpp
@@ -279,6 +286,9 @@ endif()
 # refuse it: std::isfinite must see NaN and infinities, which -ffast-math folds away.
 set_exact_floating_point("${CMAKE_CURRENT_SOURCE_DIR}/src/plugintablemodel.cpp")
 set_exact_floating_point("${CMAKE_CURRENT_SOURCE_DIR}/src/pluginview.cpp")
+# E17f: chart and sparkline gaps are NaN, which -ffast-math would not see.
+set_exact_floating_point("${CMAKE_CURRENT_SOURCE_DIR}/src/pluginchart.cpp")
+set_exact_floating_point("${CMAKE_CURRENT_SOURCE_DIR}/src/pluginviewlayout.cpp")
 
 target_include_directories(klogg_ui
   PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include"

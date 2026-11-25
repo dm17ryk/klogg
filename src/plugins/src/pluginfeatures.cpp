@@ -88,8 +88,19 @@ const std::vector<std::pair<QString, int>>& hostFeatures()
         { QStringLiteral( "file_tree" ), 1 },
         // MD03b: configuration packs' Python decoders run (docs/plugin-repositories.md 4.4).
         { QStringLiteral( "python_decoders" ), 1 },
+        { QStringLiteral( "layout" ), 1 }, { QStringLiteral( "text_view" ), 1 },
+        { QStringLiteral( "images" ), 1 }, { QStringLiteral( "charts" ), 1 },
+        { QStringLiteral( "view_dialogs" ), 1 },
     };
     return features;
+}
+
+const QStringList& dialogButtonNames()
+{
+    static const QStringList names{ QStringLiteral( "ok" ),    QStringLiteral( "cancel" ),
+                                    QStringLiteral( "apply" ), QStringLiteral( "close" ),
+                                    QStringLiteral( "yes" ),   QStringLiteral( "no" ) };
+    return names;
 }
 
 QJsonArray hostFeatureNames()

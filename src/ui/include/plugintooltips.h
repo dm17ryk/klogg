@@ -5,6 +5,7 @@
 #include <QElapsedTimer>
 #include <QHash>
 #include <QIcon>
+#include <QImage>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonValue>
@@ -58,6 +59,9 @@ struct PluginViewQueries {
     std::function<QString( const QJsonObject& params,
                            std::function<void( bool answered, const QJsonArray& nodes )> done )>
         treeChildren;
+    // E17f: an icon reference as a picture (`image` elements and Markdown images): a registered
+    // picture at its own size, any other reference as an icon of about `size`; null when unusable.
+    std::function<QImage( const QJsonValue& reference, const QSize& size )> picture;
 };
 
 // Static and advanced tooltips of one plugin view (section 9): watches widgets for tooltip
