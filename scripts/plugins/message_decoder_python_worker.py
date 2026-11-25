@@ -387,9 +387,16 @@ class DecoderSession:
             folder.mkdir()
             package = "%s_%d" % (self.prefix, index)
             copies = {}
+            spellings = set()
             for decoder in pack["decoders"]:
                 module = decoder["module"]
                 if module not in copies:
+                    # Paths that differ only in case are one file on Windows and macOS: refuse
+                    # them everywhere, as the pack validator does.
+                    spelling = PurePosixPath(module).with_suffix("").as_posix().lower()
+                    if spelling in spellings:
+                        raise ProofError("invalid_profile")
+                    spellings.add(spelling)
                     copies[module] = self.copy_module(pack["root"], module, folder, deadline)
                 copy, digest = copies[module]
                 decoders[pack["id"] + "/" + decoder["id"]] = {

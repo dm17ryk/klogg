@@ -264,6 +264,18 @@ class SnapshotTests(Case):
         self.assertEqual(response["state"], "completed", response)
         self.assertEqual(response["fields"][0]["columns"][0], "escaped")
 
+    def test_paths_that_differ_only_in_case_are_refused_on_every_platform(self):
+        root = self.base / "packs" / "org.example.a"
+        write(root / "Sub/x.py", "def decode(payload, context):\n    return []\n")
+        if not (root / "sub/x.py").exists():  # a case-sensitive file system: both exist
+            write(root / "sub/x.py", "def decode(payload, context):\n    return []\n")
+        pack = {"id": "org.example.a", "root": str(root), "decoders": [
+            {"id": "upper", "module": "Sub/x.py"},
+            {"id": "lower", "module": "sub/x.PY"},
+        ]}
+        with self.assertRaisesRegex(ProofError, "invalid_profile"):
+            self.evaluate([pack], "org.example.a/upper")
+
     def test_a_module_and_a_folder_of_one_name_are_refused(self):
         pack = self.pack("org.example.a", {
             "python/sub.py": "def decode(payload, context):\n    return []\n",

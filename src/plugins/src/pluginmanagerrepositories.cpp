@@ -635,7 +635,9 @@ void PluginManager::stagePackage( const QJsonObject& entry, const QString& jobId
                      const auto hidden = packCodeNotInCatalog( staged.manifest.json, contents );
                      if ( !hidden.isEmpty() ) {
                          problem = QStringLiteral( "The package has %1, which its catalog entry's "
-                                                   "contents do not list." )
+                                                   "contents do not list. The repository's catalog "
+                                                   "must list them in the entry's contents "
+                                                   "(build_catalog.py does)." )
                                        .arg( hidden.join( QStringLiteral( ", " ) ) );
                      }
                  }
