@@ -1328,18 +1328,9 @@ TEST_CASE( "Pressing Send transmits at once even when the action has an initial 
     const auto recordWrite = [ &written, &pressed ]( const QByteArray& bytes ) {
         written.push_back( { bytes, pressed.elapsed() } );
     };
-#ifndef KLOGG_SHARED_SERIAL_WRITER
     StreamSessionTestAccess::setTransportSink(
         *fixture.streams[ 0 ],
         [ recordWrite ]( const QByteArray& bytes, bool ) { recordWrite( bytes ); } );
-#else
-    // The checked writer has its own transport. This observes the dispatch (actionSent, emitted
-    // just before submitActionWrite), which still proves no delay was scheduled.
-    QObject::connect( fixture.streams[ 0 ].get(), &StreamSession::actionSent, &fixture.window,
-                      [ recordWrite ]( int, const QString&, int, const QByteArray& bytes ) {
-                          recordWrite( bytes );
-                      } );
-#endif
 
     // Press the Send button of the action's row, as the user does.
     fixture.actionsWindow->show();

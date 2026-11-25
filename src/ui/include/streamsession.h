@@ -153,10 +153,10 @@ private:
     bool closePublished_ = true;
     bool destroying_ = false;
     bool writePolicyExhausted_ = false;
-#else
-    // Tests without a serial device receive here what sendBytes would hand to the port's worker.
-    std::function<void( const QByteArray&, bool )> transportSinkForTests_;
 #endif
+    // Test-only: receives the bytes handed to the serial transport (the worker's sendData, or a
+    // write admitted by the checked writer), for tests without a serial device.
+    std::function<void( const QByteArray&, bool )> transportSinkForTests_;
 
     SerialCaptureSettings settings_;
     quint64 actionsGeneration_ = 0;

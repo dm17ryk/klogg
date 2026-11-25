@@ -74,14 +74,14 @@ struct StreamSessionTestAccess {
                 },
                 Qt::QueuedConnection );
     }
-#else
-    // Receives the bytes the session hands to its serial transport (the worker's sendData).
+#endif
+    // Receives the bytes the session hands to its serial transport: the worker's sendData, or a
+    // write the checked writer admitted.
     static void setTransportSink( StreamSession& session,
                                   std::function<void( const QByteArray&, bool )> sink )
     {
         session.transportSinkForTests_ = std::move( sink );
     }
-#endif
     static void openConnection( StreamSession& session )
     {
 #ifdef KLOGG_SHARED_SERIAL_WRITER

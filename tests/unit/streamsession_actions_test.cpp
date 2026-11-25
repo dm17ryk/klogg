@@ -836,19 +836,10 @@ TEST_CASE( "A manual send ignores the action's initial delay; automatic sends ke
         qint64 atMs = -1;
     };
     QVector<Write> written;
-#ifndef KLOGG_SHARED_SERIAL_WRITER
     StreamSessionTestAccess::setTransportSink(
         session, [ &written, &pressed ]( const QByteArray& bytes, bool ) {
             written.push_back( { bytes, pressed.elapsed() } );
         } );
-#else
-    // The checked writer has its own transport. This observes the dispatch (actionSent, emitted
-    // just before submitActionWrite), which still proves no delay was scheduled.
-    QObject::connect( &session, &StreamSession::actionSent, &session,
-                      [ &written, &pressed ]( int, const QString&, int, const QByteArray& bytes ) {
-                          written.push_back( { bytes, pressed.elapsed() } );
-                      } );
-#endif
 
     pressed.start();
     REQUIRE( sendActionDefinition( &session, action, ActionSendOrigin::Manual, {}, -1, nullptr ) );
