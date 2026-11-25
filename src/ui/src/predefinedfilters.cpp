@@ -38,7 +38,9 @@
 
 #include "predefinedfilters.h"
 
+#include <QSet>
 #include <QUuid>
+#include <algorithm>
 
 #include "log.h"
 
@@ -56,6 +58,70 @@ void ensureFilterIds( PredefinedFiltersCollection::Collection& filters )
 QString createPredefinedFilterId()
 {
     return QUuid::createUuid().toString( QUuid::WithoutBraces );
+}
+
+PackFilters& PackFilters::instance()
+{
+    static PackFilters filters;
+    return filters;
+}
+
+void PackFilters::setFilters( const QList<ListedFilter>& filters )
+{
+    const auto same = []( const ListedFilter& left, const ListedFilter& right ) {
+        return left.filter.id == right.filter.id && left.filter.name == right.filter.name
+               && left.filter.pattern == right.filter.pattern
+               && left.filter.useRegex == right.filter.useRegex && left.packId == right.packId
+               && left.packName == right.packName;
+    };
+    if ( filters.size() == filters_.size()
+         && std::equal( filters.cbegin(), filters.cend(), filters_.cbegin(), same ) ) {
+        return;
+    }
+    filters_ = filters;
+    LOG_INFO << "Pack predefined filters applied filters=" << filters_.size();
+    Q_EMIT changed();
+}
+
+namespace {
+// The enabled packs' filters that the user's filters do not replace.
+QList<ListedFilter> listedPackFilters( const QList<PredefinedFilter>& own )
+{
+    QSet<QString> ids;
+    for ( const auto& filter : own ) {
+        ids.insert( filter.id );
+    }
+    QList<ListedFilter> filters;
+    for ( const auto& listed : PackFilters::instance().filters() ) {
+        if ( !ids.contains( listed.filter.id ) ) {
+            filters.append( listed );
+        }
+    }
+    return filters;
+}
+} // namespace
+
+bool packFiltersGiveWay( const QList<PredefinedFilter>& own )
+{
+    return own.size() + listedPackFilters( own ).size() > MaxListedFilters;
+}
+
+QList<ListedFilter> effectivePredefinedFilters( const QList<PredefinedFilter>& own )
+{
+    QList<ListedFilter> filters;
+    for ( const auto& filter : own ) {
+        filters.append( { filter, QString{}, QString{} } );
+    }
+    const auto packs = listedPackFilters( own );
+    // The user's filters grew past the limit after the packs were enabled (enabling is checked):
+    // the packs' filters give way, never the user's.
+    if ( own.size() + packs.size() > MaxListedFilters ) {
+        LOG_WARNING << "Pack predefined filters not listed: own=" << own.size()
+                    << " packs=" << packs.size() << " limit=" << MaxListedFilters;
+        return filters;
+    }
+    filters.append( packs );
+    return filters;
 }
 
 void PredefinedFiltersCollection::retrieveFromStorage( QSettings& settings )

@@ -66,7 +66,8 @@ class E15HelperTests(unittest.TestCase):
     def test_pack_fields_read_the_compared_pack_fields(self):
         plugins = [{"id": "other"},
                    {"id": workbench_repositories.PACK_ID, "kind": "config-pack", "pid": 1,
-                    "contents": ["previews", "lua"], "previews": 1, "luaFiles": 2}]
+                    "contents": ["previews", "filters", "lua"], "previews": 1, "filters": 2,
+                    "luaFiles": 2}]
         fields = workbench_repositories.pack_fields(plugins)
         self.assertEqual(set(fields), set(workbench_repositories.PACK_FIELDS))
         self.assertEqual(fields["luaFiles"], 2)

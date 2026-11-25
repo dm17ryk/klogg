@@ -456,7 +456,7 @@ PackFileMerge mergeFile( const QString& path, const std::optional<QByteArray>& b
     }
     const auto kind = packcanonical::kindOf( path );
     const auto item = packcanonical::itemOf( path );
-    if ( kind == "preview" || kind == "block" || kind == "meta" ) {
+    if ( kind == "preview" || kind == "block" || kind == "meta" || kind == "filter" ) {
         const auto parse = []( const std::optional<QByteArray>& bytes ) -> std::optional<QJsonValue> {
             if ( !bytes ) {
                 return std::nullopt;

@@ -1173,26 +1173,39 @@ packs](plugin-repositories.md) section 4). The example is
 - `decoder_routes` (`previewRoutes` naming the pack's own previews, `protocolRoutes`) sit below
   the user's routes; the merged lists keep 128 and 32 routes.
 - `python_decoders` are installed and updated with the pack and shown as needing a newer CILogg
-  until the decoder contract of task MD03 runs them. `actions`, `highlights` and `filters` are
-  validated as files and loaded by a later slice (E16c).
-- No content file may be `plugin.json` or the previews file (compared ignoring case): CILogg
-  writes both itself for the pack's content with your edits. Two content files may not differ
+  until the decoder contract of task MD03 runs them. `actions` and `highlights` are validated as
+  files and loaded by later slices (E16c2 and E16c3).
+- `filters` is a predefined filters file as CILogg exports it (**Export** in the Predefined
+  Filters dialog: INI, group `PredefinedFiltersCollection`, version 1 to 3, at most 4,096 filters).
+  Every filter needs an `id` (unique in the pack: it is the filter's identity), a `name` and a
+  pattern (`filter`); `regex` is `true` or `false` (`true` when missing), and the file holds
+  nothing else. Pack filters join the predefined filter list after your own, with the pack's name
+  (Commander's `get_filters` adds `packId` and `packName` to them); a filter of yours with a pack
+  filter's id replaces it (**Copy to My Filters** keeps the id); two enabled packs never share a
+  filter id; enabling or updating a pack that would make your filters and all enabled packs'
+  more than 4,096 is refused. Your own filters are not limited: when they grow past that, the
+  packs' filters are not listed until you have fewer (as pack previews give way). Exports and
+  project snapshots contain your filters only.
+- No content file may be `plugin.json`, the previews file or the filters file (compared ignoring
+  case): CILogg writes them itself for the pack's content with your edits. Two content files may not differ
   only in case either (one file on Windows and macOS).
-- `get_plugins` adds `contents` and the counts `previews`, `luaFiles` and `pythonDecoders` for a
-  pack, `localEdits` (the edited items) and `needsMerge` (the version an update could not merge).
-  Catalog entries of packs use `os: any` and `arch: any`.
+- `get_plugins` adds `contents` and the counts `previews`, `filters`, `luaFiles` and
+  `pythonDecoders` for a pack, `localEdits` (the edited items) and `needsMerge` (the version an
+  update could not merge). Catalog entries of packs use `os: any` and `arch: any`.
 
 ### Local edits and updates
 
 Users edit pack items in place; each pack has a local store (a Git repository kept by the bundled
 libgit2, never shown to users) whose `upstream` branch holds the versions as shipped and whose
 `local` branch holds the edits. Items are stored one per file: `previews/<name>.json`,
-`blocks/<name>.json`, `previews/order.txt` (evaluation order), `previews/meta.json` and
-`files/<path>` for Lua and Python, names percent-encoded outside `[a-z0-9._-]`. An install or
-update merges the new version with the edits: an item not edited takes the new version, fields
+`blocks/<name>.json`, `previews/order.txt` (evaluation order), `previews/meta.json`,
+`filters/<id>.json` (`filter`, `id`, `name`, `regex`), `filters/order.txt` (list order) and
+`files/<path>` for Lua and Python, names and ids percent-encoded outside `[a-z0-9._-]`. An install
+or update merges the new version with the edits: an item not edited takes the new version, fields
 changed on one side merge, the same new value on both sides is no conflict, and the same field
 changed differently, or deleted on one side and changed on the other, is a conflict. Preview
-`fields` merge by `name`. Lua and Python files merge as text, like `git merge-file`.
+`fields` merge by `name`. Lua and Python files and the two orders merge as text, like
+`git merge-file`.
 
 `plugin_manage` operations for packs (GUI, CLI, native MCP and Python alike):
 
@@ -1200,19 +1213,19 @@ changed differently, or deleted on one side and changed on the other, is a confl
 |---|---|---|
 | `pack_files` / `pack_edits` | none | `files`: `path`, `kind`, `item`, `state` (`pack`, `edited`, `added`, `deleted`); `pack_edits` lists the changed ones |
 | `pack_read` | `path` | `content`, `edited` |
-| `pack_edit` | `path`, exactly one of `content` or `remove: true` (previews and blocks only), optional `message` | a commit on `local`; only the pack's own items, and preview and block JSON keeps its `name` |
+| `pack_edit` | `path`, exactly one of `content` or `remove: true` (previews, blocks and filters only), optional `message` | a commit on `local`; only the pack's own items, preview and block JSON keeps its `name` and filter JSON its `id`, and every filter stays one CILogg reads (an `id`, a `name`, a `filter` and a boolean `regex`, nothing else) |
 | `pack_history` | optional `path` | `commits`: `commit`, `message`, `time`, `packVersion` |
-| `pack_reset` | optional `path`, optional `commit` (from `pack_history`) | restores the item (or, within the installed version, the whole pack) as in `commit`, or as shipped, as a new commit; never a file the installed version's manifest does not list, nor a preview or block when it has no previews document; previews within their limits, and for an enabled pack only content that passes the pack check (like `pack_edit`) |
+| `pack_reset` | optional `path`, optional `commit` (from `pack_history`) | restores the item (or, within the installed version, the whole pack) as in `commit`, or as shipped, as a new commit; never a file the installed version's manifest does not list, nor a preview or block when it has no previews document, nor a filter when it has no filters file; previews within their limits, and for an enabled pack only content that passes the pack check (like `pack_edit`) |
 
 `install` and `update` of a pack (and no other operation, which refuses them) take `strategy` (`fail`, the default; `keep_mine`;
 `take_theirs`) and `resolutions`: `{path, take: "mine"|"theirs"}` (a whole side, byte for
-byte) for any item, `{path, field, value}` or `{path, field, remove: true}` for a preview or
-block field (an empty `field` replaces the whole item), and `{path, text}` for a file or the
-preview order, which are never removed (the new manifest lists the files). A file that is not UTF-8 text on
+byte) for any item, `{path, field, value}` or `{path, field, remove: true}` for a preview, block
+or filter field (an empty `field` replaces the whole item), and `{path, text}` for a file or the
+preview or filter order, which are never removed (the new manifest lists the files). A file that is not UTF-8 text on
 any side (the installed version's too) is resolved with `take` only, and `pack_read` refuses it
 (editing it as text would change its bytes). A field resolution needs its item in the merge
 result (an item both sides deleted comes back only by a whole-item resolution), never names
-`name` or a field under it, and must fit the item's structure: its parent is in the item (an
+`name` (a filter's `id`) or a field under it, and must fit the item's structure: its parent is in the item (an
 object for a member, an array for an `@element`) and the field reads back as its value
 afterwards (`@x` on the item itself, a path through a text field, or one with an empty segment
 such as `/x`, is refused). `resolutions` and `revision` belong to a merge: a first install
