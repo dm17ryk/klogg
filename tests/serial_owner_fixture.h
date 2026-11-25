@@ -1,5 +1,5 @@
 #pragma once
-#ifdef KLOGG_SHARED_SERIAL_WRITER
+// A fake serial device for tests: the port the serial worker writes to and reads from.
 #include "streamsession_testaccess.h"
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -10,12 +10,15 @@
 #include <deque>
 #include <future>
 #include <mutex>
+#ifdef KLOGG_SHARED_SERIAL_WRITER
 using namespace cilogg::communication;
+#endif
 struct SerialCaptureWorkerTestAccess {
     static void factory( SerialCaptureWorker& w, std::function<QSerialPort*( QObject* )> f )
     {
         w.portFactory_ = std::move( f );
     }
+#ifdef KLOGG_SHARED_SERIAL_WRITER
     static void prepare( SerialCaptureWorker& w )
     {
         auto policy = std::make_shared<StreamWritePolicyPublication>();
@@ -28,7 +31,9 @@ struct SerialCaptureWorkerTestAccess {
         if ( w.port_ )
             Q_EMIT w.port_->bytesWritten( n );
     }
+#endif
 };
+#ifdef KLOGG_SHARED_SERIAL_WRITER
 struct StreamSourceRegistryTestAccess {
     static std::unique_ptr<StreamSourceRegistry> isolated()
     {
@@ -37,6 +42,7 @@ struct StreamSourceRegistryTestAccess {
             []( const QString& p ) { return p; } ) );
     }
 };
+#endif
 namespace cilogg_test {
 struct PortState {
     std::mutex mutex;
@@ -100,6 +106,11 @@ public:
         incoming_.append( bytes );
         Q_EMIT readyRead();
     }
+    // The write was confirmed, as a real port confirms it once the bytes left the buffer.
+    bool waitForBytesWritten( int ) override
+    {
+        return true;
+    }
 
 protected:
     qint64 readData( char* data, qint64 maximum ) override
@@ -134,6 +145,18 @@ private:
     std::shared_ptr<PortState> state_;
     QByteArray incoming_;
 };
+// Makes serial workers whose port is a FakeSerialPort sharing `state`.
+inline std::function<SerialCaptureWorker*( SerialCaptureSettings )>
+fakePortWorkers( std::shared_ptr<PortState> state )
+{
+    return [ state ]( SerialCaptureSettings workerSettings ) {
+        auto* worker = new SerialCaptureWorker( std::move( workerSettings ) );
+        SerialCaptureWorkerTestAccess::factory(
+            *worker, [ state ]( QObject* parent ) { return new FakeSerialPort( state, parent ); } );
+        return worker;
+    };
+}
+#ifdef KLOGG_SHARED_SERIAL_WRITER
 struct OwnerFixture {
     std::shared_ptr<PortState> port = std::make_shared<PortState>();
     QTemporaryDir directory;
@@ -180,5 +203,5 @@ struct OwnerFixture {
         return port->sent;
     }
 };
-} // namespace cilogg_test
 #endif
+} // namespace cilogg_test

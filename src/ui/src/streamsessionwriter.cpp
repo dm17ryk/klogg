@@ -371,6 +371,8 @@ DataResult<WriteObservation> StreamSession::submitActionWrite( const QByteArray&
              qPrintable( id ), static_cast<unsigned long long>( workerGeneration_ ),
              static_cast<long long>( bytes.size() ), static_cast<long long>( deadline ),
              static_cast<unsigned long long>( writer_->state().residentBytes ) );
+    if ( transportSinkForTests_ )
+        transportSinkForTests_( bytes, sensitive );
     driveWrites();
     return result;
 }

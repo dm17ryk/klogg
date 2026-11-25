@@ -75,6 +75,20 @@ struct StreamSessionTestAccess {
                 Qt::QueuedConnection );
     }
 #endif
+    // Makes the session's serial worker, for example one whose port is a fake device.
+    static void
+    setWorkerFactory( StreamSession& session,
+                      std::function<SerialCaptureWorker*( SerialCaptureSettings )> factory )
+    {
+        session.workerFactory_ = std::move( factory );
+    }
+    // Receives the bytes the session hands to its serial transport: the worker's sendData, or a
+    // write the checked writer admitted.
+    static void setTransportSink( StreamSession& session,
+                                  std::function<void( const QByteArray&, bool )> sink )
+    {
+        session.transportSinkForTests_ = std::move( sink );
+    }
     static void openConnection( StreamSession& session )
     {
 #ifdef KLOGG_SHARED_SERIAL_WRITER
