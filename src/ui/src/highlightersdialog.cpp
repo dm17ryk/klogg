@@ -38,8 +38,13 @@
 
 #include <QFileDialog>
 #include <QMessageBox>
+#include <QSet>
+#include <QSignalBlocker>
 #include <QTimer>
+#include <QToolButton>
 
+#include <algorithm>
+#include <qboxlayout.h>
 #include <qcheckbox.h>
 #include <qcolor.h>
 #include <qlineedit.h>
@@ -52,24 +57,76 @@
 #include "dispatch_to.h"
 #include "highlightersdialog.h"
 #include "highlighterset.h"
+#include "highlightersetedit.h"
 #include "iconloader.h"
 #include "log.h"
+#include "packcanonical.h"
+#include "ui_highlightersdialog.h"
 
 static constexpr QLatin1String DEFAULT_NAME = QLatin1String( "New Highlighter set", 19 );
+
+namespace {
+// On a pack row: whether one of the user's sets with its id replaces it.
+constexpr int ReplacedRole = Qt::UserRole + 1;
+// On a pack row: its set's id (the user's rows have none).
+constexpr int PackSetRole = Qt::UserRole + 2;
+} // namespace
 
 // Construct the box, including a copy of the global highlighterSet
 // to handle ok/cancel/apply
 HighlightersDialog::HighlightersDialog( QWidget* parent )
     : QDialog( parent )
+    , ui_( std::make_unique<Ui::HighlightersDialog>() )
 {
-    setupUi( this );
+    ui_->setupUi( this );
+
+    // Configuration pack highlighter sets (E16c2): copied into the user's own, edited in place,
+    // and the packs themselves in the Plugins and Packs window.
+    const auto textButton = [ this ]( const char* name, const QString& text, const QString& tip ) {
+        auto* button = new QToolButton( this );
+        button->setObjectName( QLatin1String( name ) );
+        button->setText( text );
+        button->setAccessibleName( text );
+        button->setToolTip( tip );
+        button->setToolButtonStyle( Qt::ToolButtonTextOnly );
+        return button;
+    };
+    copyPackSetButton_ = textButton(
+        "copyPackSetButton", tr( "Copy to My Highlighters" ),
+        tr( "Copy this pack highlighter set into your own sets. Your copy replaces the pack's, "
+            "and updates of the pack do not change it." ) );
+    editPackSetButton_ = textButton(
+        "editPackSetButton", tr( "Edit..." ),
+        tr( "Edit this pack highlighter set in place. Updates of the pack keep your edit and ask "
+            "when they change the same lines." ) );
+    packsButton_ = textButton( "packsButton", tr( "Packs..." ),
+                               tr( "Install, update and manage configuration packs." ) );
+    copyPackSetButton_->setEnabled( false );
+    editPackSetButton_->setVisible( false );
+    packsButton_->setVisible( false );
+    auto* packButtons = new QHBoxLayout;
+    packButtons->addWidget( copyPackSetButton_ );
+    packButtons->addWidget( editPackSetButton_ );
+    packButtons->addWidget( packsButton_ );
+    packButtons->addStretch();
+    ui_->verticalLayout->addLayout( packButtons );
+    connect( copyPackSetButton_, &QToolButton::clicked, this, &HighlightersDialog::copyPackSet );
+    connect( editPackSetButton_, &QToolButton::clicked, this, &HighlightersDialog::editPackSet );
+    connect( packsButton_, &QToolButton::clicked, this, [ this ] {
+        if ( packsOpener_ ) {
+            packsOpener_();
+        }
+    } );
+    // A pack enabled, disabled, updated or edited meanwhile: its rows follow.
+    connect( &PackHighlighters::instance(), &PackHighlighters::changed, this,
+             &HighlightersDialog::refreshPackRows );
 
     highlighterSetEdit_ = new HighlighterSetEdit( this );
     highlighterSetEdit_->setSizePolicy( QSizePolicy::Expanding, QSizePolicy::Expanding );
-    highlighterLayout->addWidget( highlighterSetEdit_ );
+    ui_->highlighterLayout->addWidget( highlighterSetEdit_ );
 
-    splitter->setStretchFactor( 0, 0 );
-    splitter->setStretchFactor( 1, 1 );
+    ui_->splitter->setStretchFactor( 0, 0 );
+    ui_->splitter->setStretchFactor( 1, 1 );
 
     // Reload the highlighter list from disk (in case it has been changed
     // by another glogg instance) and copy it to here.
@@ -78,47 +135,49 @@ HighlightersDialog::HighlightersDialog( QWidget* parent )
     populateHighlighterList();
 
     // Start with all buttons disabled except 'add'
-    removeHighlighterButton->setEnabled( false );
-    upHighlighterButton->setEnabled( false );
-    downHighlighterButton->setEnabled( false );
+    ui_->removeHighlighterButton->setEnabled( false );
+    ui_->upHighlighterButton->setEnabled( false );
+    ui_->downHighlighterButton->setEnabled( false );
 
-    connect( addHighlighterButton, &QToolButton::clicked, this,
+    connect( ui_->addHighlighterButton, &QToolButton::clicked, this,
              &HighlightersDialog::addHighlighterSet );
-    connect( removeHighlighterButton, &QToolButton::clicked, this,
+    connect( ui_->removeHighlighterButton, &QToolButton::clicked, this,
              &HighlightersDialog::removeHighlighterSet );
 
-    connect( upHighlighterButton, &QToolButton::clicked, this,
+    connect( ui_->upHighlighterButton, &QToolButton::clicked, this,
              &HighlightersDialog::moveHighlighterSetUp );
-    connect( downHighlighterButton, &QToolButton::clicked, this,
+    connect( ui_->downHighlighterButton, &QToolButton::clicked, this,
              &HighlightersDialog::moveHighlighterSetDown );
 
-    connect( exportButton, &QPushButton::clicked, this, &HighlightersDialog::exportHighlighters );
-    connect( importButton, &QPushButton::clicked, this, &HighlightersDialog::importHighlighters );
+    connect( ui_->exportButton, &QPushButton::clicked, this,
+             &HighlightersDialog::exportHighlighters );
+    connect( ui_->importButton, &QPushButton::clicked, this,
+             &HighlightersDialog::importHighlighters );
 
     // No highlighter selected by default
     selectedRow_ = -1;
 
-    connect( highlighterListWidget, &QListWidget::itemSelectionChanged, this,
+    connect( ui_->highlighterListWidget, &QListWidget::itemSelectionChanged, this,
              &HighlightersDialog::updatePropertyFields );
 
     connect( highlighterSetEdit_, &HighlighterSetEdit::changed, this,
              &HighlightersDialog::updateHighlighterProperties );
 
-    connect( buttonBox, &QDialogButtonBox::clicked, this, &HighlightersDialog::resolveDialog );
+    connect( ui_->buttonBox, &QDialogButtonBox::clicked, this, &HighlightersDialog::resolveDialog );
 
     if ( !highlighterSetCollection_.highlighters_.empty() ) {
         setCurrentRow( 0 );
     }
 
-    quickHighlightLayout->removeWidget( colorLabelsPlaceholder );
-    quickHighlightLayout->removeWidget( colorLabelsForeColor );
-    quickHighlightLayout->removeWidget( colorLabelsBackColor );
-    quickHighlightLayout->removeWidget( colorLabelsCycle );
+    ui_->quickHighlightLayout->removeWidget( ui_->colorLabelsPlaceholder );
+    ui_->quickHighlightLayout->removeWidget( ui_->colorLabelsForeColor );
+    ui_->quickHighlightLayout->removeWidget( ui_->colorLabelsBackColor );
+    ui_->quickHighlightLayout->removeWidget( ui_->colorLabelsCycle );
 
-    quickHighlightLayout->addWidget( colorLabelsPlaceholder, 0, 0 );
-    quickHighlightLayout->addWidget( colorLabelsForeColor, 0, 1, Qt::AlignCenter );
-    quickHighlightLayout->addWidget( colorLabelsBackColor, 0, 2, Qt::AlignCenter );
-    quickHighlightLayout->addWidget( colorLabelsCycle, 0, 3, Qt::AlignCenter );
+    ui_->quickHighlightLayout->addWidget( ui_->colorLabelsPlaceholder, 0, 0 );
+    ui_->quickHighlightLayout->addWidget( ui_->colorLabelsForeColor, 0, 1, Qt::AlignCenter );
+    ui_->quickHighlightLayout->addWidget( ui_->colorLabelsBackColor, 0, 2, Qt::AlignCenter );
+    ui_->quickHighlightLayout->addWidget( ui_->colorLabelsCycle, 0, 3, Qt::AlignCenter );
 
     const auto quickHighlighters = highlighterSetCollection_.quickHighlighters();
     for ( int i = 0; i < quickHighlighters.size(); ++i ) {
@@ -170,20 +229,35 @@ HighlightersDialog::HighlightersDialog( QWidget* parent )
                      highlighterSetCollection_.setQuickHighlighters( highlighters );
                  } );
 
-        quickHighlightLayout->addWidget( nameEdit, row, 0 );
-        quickHighlightLayout->addWidget( foreButton, row, 1 );
-        quickHighlightLayout->addWidget( backButton, row, 2 );
-        quickHighlightLayout->addWidget( cycleCheckbox, row, 3, Qt::AlignCenter );
+        ui_->quickHighlightLayout->addWidget( nameEdit, row, 0 );
+        ui_->quickHighlightLayout->addWidget( foreButton, row, 1 );
+        ui_->quickHighlightLayout->addWidget( backButton, row, 2 );
+        ui_->quickHighlightLayout->addWidget( cycleCheckbox, row, 3, Qt::AlignCenter );
     }
 
     dispatchToObject( [ this ] {
         IconLoader iconLoader( this );
 
-        addHighlighterButton->setIcon( iconLoader.load( "icons8-plus-16" ) );
-        removeHighlighterButton->setIcon( iconLoader.load( "icons8-minus-16" ) );
-        upHighlighterButton->setIcon( iconLoader.load( "icons8-up-16" ) );
-        downHighlighterButton->setIcon( iconLoader.load( "icons8-down-arrow-16" ) );
+        ui_->addHighlighterButton->setIcon( iconLoader.load( "icons8-plus-16" ) );
+        ui_->removeHighlighterButton->setIcon( iconLoader.load( "icons8-minus-16" ) );
+        ui_->upHighlighterButton->setIcon( iconLoader.load( "icons8-up-16" ) );
+        ui_->downHighlighterButton->setIcon( iconLoader.load( "icons8-down-arrow-16" ) );
     }, this );
+}
+
+HighlightersDialog::~HighlightersDialog() = default;
+
+void HighlightersDialog::setPackItemEditor( PackItemEditor editor )
+{
+    packItemEditor_ = std::move( editor );
+    editPackSetButton_->setVisible( static_cast<bool>( packItemEditor_ ) );
+    updatePackButtons();
+}
+
+void HighlightersDialog::setPacksOpener( std::function<void()> opener )
+{
+    packsOpener_ = std::move( opener );
+    packsButton_->setVisible( static_cast<bool>( packsOpener_ ) );
 }
 
 //
@@ -258,84 +332,109 @@ void HighlightersDialog::importHighlighters()
 
             LOG_INFO << "Adding set " << set.name() << " (" << set.id() << ")";
 
+            // The user's sets come before the pack rows.
+            const auto row = ownRowCount();
+            const QSignalBlocker blocker( ui_->highlighterListWidget );
             highlighterSetCollection_.highlighters_.append( set );
-            highlighterListWidget->addItem( set.name() );
+            ui_->highlighterListWidget->insertItem( row, set.name() );
         }
     }
+    // An imported set with a pack set's id replaces it.
+    refreshPackRows();
 }
 
 void HighlightersDialog::addHighlighterSet()
 {
     LOG_DEBUG << "addHighlighter()";
 
-    highlighterSetCollection_.highlighters_.append( HighlighterSet::createNewSet( DEFAULT_NAME ) );
+    // Add and select the newly created highlighter, after the user's sets and before the pack rows
+    const auto row = ownRowCount();
+    {
+        const QSignalBlocker blocker( ui_->highlighterListWidget );
+        highlighterSetCollection_.highlighters_.append(
+            HighlighterSet::createNewSet( DEFAULT_NAME ) );
+        ui_->highlighterListWidget->insertItem( row, DEFAULT_NAME );
+    }
 
-    // Add and select the newly created highlighter
-    highlighterListWidget->addItem( DEFAULT_NAME );
-
-    setCurrentRow( highlighterListWidget->count() - 1 );
+    setCurrentRow( row );
 }
 
 void HighlightersDialog::removeHighlighterSet()
 {
-    int index = highlighterListWidget->currentRow();
+    int index = ui_->highlighterListWidget->currentRow();
     LOG_DEBUG << "removeHighlighter() index " << index;
 
-    if ( index >= 0 ) {
+    // Only the user's sets are removed here; a pack's set goes with its pack.
+    if ( index >= 0 && index < ownRowCount() ) {
         setCurrentRow( -1 );
-        dispatchToObject( [ this, index ] {
-            {
-                const auto& set = highlighterSetCollection_.highlighters_.at( index );
-                highlighterSetCollection_.deactivateSet( set.id() );
-            }
+        dispatchToObject(
+            [ this, index ] {
+                if ( index >= ownRowCount() ) {
+                    return;
+                }
+                {
+                    const auto& set = highlighterSetCollection_.highlighters_.at( index );
+                    highlighterSetCollection_.deactivateSet( set.id() );
+                }
 
-            highlighterSetCollection_.highlighters_.removeAt( index );
-            delete highlighterListWidget->takeItem( index );
+                {
+                    const QSignalBlocker blocker( ui_->highlighterListWidget );
+                    highlighterSetCollection_.highlighters_.removeAt( index );
+                    delete ui_->highlighterListWidget->takeItem( index );
+                }
+                // The pack set it replaced, if any, is listed again.
+                refreshPackRows();
 
-            int count = highlighterListWidget->count();
-            if ( index < count ) {
-                // Select the new item at the same index
-                setCurrentRow( index );
-            }
-            else {
-                // or the previous index if it is at the end
-                setCurrentRow( count - 1 );
-            }
-        }, this );
+                int count = ownRowCount();
+                if ( index < count ) {
+                    // Select the new item at the same index
+                    setCurrentRow( index );
+                }
+                else {
+                    // or the previous index if it is at the end
+                    setCurrentRow( count - 1 );
+                }
+            },
+            this );
     }
 }
 
 void HighlightersDialog::moveHighlighterSetUp()
 {
-    int index = highlighterListWidget->currentRow();
+    int index = ui_->highlighterListWidget->currentRow();
     LOG_DEBUG << "moveHighlighterUp() index " << index;
 
-    if ( index > 0 ) {
+    // The user's sets move among themselves; the pack rows follow them in the packs' order.
+    if ( index > 0 && index < ownRowCount() ) {
         highlighterSetCollection_.highlighters_.move( index, index - 1 );
 
-        dispatchToObject( [ this, index ] {
-            QListWidgetItem* item = highlighterListWidget->takeItem( index );
-            highlighterListWidget->insertItem( index - 1, item );
+        dispatchToObject(
+            [ this, index ] {
+                QListWidgetItem* item = ui_->highlighterListWidget->takeItem( index );
+                ui_->highlighterListWidget->insertItem( index - 1, item );
 
-            setCurrentRow( index - 1 );
-        }, this );
+                setCurrentRow( index - 1 );
+            },
+            this );
     }
 }
 
 void HighlightersDialog::moveHighlighterSetDown()
 {
-    int index = highlighterListWidget->currentRow();
+    int index = ui_->highlighterListWidget->currentRow();
     LOG_DEBUG << "moveHighlighterDown() index " << index;
 
-    if ( ( index >= 0 ) && ( index < ( highlighterListWidget->count() - 1 ) ) ) {
+    if ( ( index >= 0 ) && ( index < ( ownRowCount() - 1 ) ) ) {
         highlighterSetCollection_.highlighters_.move( index, index + 1 );
 
-        dispatchToObject( [ this, index ] {
-            QListWidgetItem* item = highlighterListWidget->takeItem( index );
-            highlighterListWidget->insertItem( index + 1, item );
+        dispatchToObject(
+            [ this, index ] {
+                QListWidgetItem* item = ui_->highlighterListWidget->takeItem( index );
+                ui_->highlighterListWidget->insertItem( index + 1, item );
 
-            setCurrentRow( index + 1 );
-        }, this );
+                setCurrentRow( index + 1 );
+            },
+            this );
     }
 }
 
@@ -343,7 +442,7 @@ void HighlightersDialog::resolveDialog( QAbstractButton* button )
 {
     LOG_DEBUG << "resolveDialog()";
 
-    QDialogButtonBox::ButtonRole role = buttonBox->buttonRole( button );
+    QDialogButtonBox::ButtonRole role = ui_->buttonBox->buttonRole( button );
     if ( role == QDialogButtonBox::RejectRole ) {
         reject();
         return;
@@ -362,6 +461,8 @@ void HighlightersDialog::resolveDialog( QAbstractButton* button )
         LOG_ERROR << "unhandled role : " << role;
         return;
     }
+    // The active sets highlight with the rules edited here and the packs' current ones (E16c2).
+    persistentHighlighterSet.refreshPackSets();
     persistentHighlighterSet.save();
     Q_EMIT optionsChanged();
 }
@@ -369,47 +470,64 @@ void HighlightersDialog::resolveDialog( QAbstractButton* button )
 void HighlightersDialog::setCurrentRow( int row )
 {
     // ugly hack for mac
-    dispatchToObject( [ this, row ]() { highlighterListWidget->setCurrentRow( row ); }, this );
+    dispatchToObject( [ this, row ]() { ui_->highlighterListWidget->setCurrentRow( row ); }, this );
 }
 
 void HighlightersDialog::updatePropertyFields()
 {
-    if ( highlighterListWidget->selectedItems().count() >= 1 )
-        selectedRow_ = highlighterListWidget->row( highlighterListWidget->selectedItems().at( 0 ) );
+    if ( ui_->highlighterListWidget->selectedItems().count() >= 1 )
+        selectedRow_ = ui_->highlighterListWidget->row(
+            ui_->highlighterListWidget->selectedItems().at( 0 ) );
     else
         selectedRow_ = -1;
 
     LOG_DEBUG << "updatePropertyFields(), row = " << selectedRow_;
 
-    if ( selectedRow_ >= 0 ) {
+    const auto own = ownRowCount();
+    if ( selectedRow_ >= 0 && selectedRow_ < own ) {
         const HighlighterSet& currentSet
             = highlighterSetCollection_.highlighters_.at( selectedRow_ );
+        highlighterSetEdit_->setEnabled( true );
         highlighterSetEdit_->setHighlighters( currentSet );
 
         // Enable the buttons if needed
-        removeHighlighterButton->setEnabled( true );
-        upHighlighterButton->setEnabled( selectedRow_ > 0 );
-        downHighlighterButton->setEnabled( selectedRow_ < ( highlighterListWidget->count() - 1 ) );
+        ui_->removeHighlighterButton->setEnabled( true );
+        ui_->upHighlighterButton->setEnabled( selectedRow_ > 0 );
+        ui_->downHighlighterButton->setEnabled( selectedRow_ < ( own - 1 ) );
+    }
+    else if ( const auto* pack = packSetAt( selectedRow_ ) ) {
+        // A pack's set is shown read only: Edit... changes it in the pack, Copy to My
+        // Highlighters makes it the user's.
+        highlighterSetEdit_->setHighlighters( pack->set );
+        highlighterSetEdit_->setEnabled( false );
+
+        ui_->removeHighlighterButton->setEnabled( false );
+        ui_->upHighlighterButton->setEnabled( false );
+        ui_->downHighlighterButton->setEnabled( false );
     }
     else {
+        highlighterSetEdit_->setEnabled( true );
         highlighterSetEdit_->reset();
 
-        removeHighlighterButton->setEnabled( false );
-        upHighlighterButton->setEnabled( false );
-        downHighlighterButton->setEnabled( false );
+        ui_->removeHighlighterButton->setEnabled( false );
+        ui_->upHighlighterButton->setEnabled( false );
+        ui_->downHighlighterButton->setEnabled( false );
     }
+    updatePackButtons();
 }
 
 void HighlightersDialog::updateHighlighterProperties()
 {
     LOG_DEBUG << "updateHighlighterProperties()";
 
-    // If a row is selected
-    if ( selectedRow_ >= 0 ) {
+    // If one of the user's rows is selected (a pack row is read only)
+    if ( selectedRow_ >= 0 && selectedRow_ < ownRowCount() ) {
         HighlighterSet& currentSet = highlighterSetCollection_.highlighters_[ selectedRow_ ];
         currentSet = highlighterSetEdit_->highlighters();
         // Update the entry in the highlighterList widget
-        highlighterListWidget->currentItem()->setText( currentSet.name() );
+        if ( auto* item = ui_->highlighterListWidget->item( selectedRow_ ) ) {
+            item->setText( currentSet.name() );
+        }
     }
 }
 
@@ -419,11 +537,144 @@ void HighlightersDialog::updateHighlighterProperties()
 
 void HighlightersDialog::populateHighlighterList()
 {
-    highlighterListWidget->clear();
-    for ( const HighlighterSet& highlighterSet :
-          klogg::as_const( highlighterSetCollection_.highlighters_ ) ) {
-        auto* new_item = new QListWidgetItem( highlighterSet.name() );
-        // new_item->setFlags( Qt::ItemIsSelectable | Qt::ItemIsEditable | Qt::ItemIsEnabled );
-        highlighterListWidget->addItem( new_item );
+    {
+        const QSignalBlocker blocker( ui_->highlighterListWidget );
+        ui_->highlighterListWidget->clear();
+        packRows_.clear();
+        for ( const HighlighterSet& highlighterSet :
+              klogg::as_const( highlighterSetCollection_.highlighters_ ) ) {
+            auto* new_item = new QListWidgetItem( highlighterSet.name() );
+            // new_item->setFlags( Qt::ItemIsSelectable | Qt::ItemIsEditable | Qt::ItemIsEnabled );
+            ui_->highlighterListWidget->addItem( new_item );
+        }
     }
+    refreshPackRows();
+}
+
+int HighlightersDialog::ownRowCount() const
+{
+    return static_cast<int>( highlighterSetCollection_.highlighters_.size() );
+}
+
+const ListedHighlighterSet* HighlightersDialog::packSetAt( int row ) const
+{
+    const auto index = row - ownRowCount();
+    if ( row < 0 || index < 0 || index >= packRows_.size() ) {
+        return nullptr;
+    }
+    return &packRows_.at( index );
+}
+
+bool HighlightersDialog::isReplacedRow( int row ) const
+{
+    const auto* item = ui_->highlighterListWidget->item( row );
+    return packSetAt( row ) && item && item->data( ReplacedRole ).toBool();
+}
+
+void HighlightersDialog::refreshPackRows()
+{
+    auto* list = ui_->highlighterListWidget;
+    const auto own = ownRowCount();
+    // The pack set selected stays selected (by its id: rows of the user's may have been added).
+    const auto before = list->selectedItems();
+    const auto selectedPackSet
+        = before.isEmpty() ? QString{} : before.first()->data( PackSetRole ).toString();
+    {
+        const QSignalBlocker blocker( list );
+        while ( list->count() > own ) {
+            delete list->takeItem( list->count() - 1 );
+        }
+        packRows_.clear();
+
+        // A set of the user's with a pack set's id replaces it (design 4.5).
+        QSet<QString> ownIds;
+        for ( const auto& set : highlighterSetCollection_.highlighters_ ) {
+            ownIds.insert( set.id() );
+        }
+        const auto& packSets = PackHighlighters::instance().sets();
+        // Past the limit with these sets of the user's, the packs' sets give way in the menu and
+        // the highlighting (HighlighterSetCollection::listedSets): they say so here.
+        const auto listedPackSets = std::count_if(
+            packSets.cbegin(), packSets.cend(), [ &ownIds ]( const ListedHighlighterSet& listed ) {
+                return !ownIds.contains( listed.set.id() );
+            } );
+        const bool givingWay = own + listedPackSets > MaxListedHighlighterSets;
+        for ( const auto& listed : packSets ) {
+            const bool replaced = ownIds.contains( listed.set.id() );
+            const auto& name = listed.set.name();
+            auto* item = new QListWidgetItem(
+                replaced ? tr( "%1 (%2, replaced by your set)" ).arg( name, listed.packName )
+                : givingWay
+                    ? tr( "%1 (%2, not listed: more than %3 sets)" )
+                          .arg( name, listed.packName, QString::number( MaxListedHighlighterSets ) )
+                    : tr( "%1 (%2)" ).arg( name, listed.packName ) );
+            item->setData( ReplacedRole, replaced );
+            item->setData( PackSetRole, listed.set.id() );
+            item->setToolTip(
+                replaced    ? tr( "Your highlighter set with the same id replaces this pack set." )
+                : givingWay ? tr( "Your highlighter sets and the packs' would be more than %1, "
+                                  "so the packs' sets are not listed until you have fewer." )
+                                  .arg( MaxListedHighlighterSets )
+                            : tr( "From the configuration pack \"%1\". Edit it in place or copy "
+                                  "it to your own highlighter sets." )
+                                  .arg( listed.packName ) );
+            auto font = item->font();
+            font.setItalic( true );
+            item->setFont( font );
+            list->addItem( item );
+            packRows_.append( listed );
+            if ( !selectedPackSet.isEmpty() && listed.set.id() == selectedPackSet ) {
+                list->setCurrentItem( item );
+            }
+        }
+    }
+    // The pack set shown in the editor may have changed or gone, or the selected row moved.
+    const auto after = list->selectedItems();
+    const auto row = after.isEmpty() ? -1 : list->row( after.first() );
+    if ( !selectedPackSet.isEmpty() || row != selectedRow_ ) {
+        updatePropertyFields();
+    }
+    else {
+        updatePackButtons();
+    }
+}
+
+void HighlightersDialog::updatePackButtons()
+{
+    const bool packRow = packSetAt( selectedRow_ ) && !isReplacedRow( selectedRow_ );
+    copyPackSetButton_->setEnabled( packRow );
+    editPackSetButton_->setEnabled( packRow && static_cast<bool>( packItemEditor_ ) );
+}
+
+void HighlightersDialog::copyPackSet()
+{
+    const auto row = selectedRow_;
+    const auto* pack = packSetAt( row );
+    if ( !pack || isReplacedRow( row ) ) {
+        return;
+    }
+    // The user's copy keeps the id, so it replaces the pack's set and stays active if the pack's
+    // was (as Copy to My Previews keeps the name); it is saved with the user's other sets.
+    const auto copy = pack->set;
+    const auto target = ownRowCount();
+    {
+        const QSignalBlocker blocker( ui_->highlighterListWidget );
+        highlighterSetCollection_.highlighters_.append( copy );
+        ui_->highlighterListWidget->insertItem( target, copy.name() );
+    }
+    refreshPackRows();
+    setCurrentRow( target );
+}
+
+void HighlightersDialog::editPackSet()
+{
+    const auto* pack = packSetAt( selectedRow_ );
+    if ( !packItemEditor_ || !pack || isReplacedRow( selectedRow_ ) ) {
+        return;
+    }
+    // Copied: the editor's save changes the pack's sets, which rebuilds the pack rows.
+    const auto packId = pack->packId;
+    const auto path = QStringLiteral( "highlights/%1.set" )
+                          .arg( cilogg::plugins::packcanonical::encodeName( pack->set.id() ) );
+    packItemEditor_( this, packId, path );
 }

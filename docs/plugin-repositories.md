@@ -705,6 +705,37 @@ only, with **Copy to My Filters** (a filter of the user's with the same id), **E
 pack item editor on `filters/<id>.json`) and **Packs...** (the Plugins and Packs window over the
 dialog). `get_plugins` counts a pack's `filters`.
 
+**As built (E16c2, highlighter sets).** A pack's `highlights` file is the INI file **Export**
+writes (group `HighlighterSetCollection`, version 1 or 2; each set `HighlighterSet` version 1 to 3);
+`packcanonical::fromHighlights` refuses one that is not exactly that (a set without a unique `id`
+or a name, a rule without the eight keys CILogg writes or with a value CILogg would not read back,
+any other key, more than 4,096 sets or 4,096 rules in a set) and drops the exported `active_sets`
+and color labels, which are the user's. In the store each set is one text file,
+`highlights/<id>.set`: an `id` line, a `name` line and one `rule` line per rule (the rule as JSON
+with sorted keys), with the set order in `highlights/order.txt`. A set merges as text (diff3), so
+edits of different rules merge and edits of the same or adjacent lines conflict; Keep Mine or Take
+Theirs keeps a whole set, so no rule is left without its set. `toHighlights` writes the content
+folder's highlighters file back with QSettings. An edit, a merge result or a reset must leave every
+set one CILogg reads back the same (`highlightsInvalid`, also in `contentInvalid`); `pack_edit`
+canonicalizes a set and refuses to remove one (a pack's sets go with the pack), and a version
+without a highlighters file takes the set items with it. `PreviewPackRegistry` reads each enabled
+pack's sets as CILogg reads its own (`HighlighterSetCollection::retrieveFromStorage` on a copy)
+and hands them to `PackHighlighters` as `ListedHighlighterSet`s (the set with its pack's ID and
+name); the user's `HighlighterSetCollection` holds the user's sets only (saved, exported and put in
+project snapshots), and `listedSets()` lists them, then the packs' whose id the user has not taken.
+The active sets stay the user's: `activeSetIds` keeps pack set ids, also while the pack is
+disabled, and the combined highlighting (`updateCombinedSet`) follows `listedSets()`, so an
+active pack set highlights with its new rules as soon as the pack changes. The pack check refuses
+a set id another enabled pack has and more than 4,096 sets together; the user's own sets are not
+limited, and when they grow past that the packs' sets give way (shown as "not listed" in the
+dialog). No other content file may be the highlighters file (`checkReservedPaths`). The
+Highlighters menu shows pack sets as "<name> (<pack name>)" and follows `PackHighlighters::changed`;
+the Highlighters dialog lists them after the user's, read only (the set editor disabled), marked
+"replaced by your set" when a set of the user's has the id, with **Copy to My Highlighters** (a
+set of the user's with the same id, which stays active if the pack's was), **Edit...** (the pack
+item editor on `highlights/<id>.set`) and **Packs...**. `get_plugins` counts a pack's
+`highlighterSets`.
+
 ### 4.6 Local edits and merge on update
 
 **Decided (Dmitry, 2026-11-17): edit in place with merge.** Process plugins (for example a CPF tool,
@@ -720,9 +751,9 @@ internal, and CILogg reads a pack's effective content from it.
 - Branch `upstream` gets one commit per installed version, exactly as shipped, with a message such
   as "Install 1.2.0 from Team packs". Branch `local` carries the user's edits as commits on top:
   CILogg commits when the user saves a pack item, with a readable message ("Edit filter 'Software
-  or Reset'", "Delete highlighter set 'Radio'").
+  or Reset'", "Edit highlighter set 'Radio'").
 - **Canonical form.** Structured content is stored one item per file (`filters/<id>.json`,
-  `highlights/<set-id>.json`, `actions/<id>.json`, `responses/<id>.json`, `previews/<name>.json`,
+  `highlights/<set-id>.set`, `actions/<id>.json`, `responses/<id>.json`, `previews/<name>.json`,
   `blocks/<name>.json`; unsafe characters of a name are encoded), as JSON with sorted keys and one
   member per line, and the rules of a highlighter set one per line. Unrelated edits then never touch
   the same lines. Lua and Python files are stored as they are. The canonical form converts to and

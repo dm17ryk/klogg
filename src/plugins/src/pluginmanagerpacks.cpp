@@ -147,7 +147,8 @@ QString highlightsInvalid( const PackFiles& files )
         return error;
     }
     if ( written.size() > MaxPackFileBytes ) {
-        return QStringLiteral( "The pack's highlighters are larger than 1 MiB as CILogg writes them." );
+        return QStringLiteral(
+            "The pack's highlighters are larger than 1 MiB as CILogg writes them." );
     }
     packcanonical::fromHighlights( written, &error );
     return error;
@@ -1051,23 +1052,27 @@ Result PluginManager::managePack( const QString& operation, const QString& id,
         }
         if ( kind == QLatin1String( "highlight" ) ) {
             // The name line: `name "..."`.
-            const auto lines = QString::fromUtf8( bytes.value_or( files.value( path ) ) ).split( '\n' );
-            const auto name = lines.size() > 1
-                                  ? QJsonDocument::fromJson( '[' + lines.at( 1 ).mid( 5 ).toUtf8() + ']' )
-                                        .array()
-                                        .at( 0 )
-                                        .toString()
-                                        .left( 128 )
-                                  : QString{};
+            const auto lines
+                = QString::fromUtf8( bytes.value_or( files.value( path ) ) ).split( '\n' );
+            const auto name
+                = lines.size() > 1
+                      ? QJsonDocument::fromJson( '[' + lines.at( 1 ).mid( 5 ).toUtf8() + ']' )
+                            .array()
+                            .at( 0 )
+                            .toString()
+                            .left( 128 )
+                      : QString{};
             item = name.isEmpty() ? item : name;
         }
         const auto subject
-            = kind == QLatin1String( "file" )              ? item
-              : kind == QLatin1String( "filter-order" )    ? QStringLiteral( "the filter order" )
-              : kind == QLatin1String( "highlight-order" ) ? QStringLiteral( "the highlighter set order" )
-              : kind == QLatin1String( "highlight" ) ? QStringLiteral( "highlighter set '%1'" ).arg( item )
-              : kind == QLatin1String( "order" )     ? QStringLiteral( "the preview order" )
-                                                     : QStringLiteral( "%1 '%2'" ).arg( kind, item );
+            = kind == QLatin1String( "file" )           ? item
+              : kind == QLatin1String( "filter-order" ) ? QStringLiteral( "the filter order" )
+              : kind == QLatin1String( "highlight-order" )
+                  ? QStringLiteral( "the highlighter set order" )
+              : kind == QLatin1String( "highlight" )
+                  ? QStringLiteral( "highlighter set '%1'" ).arg( item )
+              : kind == QLatin1String( "order" ) ? QStringLiteral( "the preview order" )
+                                                 : QStringLiteral( "%1 '%2'" ).arg( kind, item );
         auto message = options.value( "message" ).toString().left( 256 );
         if ( message.isEmpty() ) {
             message = ( remove ? QStringLiteral( "Delete %1" ) : QStringLiteral( "Edit %1" ) )

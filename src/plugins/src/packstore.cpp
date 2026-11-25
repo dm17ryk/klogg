@@ -825,7 +825,8 @@ QString PackStore::planRestore( const QString& storePath, const QString& commitI
                               : highlights ? std::pair{ &content.highlights, "highlighters file" }
                                            : std::pair{ &content.previews, "previews document" };
         if ( kind != QLatin1String( "file" )
-             && ( !validatePackManifest( manifest, &content ).isEmpty() || document.first->isEmpty() ) ) {
+             && ( !validatePackManifest( manifest, &content ).isEmpty()
+                  || document.first->isEmpty() ) ) {
             return QStringLiteral( "This version of the pack has no %1; its manifest decides what "
                                    "the pack has." )
                 .arg( QLatin1String( document.second ) );
@@ -833,8 +834,8 @@ QString PackStore::planRestore( const QString& storePath, const QString& commitI
         stored->insert( storePath, target.value( storePath ) );
     }
     else if ( kind == QLatin1String( "file" ) || kind == QLatin1String( "order" )
-              || kind == QLatin1String( "filter-order" ) || kind == QLatin1String( "highlight-order" )
-              || kind == QLatin1String( "meta" ) ) {
+              || kind == QLatin1String( "filter-order" )
+              || kind == QLatin1String( "highlight-order" ) || kind == QLatin1String( "meta" ) ) {
         // The manifest decides which files a pack has; they are edited, never removed.
         if ( current.contains( storePath ) ) {
             return QStringLiteral( "That version has no such file, and this version of the pack "

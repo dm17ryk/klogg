@@ -12,6 +12,7 @@
 #include <functional>
 #include <optional>
 
+#include "highlighterset.h"
 #include "predefinedfilters.h"
 #include "previewmanager.h"
 
@@ -39,6 +40,8 @@ public:
         int pythonDecoders = 0;
         // Its predefined filters in its order, with packId and packName (E16c).
         QList<ListedFilter> filters;
+        // Its highlighter sets in its order, with packId and packName (E16c2).
+        QList<ListedHighlighterSet> highlighterSets;
         QString error;
     };
     // The most predefined filters the user's and the enabled packs' can be together when a pack is

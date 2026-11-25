@@ -142,7 +142,8 @@ QString checkReservedPaths( const PackContent& content )
     }
     const QVector<std::pair<QString, QString>> written{
         { content.filters, QStringLiteral( "filters" ) },
-        { content.highlights, QStringLiteral( "highlighters" ) } };
+        { content.highlights, QStringLiteral( "highlighters" ) }
+    };
     auto others = raw;
     for ( const auto& file : written ) {
         others.append( file.first );
@@ -167,7 +168,8 @@ QString checkReservedPaths( const PackContent& content )
         }
     }
     // CILogg writes the filters and highlighters files from the pack's items (E16c), so no other
-    // content file may be one of them: written after it, it would replace the items and their edits.
+    // content file may be one of them: written after it, it would replace the items and their
+    // edits.
     for ( qsizetype index = 0; index < written.size(); ++index ) {
         const auto& [ path, what ] = written.at( index );
         if ( path.isEmpty() ) {

@@ -38,8 +38,10 @@ constexpr int HighlightSetVersion = 3;
 // One highlighter rule's members, as HighlighterSet saves them: the canonical form keeps them all.
 const QStringList& ruleKeys()
 {
-    static const QStringList keys{ "back_colour", "color_variance", "fore_colour", "ignore_case",
-                                   "match_only",  "regexp",         "use_regex",   "variate_colors" };
+    static const QStringList keys{
+        "back_colour", "color_variance", "fore_colour", "ignore_case",
+        "match_only",  "regexp",         "use_regex",   "variate_colors"
+    };
     return keys;
 }
 
@@ -97,13 +99,14 @@ std::optional<HighlightSet> parseSet( const QByteArray& bytes, QString* why )
     if ( !lines.isEmpty() && lines.last().isEmpty() ) {
         lines.removeLast();
     }
-    const auto stringAfter = [ &lines ]( int index, const QString& keyword ) -> std::optional<QString> {
+    const auto stringAfter
+        = [ &lines ]( int index, const QString& keyword ) -> std::optional<QString> {
         if ( index >= lines.size() || !lines.at( index ).startsWith( keyword + ' ' ) ) {
             return std::nullopt;
         }
-        const auto array
-            = QJsonDocument::fromJson( '[' + lines.at( index ).mid( keyword.size() + 1 ).toUtf8() + ']' )
-                  .array();
+        const auto array = QJsonDocument::fromJson(
+                               '[' + lines.at( index ).mid( keyword.size() + 1 ).toUtf8() + ']' )
+                               .array();
         if ( array.size() != 1 || !array.first().isString() ) {
             return std::nullopt;
         }
@@ -491,11 +494,13 @@ PackFiles fromHighlights( const QByteArray& highlightsConf, QString* error )
     const QString group = QLatin1String( HighlightsGroup ) + '/';
     bool ok = false;
     const auto version = settings.value( group + QStringLiteral( "version" ) ).toInt( &ok );
-    if ( settings.status() != QSettings::NoError || !ok || version < 1 || version > HighlightsVersion ) {
-        return reject( QStringLiteral( "it needs [%1] with a version from 1 to %2, as CILogg exports "
-                                       "highlighters." )
-                           .arg( QLatin1String( HighlightsGroup ) )
-                           .arg( HighlightsVersion ) );
+    if ( settings.status() != QSettings::NoError || !ok || version < 1
+         || version > HighlightsVersion ) {
+        return reject(
+            QStringLiteral( "it needs [%1] with a version from 1 to %2, as CILogg exports "
+                            "highlighters." )
+                .arg( QLatin1String( HighlightsGroup ) )
+                .arg( HighlightsVersion ) );
     }
     const auto countOf = [ &settings ]( const QString& key, int limit, int* count ) {
         const auto value = settings.value( key );
@@ -511,16 +516,18 @@ PackFiles fromHighlights( const QByteArray& highlightsConf, QString* error )
     // Exactly the sets (and the user's active sets and color labels, which are not carried):
     // anything else in the file would be lost on the way to the store.
     static const QRegularExpression keyPattern( QRegularExpression::anchoredPattern(
-        QStringLiteral( "%1/(?:version|active_sets|current|sets/size|quick/size"
-                        "|quick/[1-9][0-9]{0,4}/(?:name|fore_colour|back_colour|cycle)"
-                        "|sets/([1-9][0-9]{0,4})/HighlighterSet/(?:version|name|id|highlighters/size"
-                        "|highlighters/([1-9][0-9]{0,4})/(?:%2)))" )
+        QStringLiteral(
+            "%1/(?:version|active_sets|current|sets/size|quick/size"
+            "|quick/[1-9][0-9]{0,4}/(?:name|fore_colour|back_colour|cycle)"
+            "|sets/([1-9][0-9]{0,4})/HighlighterSet/(?:version|name|id|highlighters/size"
+            "|highlighters/([1-9][0-9]{0,4})/(?:%2)))" )
             .arg( QLatin1String( HighlightsGroup ), ruleKeys().join( '|' ) ) ) );
     QHash<int, int> ruleCounts; // set index -> its highlighters/size
     for ( int index = 1; index <= size; ++index ) {
         int rules = 0;
-        if ( !countOf( group + QStringLiteral( "sets/%1/HighlighterSet/highlighters/size" ).arg( index ),
-                       MaxPackHighlightRules, &rules ) ) {
+        if ( !countOf(
+                 group + QStringLiteral( "sets/%1/HighlighterSet/highlighters/size" ).arg( index ),
+                 MaxPackHighlightRules, &rules ) ) {
             return reject( QStringLiteral( "set %1 has more than %2 rules or no rule count." )
                                .arg( index )
                                .arg( MaxPackHighlightRules ) );
@@ -553,12 +560,14 @@ PackFiles fromHighlights( const QByteArray& highlightsConf, QString* error )
                                .arg( HighlightSetVersion ) );
         }
         if ( set.id.isEmpty() || set.id.contains( '\n' ) || set.id.contains( '\r' ) ) {
-            return reject( QStringLiteral( "set %1 has no id (a pack's highlighter sets are known by "
-                                           "their ids)." )
-                               .arg( index ) );
+            return reject(
+                QStringLiteral( "set %1 has no id (a pack's highlighter sets are known by "
+                                "their ids)." )
+                    .arg( index ) );
         }
         if ( ids.contains( set.id ) ) {
-            return reject( QStringLiteral( "two sets with the id \"%1\"." ).arg( set.id.left( 64 ) ) );
+            return reject(
+                QStringLiteral( "two sets with the id \"%1\"." ).arg( set.id.left( 64 ) ) );
         }
         if ( set.name.isEmpty() ) {
             return reject( QStringLiteral( "set \"%1\" needs a name." ).arg( set.id.left( 64 ) ) );
@@ -566,10 +575,10 @@ PackFiles fromHighlights( const QByteArray& highlightsConf, QString* error )
         for ( int rule = 1; rule <= ruleCounts.value( index ); ++rule ) {
             const auto rulePrefix = prefix + QStringLiteral( "highlighters/%1/" ).arg( rule );
             // The defaults HighlighterSet reads a missing member with.
-            const QJsonObject defaults{ { "back_colour", "" },     { "color_variance", 15 },
-                                        { "fore_colour", "" },     { "ignore_case", false },
-                                        { "match_only", false },   { "regexp", "" },
-                                        { "use_regex", true },     { "variate_colors", false } };
+            const QJsonObject defaults{ { "back_colour", "" },   { "color_variance", 15 },
+                                        { "fore_colour", "" },   { "ignore_case", false },
+                                        { "match_only", false }, { "regexp", "" },
+                                        { "use_regex", true },   { "variate_colors", false } };
             QJsonObject item;
             for ( auto member = defaults.constBegin(); member != defaults.constEnd(); ++member ) {
                 const auto value = settings.value( rulePrefix + member.key() );
@@ -581,10 +590,11 @@ PackFiles fromHighlights( const QByteArray& highlightsConf, QString* error )
                 if ( boolKey( member.key() ) ) {
                     if ( text.compare( "true", Qt::CaseInsensitive ) != 0
                          && text.compare( "false", Qt::CaseInsensitive ) != 0 ) {
-                        return reject( QStringLiteral( "rule %1 of set \"%2\" has a %3 that is neither "
-                                                       "true nor false." )
-                                           .arg( rule )
-                                           .arg( set.id.left( 64 ), member.key() ) );
+                        return reject(
+                            QStringLiteral( "rule %1 of set \"%2\" has a %3 that is neither "
+                                            "true nor false." )
+                                .arg( rule )
+                                .arg( set.id.left( 64 ), member.key() ) );
                     }
                     item.insert( member.key(), text.compare( "true", Qt::CaseInsensitive ) == 0 );
                 }
@@ -609,7 +619,8 @@ PackFiles fromHighlights( const QByteArray& highlightsConf, QString* error )
         order.append( set.id );
         files.insert( HighlightsDir + encodeName( set.id ) + SetSuffix, setText( set ) );
     }
-    files.insert( HighlightOrderFile, order.isEmpty() ? QByteArray{} : ( order.join( '\n' ) + '\n' ).toUtf8() );
+    files.insert( HighlightOrderFile,
+                  order.isEmpty() ? QByteArray{} : ( order.join( '\n' ) + '\n' ).toUtf8() );
     return files;
 }
 
@@ -629,9 +640,10 @@ QByteArray toHighlights( const PackFiles& files, QString* error )
         QString why;
         const auto set = parseSet( file.value(), &why );
         if ( !set || set->id != itemOf( file.key() ) ) {
-            return failed( QStringLiteral( "The pack's highlighter set \"%1\" cannot be read: %2." )
-                               .arg( itemOf( file.key() ).left( 64 ),
-                                     set ? QStringLiteral( "its id line names another set" ) : why ) );
+            return failed(
+                QStringLiteral( "The pack's highlighter set \"%1\" cannot be read: %2." )
+                    .arg( itemOf( file.key() ).left( 64 ),
+                          set ? QStringLiteral( "its id line names another set" ) : why ) );
         }
         sets.insert( set->id, *set );
     }
@@ -662,7 +674,8 @@ QByteArray toHighlights( const PackFiles& files, QString* error )
             settings.setValue( QStringLiteral( "version" ), HighlightSetVersion );
             settings.setValue( QStringLiteral( "name" ), set.name );
             settings.setValue( QStringLiteral( "id" ), set.id );
-            settings.beginWriteArray( QStringLiteral( "highlighters" ), static_cast<int>( set.rules.size() ) );
+            settings.beginWriteArray( QStringLiteral( "highlighters" ),
+                                      static_cast<int>( set.rules.size() ) );
             for ( int rule = 0; rule < set.rules.size(); ++rule ) {
                 settings.setArrayIndex( rule );
                 const auto& item = set.rules.at( rule );
@@ -695,7 +708,8 @@ QString highlightSetError( const QByteArray& setText, const QString& id )
         return QStringLiteral( "The highlighter set is not valid: %1." ).arg( why );
     }
     if ( set->id != id ) {
-        return QStringLiteral( "The highlighter set's id must stay \"%1\" (copy it to make another)." )
+        return QStringLiteral(
+                   "The highlighter set's id must stay \"%1\" (copy it to make another)." )
             .arg( id.left( 64 ) );
     }
     return {};

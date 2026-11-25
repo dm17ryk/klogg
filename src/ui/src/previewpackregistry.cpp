@@ -7,6 +7,8 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QSet>
+#include <QSettings>
+#include <QTemporaryDir>
 #include <algorithm>
 
 #include "configpack.h"
@@ -180,6 +182,39 @@ PreviewPackRegistry::Contribution PreviewPackRegistry::read( const QString& id,
                                    packLabel( pack ) } );
         }
     }
+    if ( !content.highlights.isEmpty() ) {
+        QFile file( QDir( directory ).filePath( content.highlights ) );
+        QString error;
+        const auto bytes = file.open( QIODevice::ReadOnly )
+                               ? file.read( cilogg::plugins::MaxPackFileBytes )
+                               : QByteArray{};
+        // Checked as the store reads it first: exactly a highlighters file, every set with an id.
+        if ( file.isOpen() ) {
+            cilogg::plugins::packcanonical::fromHighlights( bytes, &error );
+        }
+        // Then read as the user's highlighters are read, from a copy (QSettings reads INI files
+        // only, and caches them by path).
+        QTemporaryDir folder;
+        const auto copy = folder.filePath( QStringLiteral( "highlights.conf" ) );
+        QFile written( copy );
+        if ( error.isEmpty() && file.isOpen()
+             && ( !folder.isValid() || !written.open( QIODevice::WriteOnly )
+                  || written.write( bytes ) != bytes.size() ) ) {
+            error = QObject::tr( "no temporary folder to read it in" );
+        }
+        written.close();
+        if ( !error.isEmpty() || !file.isOpen() ) {
+            pack.error = QObject::tr( "The pack's highlighters cannot be read: %1" )
+                             .arg( error.isEmpty() ? file.errorString() : error );
+            return pack;
+        }
+        QSettings settings( copy, QSettings::IniFormat );
+        HighlighterSetCollection collection;
+        collection.retrieveFromStorage( settings );
+        for ( const auto& set : collection.highlighterSets() ) {
+            pack.highlighterSets.append( { set, id, packLabel( pack ) } );
+        }
+    }
     pack.luaFiles = content.luaFiles( directory );
     pack.previewRoutes = content.previewRoutes.toVariantMap();
     pack.protocolRoutes = content.protocolRoutes.toVariantMap();
@@ -226,6 +261,8 @@ void PreviewPackRegistry::refresh()
     PreviewDecoderPacks decoder;
     QList<ListedFilter> filters;
     QSet<QString> filterIds;
+    QList<ListedHighlighterSet> highlighterSets;
+    QSet<QString> setIds;
     for ( const auto& pack : packs ) {
         cache_.insert( pack.id, pack );
         if ( !pack.error.isEmpty() ) {
@@ -240,6 +277,13 @@ void PreviewPackRegistry::refresh()
             if ( !filterIds.contains( listed.filter.id ) ) {
                 filterIds.insert( listed.filter.id );
                 filters.append( listed );
+            }
+        }
+        // The same for highlighter sets (E16c2).
+        for ( const auto& listed : pack.highlighterSets ) {
+            if ( !setIds.contains( listed.set.id() ) ) {
+                setIds.insert( listed.set.id() );
+                highlighterSets.append( listed );
             }
         }
         if ( !pack.luaFiles.isEmpty() ) {
@@ -271,6 +315,7 @@ void PreviewPackRegistry::refresh()
     PreviewDecoderSettings::instance().setPacks( decoder );
     PreviewManager::instance().setPackPreviews( previews );
     PackFilters::instance().setFilters( filters );
+    PackHighlighters::instance().setSets( highlighterSets );
 }
 
 QString PreviewPackRegistry::copyPreview( const QString& name, const QString& copyName )
@@ -468,6 +513,31 @@ QString PreviewPackRegistry::check( const QString& id, const QString& directory,
             .arg( packLabel( candidate ) )
             .arg( filterCount )
             .arg( FilterLimit );
+    }
+    // Highlighter sets (E16c2): the same, no id shared with another enabled pack and the user's
+    // sets and every enabled pack's together within the limit.
+    auto setCount = HighlighterSetCollection::getSynced().highlighterSets().size()
+                    + candidate.highlighterSets.size();
+    QHash<QString, const Contribution*> setOwners; // id -> the enabled pack that has it
+    for ( const auto& other : others ) {
+        for ( const auto& listed : other.highlighterSets ) {
+            setOwners.insert( listed.set.id(), &other );
+        }
+        setCount += other.highlighterSets.size();
+    }
+    for ( const auto& listed : candidate.highlighterSets ) {
+        if ( const auto* owner = setOwners.value( listed.set.id() ) ) {
+            return tr( "The packs \"%1\" and \"%2\" both have a highlighter set with the id "
+                       "\"%3\". Disable one of them first." )
+                .arg( packLabel( candidate ), packLabel( *owner ), listed.set.id() );
+        }
+    }
+    if ( setCount > MaxListedHighlighterSets ) {
+        return tr( "Enabling \"%1\" would make %2 highlighter sets (at most %3, your own "
+                   "included)." )
+            .arg( packLabel( candidate ) )
+            .arg( setCount )
+            .arg( MaxListedHighlighterSets );
     }
     // Routes: the same key in two packs, and the merged lists within the decoder's limits.
     const auto user = PreviewDecoderSettings::instance().configuration();
