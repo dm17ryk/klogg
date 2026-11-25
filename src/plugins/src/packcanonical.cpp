@@ -4,6 +4,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QRegularExpression>
@@ -11,6 +12,7 @@
 #include <QSettings>
 #include <QTemporaryDir>
 #include <algorithm>
+#include <optional>
 
 namespace cilogg::plugins::packcanonical {
 namespace {
@@ -21,10 +23,122 @@ constexpr char FilesDir[] = "files/";
 constexpr char OrderFile[] = "previews/order.txt";
 constexpr char MetaFile[] = "previews/meta.json";
 constexpr char FilterOrderFile[] = "filters/order.txt";
+constexpr char HighlightsDir[] = "highlights/";
+constexpr char HighlightOrderFile[] = "highlights/order.txt";
 constexpr char JsonSuffix[] = ".json";
+constexpr char SetSuffix[] = ".set";
 // The filters file's group and the newest version this CILogg writes (PredefinedFiltersCollection).
 constexpr char FiltersGroup[] = "PredefinedFiltersCollection";
 constexpr int FiltersVersion = 3;
+// The highlighters file's group and versions (HighlighterSetCollection, HighlighterSet).
+constexpr char HighlightsGroup[] = "HighlighterSetCollection";
+constexpr int HighlightsVersion = 2;
+constexpr int HighlightSetVersion = 3;
+
+// One highlighter rule's members, as HighlighterSet saves them: the canonical form keeps them all.
+const QStringList& ruleKeys()
+{
+    static const QStringList keys{ "back_colour", "color_variance", "fore_colour", "ignore_case",
+                                   "match_only",  "regexp",         "use_regex",   "variate_colors" };
+    return keys;
+}
+
+bool boolKey( const QString& key )
+{
+    return key == QLatin1String( "ignore_case" ) || key == QLatin1String( "match_only" )
+           || key == QLatin1String( "use_regex" ) || key == QLatin1String( "variate_colors" );
+}
+
+struct HighlightSet {
+    QString id;
+    QString name;
+    QVector<QJsonObject> rules;
+};
+
+QByteArray jsonString( const QString& text )
+{
+    const auto array = QJsonDocument( QJsonArray{ text } ).toJson( QJsonDocument::Compact );
+    return array.mid( 1, array.size() - 2 ); // ["..."] -> "..."
+}
+
+QByteArray setText( const HighlightSet& set )
+{
+    QByteArray text = "id " + jsonString( set.id ) + "\nname " + jsonString( set.name ) + '\n';
+    for ( const auto& rule : set.rules ) {
+        text += "rule " + QJsonDocument( rule ).toJson( QJsonDocument::Compact ) + '\n';
+    }
+    return text;
+}
+
+// A rule is exactly the members CILogg saves, each of its type.
+bool validRule( const QJsonObject& rule )
+{
+    if ( rule.keys() != ruleKeys() ) {
+        return false;
+    }
+    for ( auto member = rule.constBegin(); member != rule.constEnd(); ++member ) {
+        const auto& value = member.value();
+        const auto& key = member.key();
+        const bool ok = boolKey( key ) ? value.isBool()
+                        : key == QLatin1String( "color_variance" )
+                            ? value.isDouble() && value.toDouble() == value.toInt()
+                            : value.isString();
+        if ( !ok ) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// A set's text: `id "..."`, `name "..."`, then `rule {...}` lines (CR LF line ends allowed).
+std::optional<HighlightSet> parseSet( const QByteArray& bytes, QString* why )
+{
+    auto lines = QString::fromUtf8( bytes ).remove( '\r' ).split( '\n' );
+    if ( !lines.isEmpty() && lines.last().isEmpty() ) {
+        lines.removeLast();
+    }
+    const auto stringAfter = [ &lines ]( int index, const QString& keyword ) -> std::optional<QString> {
+        if ( index >= lines.size() || !lines.at( index ).startsWith( keyword + ' ' ) ) {
+            return std::nullopt;
+        }
+        const auto array
+            = QJsonDocument::fromJson( '[' + lines.at( index ).mid( keyword.size() + 1 ).toUtf8() + ']' )
+                  .array();
+        if ( array.size() != 1 || !array.first().isString() ) {
+            return std::nullopt;
+        }
+        return array.first().toString();
+    };
+    const auto id = stringAfter( 0, QStringLiteral( "id" ) );
+    const auto name = stringAfter( 1, QStringLiteral( "name" ) );
+    if ( !id || !name ) {
+        *why = QStringLiteral( "it does not start with its id and name lines" );
+        return std::nullopt;
+    }
+    HighlightSet set{ *id, *name, {} };
+    if ( set.id.isEmpty() || set.name.isEmpty() ) {
+        *why = QStringLiteral( "its id or name is empty" );
+        return std::nullopt;
+    }
+    for ( int index = 2; index < lines.size(); ++index ) {
+        const auto& line = lines.at( index );
+        QJsonParseError error;
+        const auto rule = QJsonDocument::fromJson( line.mid( 5 ).toUtf8(), &error );
+        if ( !line.startsWith( QLatin1String( "rule " ) ) || error.error != QJsonParseError::NoError
+             || !rule.isObject() || !validRule( rule.object() ) ) {
+            *why = QStringLiteral( "line %1 is not a rule with %2" )
+                       .arg( index + 1 )
+                       .arg( ruleKeys().join( ", " ) );
+            return std::nullopt;
+        }
+        set.rules.append( rule.object() );
+    }
+    if ( set.rules.size() > MaxPackHighlightRules ) {
+        *why = QStringLiteral( "more than %1 rules" ).arg( MaxPackHighlightRules );
+        return std::nullopt;
+    }
+    return set;
+}
 
 bool plain( QChar character )
 {
@@ -355,6 +469,245 @@ QByteArray toFilters( const PackFiles& files, QString* error )
     return file.readAll();
 }
 
+PackFiles fromHighlights( const QByteArray& highlightsConf, QString* error )
+{
+    const auto reject = [ error ]( const QString& why ) {
+        if ( error ) {
+            *error = QStringLiteral( "The pack's highlighters file is not valid: %1" ).arg( why );
+        }
+        return PackFiles{};
+    };
+    // As for filters: QSettings reads INI only from a file, a folder of its own each time.
+    QTemporaryDir folder;
+    const auto path = folder.filePath( QStringLiteral( "highlights.conf" ) );
+    {
+        QFile file( path );
+        if ( !folder.isValid() || !file.open( QIODevice::WriteOnly )
+             || file.write( highlightsConf ) != highlightsConf.size() ) {
+            return reject( QStringLiteral( "it could not be read (no temporary folder)." ) );
+        }
+    }
+    QSettings settings( path, QSettings::IniFormat );
+    const QString group = QLatin1String( HighlightsGroup ) + '/';
+    bool ok = false;
+    const auto version = settings.value( group + QStringLiteral( "version" ) ).toInt( &ok );
+    if ( settings.status() != QSettings::NoError || !ok || version < 1 || version > HighlightsVersion ) {
+        return reject( QStringLiteral( "it needs [%1] with a version from 1 to %2, as CILogg exports "
+                                       "highlighters." )
+                           .arg( QLatin1String( HighlightsGroup ) )
+                           .arg( HighlightsVersion ) );
+    }
+    const auto countOf = [ &settings ]( const QString& key, int limit, int* count ) {
+        const auto value = settings.value( key );
+        bool isNumber = false;
+        *count = value.isValid() ? value.toInt( &isNumber ) : 0;
+        return ( !value.isValid() || isNumber ) && *count >= 0 && *count <= limit;
+    };
+    int size = 0;
+    if ( !countOf( group + QStringLiteral( "sets/size" ), MaxPackHighlightSets, &size ) ) {
+        return reject( QStringLiteral( "its sets/size is not a count of at most %1 sets." )
+                           .arg( MaxPackHighlightSets ) );
+    }
+    // Exactly the sets (and the user's active sets and color labels, which are not carried):
+    // anything else in the file would be lost on the way to the store.
+    static const QRegularExpression keyPattern( QRegularExpression::anchoredPattern(
+        QStringLiteral( "%1/(?:version|active_sets|current|sets/size|quick/size"
+                        "|quick/[1-9][0-9]{0,4}/(?:name|fore_colour|back_colour|cycle)"
+                        "|sets/([1-9][0-9]{0,4})/HighlighterSet/(?:version|name|id|highlighters/size"
+                        "|highlighters/([1-9][0-9]{0,4})/(?:%2)))" )
+            .arg( QLatin1String( HighlightsGroup ), ruleKeys().join( '|' ) ) ) );
+    QHash<int, int> ruleCounts; // set index -> its highlighters/size
+    for ( int index = 1; index <= size; ++index ) {
+        int rules = 0;
+        if ( !countOf( group + QStringLiteral( "sets/%1/HighlighterSet/highlighters/size" ).arg( index ),
+                       MaxPackHighlightRules, &rules ) ) {
+            return reject( QStringLiteral( "set %1 has more than %2 rules or no rule count." )
+                               .arg( index )
+                               .arg( MaxPackHighlightRules ) );
+        }
+        ruleCounts.insert( index, rules );
+    }
+    for ( const auto& key : settings.allKeys() ) {
+        const auto match = keyPattern.match( key );
+        const auto setIndex = match.captured( 1 ).toInt();
+        const bool pastSets = match.capturedLength( 1 ) > 0 && setIndex > size;
+        const bool pastRules = match.capturedLength( 2 ) > 0
+                               && match.captured( 2 ).toInt() > ruleCounts.value( setIndex );
+        if ( !match.hasMatch() || pastSets || pastRules ) {
+            return reject( QStringLiteral( "it holds more than the highlighter sets (%1)." )
+                               .arg( key.left( 64 ) ) );
+        }
+    }
+    PackFiles files;
+    QStringList order;
+    QSet<QString> ids;
+    for ( int index = 1; index <= size; ++index ) {
+        const auto prefix = group + QStringLiteral( "sets/%1/HighlighterSet/" ).arg( index );
+        const auto setVersion = settings.value( prefix + QStringLiteral( "version" ) ).toInt( &ok );
+        HighlightSet set{ settings.value( prefix + QStringLiteral( "id" ) ).toString(),
+                          settings.value( prefix + QStringLiteral( "name" ) ).toString(),
+                          {} };
+        if ( !ok || setVersion < 1 || setVersion > HighlightSetVersion ) {
+            return reject( QStringLiteral( "set %1 needs a version from 1 to %2." )
+                               .arg( index )
+                               .arg( HighlightSetVersion ) );
+        }
+        if ( set.id.isEmpty() || set.id.contains( '\n' ) || set.id.contains( '\r' ) ) {
+            return reject( QStringLiteral( "set %1 has no id (a pack's highlighter sets are known by "
+                                           "their ids)." )
+                               .arg( index ) );
+        }
+        if ( ids.contains( set.id ) ) {
+            return reject( QStringLiteral( "two sets with the id \"%1\"." ).arg( set.id.left( 64 ) ) );
+        }
+        if ( set.name.isEmpty() ) {
+            return reject( QStringLiteral( "set \"%1\" needs a name." ).arg( set.id.left( 64 ) ) );
+        }
+        for ( int rule = 1; rule <= ruleCounts.value( index ); ++rule ) {
+            const auto rulePrefix = prefix + QStringLiteral( "highlighters/%1/" ).arg( rule );
+            // The defaults HighlighterSet reads a missing member with.
+            const QJsonObject defaults{ { "back_colour", "" },     { "color_variance", 15 },
+                                        { "fore_colour", "" },     { "ignore_case", false },
+                                        { "match_only", false },   { "regexp", "" },
+                                        { "use_regex", true },     { "variate_colors", false } };
+            QJsonObject item;
+            for ( auto member = defaults.constBegin(); member != defaults.constEnd(); ++member ) {
+                const auto value = settings.value( rulePrefix + member.key() );
+                if ( !value.isValid() ) {
+                    item.insert( member.key(), member.value() );
+                    continue;
+                }
+                const auto text = value.toString();
+                if ( boolKey( member.key() ) ) {
+                    if ( text.compare( "true", Qt::CaseInsensitive ) != 0
+                         && text.compare( "false", Qt::CaseInsensitive ) != 0 ) {
+                        return reject( QStringLiteral( "rule %1 of set \"%2\" has a %3 that is neither "
+                                                       "true nor false." )
+                                           .arg( rule )
+                                           .arg( set.id.left( 64 ), member.key() ) );
+                    }
+                    item.insert( member.key(), text.compare( "true", Qt::CaseInsensitive ) == 0 );
+                }
+                else if ( member.key() == QLatin1String( "color_variance" ) ) {
+                    bool number = false;
+                    const auto variance = text.toInt( &number );
+                    if ( !number ) {
+                        return reject( QStringLiteral( "rule %1 of set \"%2\" has a color_variance "
+                                                       "that is not a number." )
+                                           .arg( rule )
+                                           .arg( set.id.left( 64 ) ) );
+                    }
+                    item.insert( member.key(), variance );
+                }
+                else {
+                    item.insert( member.key(), text );
+                }
+            }
+            set.rules.append( item );
+        }
+        ids.insert( set.id );
+        order.append( set.id );
+        files.insert( HighlightsDir + encodeName( set.id ) + SetSuffix, setText( set ) );
+    }
+    files.insert( HighlightOrderFile, order.isEmpty() ? QByteArray{} : ( order.join( '\n' ) + '\n' ).toUtf8() );
+    return files;
+}
+
+QByteArray toHighlights( const PackFiles& files, QString* error )
+{
+    const auto failed = [ error ]( const QString& why ) {
+        if ( error ) {
+            *error = why;
+        }
+        return QByteArray{};
+    };
+    QMap<QString, HighlightSet> sets; // by id: the ones missing from the order follow in id order
+    for ( auto file = files.cbegin(); file != files.cend(); ++file ) {
+        if ( kindOf( file.key() ) != QLatin1String( "highlight" ) ) {
+            continue;
+        }
+        QString why;
+        const auto set = parseSet( file.value(), &why );
+        if ( !set || set->id != itemOf( file.key() ) ) {
+            return failed( QStringLiteral( "The pack's highlighter set \"%1\" cannot be read: %2." )
+                               .arg( itemOf( file.key() ).left( 64 ),
+                                     set ? QStringLiteral( "its id line names another set" ) : why ) );
+        }
+        sets.insert( set->id, *set );
+    }
+    QVector<HighlightSet> ordered;
+    for ( const auto& line : orderLines( files.value( HighlightOrderFile ) ) ) {
+        if ( sets.contains( line ) ) {
+            ordered.append( sets.take( line ) );
+        }
+    }
+    for ( const auto& set : sets ) {
+        ordered.append( set );
+    }
+    const auto unwritten = QStringLiteral( "The pack's highlighters file could not be written." );
+    QTemporaryDir folder;
+    if ( !folder.isValid() ) {
+        return failed( unwritten );
+    }
+    const auto path = folder.filePath( QStringLiteral( "highlights.conf" ) );
+    {
+        QSettings settings( path, QSettings::IniFormat );
+        settings.beginGroup( QLatin1String( HighlightsGroup ) );
+        settings.setValue( QStringLiteral( "version" ), HighlightsVersion );
+        settings.beginWriteArray( QStringLiteral( "sets" ), static_cast<int>( ordered.size() ) );
+        for ( int index = 0; index < ordered.size(); ++index ) {
+            const auto& set = ordered.at( index );
+            settings.setArrayIndex( index );
+            settings.beginGroup( QStringLiteral( "HighlighterSet" ) );
+            settings.setValue( QStringLiteral( "version" ), HighlightSetVersion );
+            settings.setValue( QStringLiteral( "name" ), set.name );
+            settings.setValue( QStringLiteral( "id" ), set.id );
+            settings.beginWriteArray( QStringLiteral( "highlighters" ), static_cast<int>( set.rules.size() ) );
+            for ( int rule = 0; rule < set.rules.size(); ++rule ) {
+                settings.setArrayIndex( rule );
+                const auto& item = set.rules.at( rule );
+                for ( auto member = item.constBegin(); member != item.constEnd(); ++member ) {
+                    settings.setValue( member.key(), member.value().toVariant() );
+                }
+            }
+            settings.endArray();
+            settings.endGroup();
+        }
+        settings.endArray();
+        settings.endGroup();
+        settings.sync();
+        if ( settings.status() != QSettings::NoError ) {
+            return failed( unwritten );
+        }
+    }
+    QFile file( path );
+    if ( !file.open( QIODevice::ReadOnly ) ) {
+        return failed( unwritten );
+    }
+    return file.readAll();
+}
+
+QString highlightSetError( const QByteArray& setText, const QString& id )
+{
+    QString why;
+    const auto set = parseSet( setText, &why );
+    if ( !set ) {
+        return QStringLiteral( "The highlighter set is not valid: %1." ).arg( why );
+    }
+    if ( set->id != id ) {
+        return QStringLiteral( "The highlighter set's id must stay \"%1\" (copy it to make another)." )
+            .arg( id.left( 64 ) );
+    }
+    return {};
+}
+
+QByteArray canonicalHighlightSet( const QByteArray& bytes )
+{
+    QString why;
+    const auto set = parseSet( bytes, &why );
+    return set ? setText( *set ) : QByteArray{};
+}
+
 QString filePath( const QString& packRelative )
 {
     return FilesDir + QDir::cleanPath( packRelative );
@@ -366,8 +719,8 @@ QStringList listedFiles( const QJsonObject& manifest )
     if ( !validatePackManifest( manifest, &content ).isEmpty() ) {
         return {};
     }
-    // The manifest check keeps these paths relative and inside the pack. Actions and highlights
-    // are carried as files until E16c gives them a canonical form of their own, as filters have.
+    // The manifest check keeps these paths relative and inside the pack. Actions are carried as a
+    // file until E16c3 gives them a canonical form of their own, as filters and highlights have.
     QStringList paths;
     for ( const auto& file : content.luaLoad ) {
         paths.append( filePath( content.luaFolder + '/' + file ) );
@@ -375,10 +728,8 @@ QStringList listedFiles( const QJsonObject& manifest )
     for ( const auto& decoder : content.pythonDecoders ) {
         paths.append( filePath( decoder.module ) );
     }
-    for ( const auto* other : { &content.actions, &content.highlights } ) {
-        if ( !other->isEmpty() && !paths.contains( filePath( *other ) ) ) {
-            paths.append( filePath( *other ) );
-        }
+    if ( !content.actions.isEmpty() && !paths.contains( filePath( content.actions ) ) ) {
+        paths.append( filePath( content.actions ) );
     }
     return paths;
 }
@@ -394,6 +745,9 @@ bool isCanonical( const QString& storePath )
     }
     if ( kind == QLatin1String( "filter" ) ) {
         return storePath == FiltersDir + encodeName( itemOf( storePath ) ) + JsonSuffix;
+    }
+    if ( kind == QLatin1String( "highlight" ) ) {
+        return storePath == HighlightsDir + encodeName( itemOf( storePath ) ) + SetSuffix;
     }
     if ( kind == QLatin1String( "file" ) ) {
         const auto relative = itemOf( storePath );
@@ -425,6 +779,13 @@ PackFiles fromPackFolder( const QJsonObject& manifest, const QString& directory,
             readFile( QDir( directory ).filePath( content.filters ), &readError ), &readError );
         for ( auto filter = filters.cbegin(); filter != filters.cend(); ++filter ) {
             files.insert( filter.key(), filter.value() );
+        }
+    }
+    if ( !content.highlights.isEmpty() && readError.isEmpty() ) {
+        const auto sets = fromHighlights(
+            readFile( QDir( directory ).filePath( content.highlights ), &readError ), &readError );
+        for ( auto set = sets.cbegin(); set != sets.cend(); ++set ) {
+            files.insert( set.key(), set.value() );
         }
     }
     for ( const auto& storePath : listedFiles( manifest ) ) {
@@ -459,6 +820,13 @@ QString kindOf( const QString& storePath )
     if ( storePath == FilterOrderFile ) {
         return QStringLiteral( "filter-order" );
     }
+    if ( storePath == HighlightOrderFile ) {
+        return QStringLiteral( "highlight-order" );
+    }
+    if ( storePath.startsWith( HighlightsDir ) && storePath.endsWith( SetSuffix )
+         && !storePath.mid( 11 ).contains( '/' ) ) {
+        return QStringLiteral( "highlight" );
+    }
     if ( storePath.startsWith( FiltersDir ) && storePath.endsWith( JsonSuffix )
          && !storePath.mid( 8 ).contains( '/' ) ) {
         return QStringLiteral( "filter" );
@@ -480,6 +848,9 @@ QString itemOf( const QString& storePath )
     }
     if ( kind == "filter" ) {
         return decodeName( storePath.mid( 8, storePath.size() - 8 - 5 ) );
+    }
+    if ( kind == "highlight" ) {
+        return decodeName( storePath.mid( 11, storePath.size() - 11 - 4 ) );
     }
     if ( kind == "file" ) {
         return storePath.mid( 6 );

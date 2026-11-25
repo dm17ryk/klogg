@@ -119,19 +119,60 @@ QString filtersInvalid( const PackFiles& files )
     return {};
 }
 
-// What a merge result, an edit or a reset must keep for the content folder to load: the previews
-// within their limits and the filters as CILogg reads them. Empty when it does.
-QString contentInvalid( const PackFiles& files )
+// The highlighters file as the store writes it is one CILogg reads back: every set's text parses
+// with its own id, within 4,096 sets of 4,096 rules and the 1 MiB of a pack file. Empty when the
+// sets fit; a pack without highlighter sets has nothing to check.
+QString highlightsInvalid( const PackFiles& files )
 {
-    const auto previews = previewsTooLarge( files );
-    return previews.isEmpty() ? filtersInvalid( files ) : previews;
+    PackFiles sets;
+    qsizetype count = 0;
+    for ( auto file = files.cbegin(); file != files.cend(); ++file ) {
+        const auto kind = packcanonical::kindOf( file.key() );
+        if ( kind == QLatin1String( "highlight" ) || kind == QLatin1String( "highlight-order" ) ) {
+            sets.insert( file.key(), file.value() );
+            count += kind == QLatin1String( "highlight" ) ? 1 : 0;
+        }
+    }
+    if ( sets.isEmpty() ) {
+        return {};
+    }
+    if ( count > packcanonical::MaxPackHighlightSets ) {
+        return QStringLiteral( "The pack would have more than %1 highlighter sets, the most a pack "
+                               "can have." )
+            .arg( packcanonical::MaxPackHighlightSets );
+    }
+    QString error;
+    const auto written = packcanonical::toHighlights( sets, &error );
+    if ( !error.isEmpty() ) {
+        return error;
+    }
+    if ( written.size() > MaxPackFileBytes ) {
+        return QStringLiteral( "The pack's highlighters are larger than 1 MiB as CILogg writes them." );
+    }
+    packcanonical::fromHighlights( written, &error );
+    return error;
 }
 
-// A Lua or Python file the manifest lists, or the preview or filter order: merged as text.
+// What a merge result, an edit or a reset must keep for the content folder to load: the previews
+// within their limits, and the filters and highlighter sets as CILogg reads them. Empty when it
+// does.
+QString contentInvalid( const PackFiles& files )
+{
+    for ( const auto& check : { previewsTooLarge, filtersInvalid, highlightsInvalid } ) {
+        if ( const auto error = check( files ); !error.isEmpty() ) {
+            return error;
+        }
+    }
+    return {};
+}
+
+// A Lua or Python file the manifest lists, a highlighter set (its rules one per line), or the
+// preview, filter or highlighter set order: merged as text.
 bool textKind( const QString& kind )
 {
     return kind == QLatin1String( "file" ) || kind == QLatin1String( "order" )
-           || kind == QLatin1String( "filter-order" );
+           || kind == QLatin1String( "filter-order" ) || kind == QLatin1String( "highlight" )
+           || kind == QLatin1String( "highlight-order" );
 }
 
 // The member that is a structured item's identity and file name: a filter's id, else its name.
@@ -315,7 +356,12 @@ bool applyResolution( PackFiles* merged, const QVariantMap& resolution, const QS
         if ( text.contains( "\n<<<<<<< " ) || text.startsWith( "<<<<<<< " ) ) {
             return false;
         }
-        merged->insert( path, text );
+        // A highlighter set is stored as CILogg writes it (canonical lines); one that does not read
+        // is kept as given, and the merge result's check names what is wrong with it.
+        const auto canonical = kind == QLatin1String( "highlight" )
+                                   ? packcanonical::canonicalHighlightSet( text )
+                                   : QByteArray{};
+        merged->insert( path, canonical.isEmpty() ? text : canonical );
         return true;
     }
     const auto field = resolution.value( "field" ).toString();
@@ -401,27 +447,37 @@ bool filtersKind( const QString& kind )
     return kind == QLatin1String( "filter" ) || kind == QLatin1String( "filter-order" );
 }
 
+// A store item of the highlighters file: a highlighter set or the set order.
+bool highlightsKind( const QString& kind )
+{
+    return kind == QLatin1String( "highlight" ) || kind == QLatin1String( "highlight-order" );
+}
+
 // The documents a version's manifest has, which decide which store items go with it.
 struct Documents {
     QStringList listed; // its files
     bool previews = false;
     bool filters = false;
+    bool highlights = false;
 };
 
 Documents documentsOf( const QJsonObject& manifest )
 {
+    PackContent content;
+    const bool valid = validatePackManifest( manifest, &content ).isEmpty();
     return { packcanonical::listedFiles( manifest ), hasPreviewsDocument( manifest ),
-             hasFiltersDocument( manifest ) };
+             hasFiltersDocument( manifest ), valid && !content.highlights.isEmpty() };
 }
 
 // Whether a store item goes with a version whose manifest has `documents`: a file it no longer
-// lists, or anything of a previews document or filters file it no longer has.
+// lists, or anything of a previews document, filters file or highlighters file it no longer has.
 bool goneWith( const QString& storePath, const Documents& documents )
 {
     const auto kind = packcanonical::kindOf( storePath );
     return ( kind == QLatin1String( "file" ) && !documents.listed.contains( storePath ) )
            || ( !documents.previews && previewsKind( kind ) )
-           || ( !documents.filters && filtersKind( kind ) );
+           || ( !documents.filters && filtersKind( kind ) )
+           || ( !documents.highlights && highlightsKind( kind ) );
 }
 
 // The files of a merge result are exactly those the new version's manifest lists: a file it
@@ -672,6 +728,8 @@ QString PluginManager::preparePackInstall( const StagedPlugin& staged, const QVa
             dropped.append(
                 kind == QLatin1String( "order" )          ? QStringLiteral( "the preview order" )
                 : kind == QLatin1String( "filter-order" ) ? QStringLiteral( "the filter order" )
+                : kind == QLatin1String( "highlight-order" )
+                    ? QStringLiteral( "the highlighter set order" )
                 : kind == QLatin1String( "meta" ) ? QStringLiteral( "the previews settings" )
                                                   : packcanonical::itemOf( it.key() ) );
         }
@@ -920,10 +978,11 @@ Result PluginManager::managePack( const QString& operation, const QString& id,
         if ( !files.contains( path ) && !store.upstreamFiles().contains( path ) ) {
             return { "No such item in the pack.", {} };
         }
-        // The manifest lists the Lua and Python files a pack has; they and the preview and filter
-        // orders are edited, never deleted.
+        // The manifest lists the Lua and Python files a pack has; they, the orders and highlighter
+        // sets (deactivate a set you do not want) are edited, never deleted.
         if ( remove && textKind( kind ) ) {
-            return { "Pack files and the preview and filter orders can be edited, not deleted.",
+            return { "Pack files, highlighter sets and the preview, filter and highlighter set "
+                     "orders can be edited, not deleted.",
                      {} };
         }
         if ( !remove && content.size() > MaxPackFileBytes ) {
@@ -949,6 +1008,15 @@ Result PluginManager::managePack( const QString& operation, const QString& id,
                              {} };
                 }
                 bytes = packcanonical::itemBytes( document.object() );
+            }
+            // A highlighter set keeps its id and is stored as CILogg writes it (E16c2).
+            if ( kind == QLatin1String( "highlight" ) ) {
+                if ( const auto refusal
+                     = packcanonical::highlightSetError( content, packcanonical::itemOf( path ) );
+                     !refusal.isEmpty() ) {
+                    return { refusal, {} };
+                }
+                bytes = packcanonical::canonicalHighlightSet( content );
             }
         }
         auto candidate = files;
@@ -981,11 +1049,25 @@ Result PluginManager::managePack( const QString& operation, const QString& id,
                                   .left( 128 );
             item = name.isEmpty() ? item : name;
         }
+        if ( kind == QLatin1String( "highlight" ) ) {
+            // The name line: `name "..."`.
+            const auto lines = QString::fromUtf8( bytes.value_or( files.value( path ) ) ).split( '\n' );
+            const auto name = lines.size() > 1
+                                  ? QJsonDocument::fromJson( '[' + lines.at( 1 ).mid( 5 ).toUtf8() + ']' )
+                                        .array()
+                                        .at( 0 )
+                                        .toString()
+                                        .left( 128 )
+                                  : QString{};
+            item = name.isEmpty() ? item : name;
+        }
         const auto subject
-            = kind == QLatin1String( "file" )           ? item
-              : kind == QLatin1String( "filter-order" ) ? QStringLiteral( "the filter order" )
-              : kind == QLatin1String( "order" ) ? QStringLiteral( "the preview order" )
-                                                 : QStringLiteral( "%1 '%2'" ).arg( kind, item );
+            = kind == QLatin1String( "file" )              ? item
+              : kind == QLatin1String( "filter-order" )    ? QStringLiteral( "the filter order" )
+              : kind == QLatin1String( "highlight-order" ) ? QStringLiteral( "the highlighter set order" )
+              : kind == QLatin1String( "highlight" ) ? QStringLiteral( "highlighter set '%1'" ).arg( item )
+              : kind == QLatin1String( "order" )     ? QStringLiteral( "the preview order" )
+                                                     : QStringLiteral( "%1 '%2'" ).arg( kind, item );
         auto message = options.value( "message" ).toString().left( 256 );
         if ( message.isEmpty() ) {
             message = ( remove ? QStringLiteral( "Delete %1" ) : QStringLiteral( "Edit %1" ) )

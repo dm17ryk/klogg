@@ -269,8 +269,15 @@ TEST_CASE( "Configuration pack manifests follow the pack rules", "[plugins][E16]
                    .contains( filtersFile ) );
         CHECK( manifestError( withContent( valid, "filters", "python/summary.py" ) )
                    .contains( filtersFile ) );
+        // The highlighters file is written by CILogg as well (E16c2).
+        const auto highlightsFile = QStringLiteral( "is the pack's highlighters file" );
         CHECK( manifestError( withContent( withContent( valid, "actions", "a.json" ), "highlights",
                                            "a.json" ) )
+                   .contains( highlightsFile ) );
+        CHECK( manifestError( withContent( valid, "highlights", "python/summary.py" ) )
+                   .contains( highlightsFile ) );
+        CHECK( manifestError( withContent( withContent( valid, "actions", "a.json" ), "highlights",
+                                           "h.conf" ) )
                    .isEmpty() );
     }
     SECTION( "Python decoders need an id and a .py module" )

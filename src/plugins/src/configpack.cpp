@@ -10,7 +10,9 @@
 #include <QJsonDocument>
 #include <QRegularExpression>
 #include <QSet>
+#include <QVector>
 #include <algorithm>
+#include <utility>
 
 namespace cilogg::plugins {
 namespace {
@@ -129,16 +131,22 @@ QString checkReservedPaths( const PackContent& content )
     if ( !content.previews.isEmpty() && same( content.previews, manifest ) ) {
         return QStringLiteral( "content.previews cannot be plugin.json." );
     }
-    // The files carried as they are; the filters file is written from the pack's filter items.
-    QStringList raw{ content.actions, content.highlights };
+    // The files carried as they are; the filters and highlighters files are written from the
+    // pack's items (E16c).
+    QStringList raw{ content.actions };
     for ( const auto& file : content.luaLoad ) {
         raw.append( content.luaFolder + '/' + file );
     }
     for ( const auto& decoder : content.pythonDecoders ) {
         raw.append( decoder.module );
     }
+    const QVector<std::pair<QString, QString>> written{
+        { content.filters, QStringLiteral( "filters" ) },
+        { content.highlights, QStringLiteral( "highlighters" ) } };
     auto others = raw;
-    others.append( content.filters );
+    for ( const auto& file : written ) {
+        others.append( file.first );
+    }
     for ( const auto& path : others ) {
         if ( !path.isEmpty()
              && ( same( path, manifest ) || ( !content.previews.isEmpty() && same( path, content.previews ) ) ) ) {
@@ -158,13 +166,21 @@ QString checkReservedPaths( const PackContent& content )
             }
         }
     }
-    // CILogg writes the filters file from the pack's filter items (E16c), so no file carried as it
-    // is may be that file too: written after it, it would replace the filters and their edits.
-    if ( !content.filters.isEmpty() ) {
-        for ( const auto& path : raw ) {
-            if ( !path.isEmpty() && same( path, content.filters ) ) {
-                return QStringLiteral( "The content file %1 is the pack's filters file." )
-                    .arg( path.left( 128 ) );
+    // CILogg writes the filters and highlighters files from the pack's items (E16c), so no other
+    // content file may be one of them: written after it, it would replace the items and their edits.
+    for ( qsizetype index = 0; index < written.size(); ++index ) {
+        const auto& [ path, what ] = written.at( index );
+        if ( path.isEmpty() ) {
+            continue;
+        }
+        auto rest = raw;
+        for ( qsizetype other = index + 1; other < written.size(); ++other ) {
+            rest.append( written.at( other ).first );
+        }
+        for ( const auto& file : rest ) {
+            if ( !file.isEmpty() && same( file, path ) ) {
+                return QStringLiteral( "The content file %1 is the pack's %2 file." )
+                    .arg( file.left( 128 ), what );
             }
         }
     }
@@ -418,9 +434,21 @@ QVariantMap packSummary( const QJsonObject& manifest, const QString& directory )
                 } ) );
         }
     }
+    int highlighterSets = 0;
+    if ( !content.highlights.isEmpty() ) {
+        QFile file( QDir( directory ).filePath( content.highlights ) );
+        if ( file.open( QIODevice::ReadOnly ) ) {
+            const auto items = packcanonical::fromHighlights( file.read( MaxPackFileBytes ) );
+            highlighterSets = static_cast<int>(
+                std::count_if( items.keyBegin(), items.keyEnd(), []( const QString& path ) {
+                    return packcanonical::kindOf( path ) == QLatin1String( "highlight" );
+                } ) );
+        }
+    }
     return { { "contents", packContents( manifest ) },
              { "previews", previews },
              { "filters", filters },
+             { "highlighterSets", highlighterSets },
              { "luaFiles", static_cast<int>( content.luaLoad.size() ) },
              { "pythonDecoders", static_cast<int>( content.pythonDecoders.size() ) } };
 }
