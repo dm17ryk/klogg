@@ -1231,7 +1231,7 @@
     "decision": "D17",
     "issue": "https://github.com/dm17ryk/klogg/issues/150",
     "pullRequest": "https://github.com/dm17ryk/klogg/pull/158",
-    "basedOn": "b0863a07",
+    "basedOn": "45cfa335",
     "taskStatus": "in_progress",
     "hardDagAndRequirementsUnchanged": true,
     "otherTaskRecordsPreserved": true,
@@ -1245,10 +1245,10 @@
       "TASK_INDEX.json",
       "tasks/E17.md"
     ],
-    "gateHead": "18497bf1",
+    "gateHead": "1232f123",
     "msvcW4WX": "passed",
     "clangWarningSet": "clean on every changed C++ file",
-    "unitCases": 510,
+    "unitCases": 513,
     "e17UiCasesEach": 73,
     "uiSuiteCases": 266,
     "pythonTests": 435,
@@ -1312,6 +1312,15 @@
         "fixed": 2,
         "answered": 2,
         "fixedIn": "18497bf1"
+      },
+      {
+        "round": 7,
+        "head": "435699ac",
+        "reviewer": "fresh-context Claude reviewers (C++ and Python), both clean; the Codex bot over its usage limit, the local Codex CLI out of credits",
+        "findings": 0,
+        "fixed": 0,
+        "answered": 0,
+        "followUpIssue": "https://github.com/dm17ryk/klogg/issues/168"
       }
     ]
   }
