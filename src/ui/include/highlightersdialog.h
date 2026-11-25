@@ -39,19 +39,38 @@
 #ifndef FILTERSDIALOG_H
 #define FILTERSDIALOG_H
 
+#include <functional>
 #include <memory>
 
 #include <QDialog>
 
 #include "highlighterset.h"
-#include "highlightersetedit.h"
-#include "ui_highlightersdialog.h"
 
-class HighlightersDialog : public QDialog, public Ui::HighlightersDialog {
+class HighlighterSetEdit;
+class QAbstractButton;
+class QToolButton;
+namespace Ui {
+class HighlightersDialog;
+}
+
+// The user's highlighter sets, then the enabled configuration packs' (E16c2, design 4.5): pack
+// sets are listed with the pack's name, shown read only, and edited in place (Edit...) or copied
+// into the user's own (Copy to My Highlighters). Only the user's sets are saved and exported.
+// The form is a member (not a base), so tests can use the dialog without its generated header.
+class HighlightersDialog : public QDialog {
     Q_OBJECT
 
   public:
+    using PackItemEditor
+        = std::function<void( QWidget* parent, const QString& packId, const QString& path )>;
+
     explicit HighlightersDialog( QWidget* parent = nullptr );
+    ~HighlightersDialog() override;
+
+    // Edit... on a pack set opens this editor on its store item (highlights/<id>.set).
+    void setPackItemEditor( PackItemEditor editor );
+    // Packs... opens the Plugins and Packs window.
+    void setPacksOpener( std::function<void()> opener );
 
   Q_SIGNALS:
     // Is emitted when new settings must be used
@@ -79,16 +98,35 @@ class HighlightersDialog : public QDialog, public Ui::HighlightersDialog {
   private:
     void populateHighlighterList();
     void setCurrentRow( int row );
+    // The enabled packs' sets after the user's rows, marked when one of the user's replaces one.
+    void refreshPackRows();
+    // The user's rows come first (one per set of highlighterSetCollection_); the pack rows follow.
+    int ownRowCount() const;
+    bool isReplacedRow( int row ) const;
+    // The pack set of a pack row, or null.
+    const ListedHighlighterSet* packSetAt( int row ) const;
+    void copyPackSet();
+    void editPackSet();
+    void updatePackButtons();
 
   private:
-    HighlighterSetEdit* highlighterSetEdit_;
+    std::unique_ptr<Ui::HighlightersDialog> ui_;
+    QToolButton* copyPackSetButton_ = nullptr;
+    QToolButton* editPackSetButton_ = nullptr;
+    QToolButton* packsButton_ = nullptr;
+    PackItemEditor packItemEditor_;
+    std::function<void()> packsOpener_;
+    // The pack sets the pack rows show, in row order.
+    QList<ListedHighlighterSet> packRows_;
+
+    HighlighterSetEdit* highlighterSetEdit_ = nullptr;
 
     // Temporary HighlighterSetCollection modified by the dialog
     // it is copied from the one in Config()
     HighlighterSetCollection highlighterSetCollection_;
 
     // Index of the row currently selected or -1 if none.
-    int selectedRow_;
+    int selectedRow_ = -1;
 };
 
 #endif

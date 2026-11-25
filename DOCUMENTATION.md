@@ -208,20 +208,29 @@ an unchanged plugin changes nothing, and a changed plugin with the same version 
 For several packages, list them in a `sources.json` file and pass `--sources sources.json`.
 
 **Configuration packs** are packages without a program: `"kind": "config-pack"` and a `content`
-object that lists preview definitions (`previews.json` format), Lua files for TShark and their
-decoder routes, predefined filters (the file **Export** in the Predefined Filters dialog writes),
-and Python decoders (carried now, run by a later CILogg). They install, update, enable and remove
-like plugins, from the same repositories; build them with `--os any --arch any`. Pack previews
-appear in the previews dialog with the pack's name, and **Copy to My Previews** makes your own
-copy. Pack filters appear in the predefined filter list as "<name> (<pack>)" and in the Predefined
-Filters dialog after yours, read only: **Copy to My Filters** makes your own copy (it replaces the
-pack's), **Edit…** edits the pack's filter in place, and **Packs…** opens the Plugins and Packs
-window. CILogg asks before it enables a pack with Lua, because that Lua runs on your computer. The [plugin SDK](docs/plugin-sdk.md#configuration-packs) describes the
-format; [plugins/examples/protocol-pack](plugins/examples/protocol-pack) is a complete example.
+object that lists preview definitions (`previews.json` format), Lua files for TShark, Python
+decoders and their decoder routes, predefined filters (the file **Export** in the Predefined
+Filters dialog writes) and highlighter sets (the file **Export** in the Highlighters dialog
+writes). They install, update, enable and remove like plugins, from the same repositories; build
+them with `--os any --arch any`. Pack previews appear in the previews dialog with the pack's name,
+and **Copy to My Previews** makes your own copy. A preview routed to a pack's Python decoder is
+decoded by that decoder's `decode(payload, context)`; the preview pane shows `python_decoder` and
+the decoder's name. Pack filters appear in the predefined filter list as "<name> (<pack>)" and in
+the Predefined Filters dialog after yours, read only: **Copy to My Filters** makes your own copy
+(it replaces the pack's), **Edit…** edits the pack's filter in place, and **Packs…** opens the
+Plugins and Packs window. Pack highlighter sets work the same way: the Highlighters menu lists
+them as "<name> (<pack>)" and you turn them on and off like your own (which sets are on stays your
+choice, also across pack updates); the Highlighters dialog shows them after yours, read only, with
+**Copy to My Highlighters**, **Edit…** and **Packs…**. CILogg asks before it enables a pack with
+Lua or Python, because that code runs on your computer. The
+[plugin SDK](docs/plugin-sdk.md#configuration-packs) describes the format;
+[plugins/examples/protocol-pack](plugins/examples/protocol-pack) (Lua) and
+[plugins/examples/python-decoder-pack](plugins/examples/python-decoder-pack) (Python) are complete
+examples.
 
 **Editing a pack in place.** Select a pack preview in the previews dialog and click **Edit…**, or
 select the pack on the Installed tab and click **Pack Files…** to edit any of its previews, blocks,
-filters or Lua and Python files. Items open in a text editor (JSON for previews and blocks) with **Open in
+filters, highlighter sets or Lua and Python files. Items open in a text editor (JSON for previews and blocks) with **Open in
 External Editor**, **History…** (every saved version, with **Revert to This Version**) and **Reset
 to Pack Version**. The Installed tab shows "Edited locally (n)". Your edits survive updates: a
 new version is merged with them, and only when the new version changes the same field you changed
@@ -654,6 +663,12 @@ Highlighter configuration can be exported to a file and
 imported on another machine. Each set is identified
 by unique id. Only new sets are imported from the file. Please export the file
 with a `.conf` extension to ensure *CILogg* will be able to import it.
+
+Enabled [configuration packs](#plugins-packing-repositories-and-updates) can bring highlighter sets too. They follow your own sets in
+the menus and in the dialog, with the pack's name, and apply after yours. A set of yours with the
+same id replaces the pack's (that is what **Copy to My Highlighters** makes); **Edit…** changes the
+pack's set in place, and your edits survive its updates. Export and project snapshots contain your
+own sets only; a project snapshot also keeps which sets were on, pack sets included.
 
 ### Color labels
 

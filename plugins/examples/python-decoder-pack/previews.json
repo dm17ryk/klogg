@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "previews": [
+    {
+      "name": "Demo record",
+      "regex": "^RECORD (?<payload>[0-9A-Fa-f]+)$",
+      "type": "hexString",
+      "format": "fields",
+      "bufferCapture": "payload",
+      "fields": [
+        { "name": "record", "source": "capture", "capture": "payload", "format": "string" }
+      ]
+    }
+  ]
+}

@@ -154,6 +154,82 @@ const QVector<FilterRow> SomeFilters{
     { "f-two", QString::fromUtf8( "Reset, \"quoted\" \xce\x94" ), "Software or Reset", false },
 };
 
+struct RuleRow {
+    QString pattern;
+    bool ignoreCase = false;
+    bool regex = true;
+    QString fore = QStringLiteral( "#ff000000" );
+    QString back = QStringLiteral( "#ffffff00" );
+};
+
+struct SetRow {
+    QString id; // null: the key is left out
+    QString name;
+    QVector<RuleRow> rules;
+};
+
+// A highlighters file as CILogg exports it (HighlighterSetCollection::saveToStorage): QSettings in
+// INI format, the sets with their rules, the active sets and the color labels. `extra` keys are
+// added as they are.
+QByteArray highlightsConf( const QVector<SetRow>& sets, const QVariantMap& extra = {},
+                           int version = 2 )
+{
+    QTemporaryDir folder;
+    REQUIRE( folder.isValid() );
+    const auto path = folder.filePath( "highlights.conf" );
+    {
+        QSettings settings( path, QSettings::IniFormat );
+        settings.beginGroup( "HighlighterSetCollection" );
+        settings.setValue( "version", version );
+        settings.setValue( "active_sets", QStringList{ "s-one" } );
+        settings.beginWriteArray( "sets" );
+        for ( int index = 0; index < sets.size(); ++index ) {
+            settings.setArrayIndex( index );
+            settings.beginGroup( "HighlighterSet" );
+            settings.setValue( "version", 3 );
+            settings.setValue( "name", sets.at( index ).name );
+            if ( !sets.at( index ).id.isNull() ) {
+                settings.setValue( "id", sets.at( index ).id );
+            }
+            settings.beginWriteArray( "highlighters" );
+            for ( int rule = 0; rule < sets.at( index ).rules.size(); ++rule ) {
+                const auto& row = sets.at( index ).rules.at( rule );
+                settings.setArrayIndex( rule );
+                settings.setValue( "regexp", row.pattern );
+                settings.setValue( "ignore_case", row.ignoreCase );
+                settings.setValue( "match_only", false );
+                settings.setValue( "use_regex", row.regex );
+                settings.setValue( "variate_colors", false );
+                settings.setValue( "color_variance", 15 );
+                settings.setValue( "fore_colour", row.fore );
+                settings.setValue( "back_colour", row.back );
+            }
+            settings.endArray();
+            settings.endGroup();
+        }
+        settings.endArray();
+        settings.beginWriteArray( "quick" );
+        settings.setArrayIndex( 0 );
+        settings.setValue( "name", "Color label 1" );
+        settings.setValue( "fore_colour", "#ff001e80" );
+        settings.setValue( "back_colour", "#ffa1b7ff" );
+        settings.setValue( "cycle", true );
+        settings.endArray();
+        settings.endGroup();
+        for ( auto key = extra.cbegin(); key != extra.cend(); ++key ) {
+            settings.setValue( key.key(), key.value() );
+        }
+        settings.sync();
+        REQUIRE( settings.status() == QSettings::NoError );
+    }
+    return readFile( path );
+}
+
+const QVector<SetRow> SomeSets{
+    { "s-one", "Errors", { { "ERROR" }, { "fatal", true, false, "#ffffffff", "#ffff0000" } } },
+    { "s-two", QString::fromUtf8( "Radio, \"quoted\" \xce\x94" ), {} },
+};
+
 QString previewRegex( const QString& folder, const QString& name )
 {
     const auto previews = QJsonDocument::fromJson( readFile( folder + "/previews.json" ) )
@@ -206,15 +282,16 @@ TEST_CASE( "Pack items have a canonical one-item-per-file form", "[packmerge][E1
                    .isEmpty() );
         CHECK( why.contains( "more than 128 previews" ) );
     }
-    // Every Lua and Python file the manifest lists is carried as a file, and so are actions and
-    // highlights until they get a canonical form; filters have one of their own (E16c).
+    // Every Lua and Python file the manifest lists is carried as a file, and so are actions until
+    // they get a canonical form; filters and highlights have one of their own (E16c).
     auto withFilters = packManifest();
     auto declared = withFilters[ "content" ].toObject();
     declared[ "filters" ] = "filters/predefined.conf";
     declared[ "highlights" ] = "highlights.conf";
+    declared[ "actions" ] = "actions.json";
     withFilters[ "content" ] = declared;
     CHECK( packcanonical::listedFiles( withFilters )
-           == QStringList{ "files/lua/a.lua", "files/highlights.conf" } );
+           == QStringList{ "files/lua/a.lua", "files/actions.json" } );
 
     QString error;
     const auto files = packcanonical::fromPreviews( Previews, &error );
@@ -389,6 +466,185 @@ TEST_CASE( "Pack filters have a canonical one-filter-per-file form", "[packmerge
     write( "filters/predefined.conf", "[Other]\nx=1\n" );
     CHECK( packcanonical::fromPackFolder( manifest, pack.path(), &error ).isEmpty() );
     CHECK( error.startsWith( "The pack's filters file is not valid" ) );
+}
+
+TEST_CASE( "Pack highlighter sets have a canonical one-set-per-file form", "[packmerge][E16]" )
+{
+    QString error;
+    const auto files = packcanonical::fromHighlights( highlightsConf( SomeSets ), &error );
+    REQUIRE( error.isEmpty() );
+    CHECK( files.value( "highlights/order.txt" ) == "s-one\ns-two\n" );
+    // One set per file, merged as text: its id and name, then one line per rule, so edits of
+    // different rules never touch the same line (design 4.6).
+    CHECK( files.value( "highlights/s-one.set" )
+           == "id \"s-one\"\n"
+              "name \"Errors\"\n"
+              "rule "
+              "{\"back_colour\":\"#ffffff00\",\"color_variance\":15,\"fore_colour\":\"#ff000000\","
+              "\"ignore_case\":false,\"match_only\":false,\"regexp\":\"ERROR\",\"use_regex\":true,"
+              "\"variate_colors\":false}\n"
+              "rule "
+              "{\"back_colour\":\"#ffff0000\",\"color_variance\":15,\"fore_colour\":\"#ffffffff\","
+              "\"ignore_case\":true,\"match_only\":false,\"regexp\":\"fatal\",\"use_regex\":false,"
+              "\"variate_colors\":false}\n" );
+    CHECK( files.value( "highlights/s-two.set" )
+               .startsWith( "id \"s-two\"\nname \"Radio, \\\"quoted\\\"" ) );
+    CHECK( packcanonical::kindOf( "highlights/s-one.set" ) == "highlight" );
+    CHECK( packcanonical::itemOf( "highlights/s-one.set" ) == "s-one" );
+    CHECK( packcanonical::isCanonical( "highlights/s-one.set" ) );
+    CHECK( !packcanonical::isCanonical( "highlights/S-one.set" ) );
+    CHECK( packcanonical::kindOf( "highlights/order.txt" ) == "highlight-order" );
+    // The active sets and the color labels are the user's, not the pack's: not carried.
+    CHECK( !files.value( "highlights/s-one.set" ).contains( "active" ) );
+    CHECK( files.size() == 3 );
+
+    // The round trip keeps every set, its rules and the order, and writes the file CILogg imports.
+    const auto conf = packcanonical::toHighlights( files );
+    CHECK( packcanonical::fromHighlights( conf ) == files );
+    QTemporaryDir folder;
+    REQUIRE( folder.isValid() );
+    {
+        QFile out( folder.filePath( "back.conf" ) );
+        REQUIRE( out.open( QIODevice::WriteOnly ) );
+        out.write( conf );
+    }
+    QSettings back( folder.filePath( "back.conf" ), QSettings::IniFormat );
+    CHECK( back.value( "HighlighterSetCollection/sets/size" ).toInt() == 2 );
+    CHECK( back.value( "HighlighterSetCollection/sets/2/HighlighterSet/name" ).toString()
+           == SomeSets.at( 1 ).name );
+    CHECK( back.value( "HighlighterSetCollection/sets/1/HighlighterSet/highlighters/2/regexp" )
+               .toString()
+           == "fatal" );
+    CHECK( !back.contains( "HighlighterSetCollection/active_sets" ) );
+    // A set's text with CR LF line ends (edited on Windows) reads the same.
+    auto crlf = files;
+    crlf.insert( "highlights/s-one.set",
+                 QByteArray( files.value( "highlights/s-one.set" ) ).replace( "\n", "\r\n" ) );
+    crlf.insert( "highlights/order.txt", "s-two\r\ns-one\r\n" );
+    const auto again = packcanonical::fromHighlights( packcanonical::toHighlights( crlf ) );
+    CHECK( again.value( "highlights/s-one.set" ) == files.value( "highlights/s-one.set" ) );
+    CHECK( again.value( "highlights/order.txt" ) == "s-two\ns-one\n" );
+    // A set without rules and an export without sets are valid.
+    CHECK( packcanonical::fromHighlights( highlightsConf( {} ), &error )
+           == PackFiles{ { "highlights/order.txt", QByteArray{} } } );
+    CHECK( error.isEmpty() );
+
+    // Anything that is not such a file is refused, never cleaned up quietly.
+    const QVector<std::pair<const char*, QByteArray>> bad{
+        { "no group", "[Other]\nx=1\n" },
+        { "newer version", highlightsConf( SomeSets, {}, 3 ) },
+        { "no id", highlightsConf( { { QString{}, "A", {} } } ) },
+        { "repeated id", highlightsConf( { { "a", "A", {} }, { "a", "B", {} } } ) },
+        { "no name", highlightsConf( { { "a", "", {} } } ) },
+        { "another key", highlightsConf( SomeSets, { { "General/other", 1 } } ) },
+        { "another rule key",
+          highlightsConf(
+              SomeSets,
+              { { "HighlighterSetCollection/sets/1/HighlighterSet/highlighters/1/x", 1 } } ) },
+        { "a rule past the size",
+          highlightsConf(
+              SomeSets, { { "HighlighterSetCollection/sets/1/HighlighterSet/highlighters/3/regexp",
+                            "x" } } ) },
+        { "a boolean that is not one",
+          highlightsConf(
+              SomeSets,
+              { { "HighlighterSetCollection/sets/1/HighlighterSet/highlighters/1/use_regex",
+                  "maybe" } } ) },
+        { "a variance that is not a number",
+          highlightsConf(
+              SomeSets,
+              { { "HighlighterSetCollection/sets/1/HighlighterSet/highlighters/1/color_variance",
+                  "x" } } ) },
+        // Every counted rule is there: a count alone would make thousands of rules out of a few
+        // bytes (independent review of #169).
+        { "rules counted but not there",
+          highlightsConf(
+              SomeSets,
+              { { "HighlighterSetCollection/sets/2/HighlighterSet/highlighters/size", 4096 } } ) },
+        // A value with an unquoted comma reads as a list, and as a pattern it would be empty,
+        // matching every line (independent review of #169).
+        { "a list where a pattern goes",
+          highlightsConf( SomeSets ).replace( "regexp=ERROR", "regexp=a{1,3}" ) },
+        // A variance outside 0..100 makes an invalid colour range (issue #170).
+        { "a negative variance",
+          highlightsConf(
+              SomeSets,
+              { { "HighlighterSetCollection/sets/1/HighlighterSet/highlighters/1/color_variance",
+                  -50 } } ) },
+        { "a huge variance",
+          highlightsConf(
+              SomeSets,
+              { { "HighlighterSetCollection/sets/1/HighlighterSet/highlighters/1/color_variance",
+                  2147483647 } } ) },
+    };
+    for ( const auto& [ why, bytes ] : bad ) {
+        INFO( why );
+        QString refused;
+        CHECK( packcanonical::fromHighlights( bytes, &refused ).isEmpty() );
+        CHECK( refused.startsWith( "The pack's highlighters file is not valid" ) );
+    }
+    // An older export without the rule members CILogg added later still reads, with the defaults
+    // CILogg reads them with; only the pattern of every counted rule must be there.
+    {
+        QByteArray older;
+        for ( const auto& line : highlightsConf( SomeSets ).split( '\n' ) ) {
+            if ( !line.contains( "match_only" ) && !line.contains( "variate_colors" )
+                 && !line.contains( "color_variance" ) ) {
+                older += line + '\n';
+            }
+        }
+        QString olderError;
+        const auto olderFiles = packcanonical::fromHighlights( older, &olderError );
+        CHECK( olderError.isEmpty() );
+        CHECK( olderFiles.value( "highlights/s-one.set" ).contains( "\"color_variance\":15" ) );
+        QByteArray noPattern;
+        for ( const auto& line : highlightsConf( SomeSets ).split( '\n' ) ) {
+            if ( !line.contains( "highlighters\\2\\regexp" ) ) {
+                noPattern += line + '\n';
+            }
+        }
+        CHECK( packcanonical::fromHighlights( noPattern ).isEmpty() );
+    }
+    // A set's text that is not one CILogg writes is not a set.
+    CHECK(
+        packcanonical::highlightSetError( "id \"s-one\"\nname \"E\"\nrule {}\n", "s-one" ).isEmpty()
+        == false );
+    CHECK( packcanonical::highlightSetError( "name \"E\"\n", "s-one" ).contains( "id" ) );
+    CHECK( packcanonical::highlightSetError( files.value( "highlights/s-one.set" ), "s-two" )
+               .contains( "id" ) );
+    CHECK( packcanonical::highlightSetError( files.value( "highlights/s-one.set" ), "s-one" )
+               .isEmpty() );
+    // An edited set's variance stays within 0..100 too (issue #170).
+    for ( const auto* variance : { "-1", "101" } ) {
+        INFO( variance );
+        auto edited = files.value( "highlights/s-one.set" );
+        REQUIRE( edited.contains( "\"color_variance\":15" ) );
+        edited.replace( "\"color_variance\":15", QByteArray( "\"color_variance\":" ) + variance );
+        CHECK( !packcanonical::highlightSetError( edited, "s-one" ).isEmpty() );
+    }
+
+    // A pack folder's highlighters file becomes its set items.
+    QTemporaryDir pack;
+    REQUIRE( pack.isValid() );
+    auto manifest = packManifest();
+    auto content = manifest[ "content" ].toObject();
+    content.remove( "lua" );
+    content[ "highlights" ] = "highlights.conf";
+    manifest[ "content" ] = content;
+    {
+        QFile previews( pack.filePath( "previews.json" ) );
+        REQUIRE( previews.open( QIODevice::WriteOnly ) );
+        previews.write( Previews );
+        QFile highlights( pack.filePath( "highlights.conf" ) );
+        REQUIRE( highlights.open( QIODevice::WriteOnly ) );
+        highlights.write( highlightsConf( SomeSets ) );
+    }
+    error.clear();
+    const auto folderFiles = packcanonical::fromPackFolder( manifest, pack.path(), &error );
+    CHECK( error.isEmpty() );
+    CHECK( folderFiles.contains( "highlights/s-two.set" ) );
+    CHECK( !folderFiles.contains( "files/highlights.conf" ) );
+    CHECK( packcanonical::listedFiles( manifest ).isEmpty() );
 }
 
 TEST_CASE( "Pack items merge item by item and field by field", "[packmerge][E16]" )
@@ -2390,4 +2646,268 @@ TEST_CASE( "Pack filters install, edit and update through the local store", "[pa
         CHECK( !file.toMap()[ "kind" ].toString().startsWith( "filter" ) );
     }
     CHECK( manager.plugins().first().toMap()[ "filters" ] == 0 );
+}
+
+namespace {
+// A pack package with highlighter sets only (E16c2): plugin.json and highlights.conf, or a
+// previews document instead when `highlights` is empty.
+QString writeHighlightPackage( const QString& folder, const QString& version,
+                               const QByteArray& highlights )
+{
+    QDir().mkpath( folder );
+    auto manifest = packManifest( version );
+    QJsonObject content;
+    content[ highlights.isEmpty() ? "previews" : "highlights" ]
+        = highlights.isEmpty() ? "previews.json" : "highlights.conf";
+    manifest[ "content" ] = content;
+    const auto write = [ &folder ]( const QString& name, const QByteArray& bytes ) {
+        QFile file( folder + '/' + name );
+        REQUIRE( file.open( QIODevice::WriteOnly ) );
+        file.write( bytes );
+    };
+    write( "plugin.json", QJsonDocument( manifest ).toJson() );
+    write( highlights.isEmpty() ? "previews.json" : "highlights.conf",
+           highlights.isEmpty() ? QByteArray( Previews ) : highlights );
+    return folder;
+}
+
+// The set texts the content folder's highlighters file holds, by id.
+PackFiles contentSets( const QString& folder )
+{
+    return packcanonical::fromHighlights( readFile( folder + "/highlights.conf" ) );
+}
+} // namespace
+
+TEST_CASE( "Pack highlighter sets install, edit and update through the local store",
+           "[packmerge][E16]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    PluginManager manager( root.filePath( "data" ), root.filePath( "none" ) );
+    const auto id = QStringLiteral( "org.example.pack" );
+    // Three rules: edits of the first and the third are apart (merged as text, changes on adjacent
+    // lines would be one conflict, as in Git).
+    const QVector<SetRow> v1Sets{
+        { "s-one",
+          "Errors",
+          { { "ERROR" }, { "keep" }, { "fatal", true, false, "#ffffffff", "#ffff0000" } } },
+        { "s-two", "Radio", {} }
+    };
+    const auto v1
+        = writeHighlightPackage( root.filePath( "v1" ), "1.0.0", highlightsConf( v1Sets ) );
+    REQUIRE( finished( manager, manager.manage( "install", {}, { { "path", v1 } } ) )[ "state" ]
+             == "completed" );
+    const auto content = manager.packContentDirectory( id );
+    REQUIRE( contentSets( content ).contains( "highlights/s-one.set" ) );
+    CHECK( manager.plugins().first().toMap()[ "highlighterSets" ] == 2 );
+
+    const auto one = QStringLiteral( "highlights/s-one.set" );
+    QStringList kinds;
+    for ( const auto& file : manager.manage( "pack_files", id, {} ).payload[ "files" ].toList() ) {
+        kinds.append( file.toMap()[ "kind" ].toString() + ':' + file.toMap()[ "item" ].toString() );
+    }
+    kinds.sort();
+    CHECK( kinds
+           == QStringList{ "highlight-order:highlights/order.txt", "highlight:s-one",
+                           "highlight:s-two" } );
+
+    // A set is edited as text: its rules one per line. The edit is stored as CILogg writes it.
+    const auto text
+        = manager.manage( "pack_read", id, { { "path", one } } ).payload[ "content" ].toString();
+    auto edited = text;
+    edited.replace( "\"regexp\":\"ERROR\"", "\"regexp\":\"ERROR|PANIC\"" );
+    edited.replace( "\n", "\r\n" ); // as an editor on Windows saves it
+    REQUIRE( manager.manage( "pack_edit", id, { { "path", one }, { "content", edited } } ).ok() );
+    CHECK( contentSets( content ).value( one ).contains( "ERROR|PANIC" ) );
+    CHECK( !manager.manage( "pack_read", id, { { "path", one } } )
+                .payload[ "content" ]
+                .toString()
+                .contains( '\r' ) );
+    CHECK( manager.manage( "pack_history", id, { { "path", one } } )
+               .payload[ "commits" ]
+               .toList()
+               .first()
+               .toMap()[ "message" ]
+           == "Edit highlighter set 'Errors'" );
+    // Its id stays, every line is a rule CILogg reads, and a set is not deleted.
+    auto otherId = text;
+    otherId.replace( "id \"s-one\"", "id \"s-other\"" );
+    CHECK( manager.manage( "pack_edit", id, { { "path", one }, { "content", otherId } } )
+               .error.contains( "must stay" ) );
+    CHECK(
+        !manager.manage( "pack_edit", id, { { "path", one }, { "content", text + "rule {}\n" } } )
+             .ok() );
+    CHECK( !manager.manage( "pack_edit", id, { { "path", one }, { "remove", true } } ).ok() );
+    CHECK( contentSets( content ).value( one ).contains( "ERROR|PANIC" ) );
+
+    // A new version that changes another rule of the edited set and renames the other set merges
+    // line by line.
+    auto v2Sets = v1Sets;
+    v2Sets[ 0 ].rules[ 2 ].pattern = "fatal|abort";
+    v2Sets[ 1 ].name = "Radio 2";
+    const auto v2
+        = writeHighlightPackage( root.filePath( "v2" ), "1.1.0", highlightsConf( v2Sets ) );
+    REQUIRE( finished( manager, manager.manage( "install", {}, { { "path", v2 } } ) )[ "state" ]
+             == "completed" );
+    const auto merged = contentSets( content );
+    CHECK( merged.value( one ).contains( "ERROR|PANIC" ) );
+    CHECK( merged.value( one ).contains( "fatal|abort" ) );
+    CHECK( merged.value( "highlights/s-two.set" ).contains( "name \"Radio 2\"" ) );
+
+    // A version that changes the edited rule: a conflict of the set's text.
+    auto v3Sets = v2Sets;
+    v3Sets[ 0 ].rules[ 0 ].pattern = "ERROR|WARN";
+    const auto v3
+        = writeHighlightPackage( root.filePath( "v3" ), "1.2.0", highlightsConf( v3Sets ) );
+    const auto refused = finished( manager, manager.manage( "install", {}, { { "path", v3 } } ) );
+    REQUIRE( refused[ "state" ] == "failed" );
+    const auto conflicts = refused[ "result" ].toMap()[ "conflicts" ].toList();
+    REQUIRE( conflicts.size() == 1 );
+    CHECK( conflicts.first().toMap()[ "kind" ] == "highlight" );
+    CHECK( conflicts.first().toMap()[ "item" ] == "s-one" );
+    // The resolved text from the merge window is stored as CILogg writes it; one that is not a set
+    // is refused with the reason.
+    const auto resolution = [ & ]( const QString& resolved ) {
+        return finished(
+            manager, manager.manage(
+                         "install", {},
+                         { { "path", v3 },
+                           { "resolutions",
+                             QVariantList{ QVariantMap{ { "path", one }, { "text", resolved } } } },
+                           { "revision", refused[ "result" ].toMap()[ "revision" ] } } ) );
+    };
+    CHECK( resolution( "id \"s-one\"\nname \"Errors\"\nrule {\"x\":1}\n" )[ "error" ]
+               .toString()
+               .contains( "cannot be read" ) );
+    auto chosen = QString::fromUtf8( merged.value( one ) );
+    chosen.replace( "ERROR|PANIC", "ERROR|WARN|PANIC" );
+    REQUIRE( resolution( chosen )[ "state" ] == "completed" );
+    CHECK( contentSets( content ).value( one ).contains( "ERROR|WARN|PANIC" ) );
+
+    // A version without a highlighters file takes the sets with it, edits too, and says so.
+    const auto v4 = writeHighlightPackage( root.filePath( "v4" ), "2.0.0", {} );
+    const auto job = finished( manager, manager.manage( "install", {}, { { "path", v4 } } ) );
+    REQUIRE( job[ "state" ] == "completed" );
+    CHECK( job[ "result" ].toMap()[ "droppedEdits" ].toStringList().contains( "s-one" ) );
+    // An earlier state of a set does not come back into a version without highlighters.
+    const auto commits
+        = manager.manage( "pack_history", id, { { "path", one } } ).payload[ "commits" ].toList();
+    REQUIRE( !commits.isEmpty() );
+    CHECK( manager
+               .manage( "pack_reset", id,
+                        { { "path", one }, { "commit", commits.last().toMap()[ "commit" ] } } )
+               .error.contains( "no highlighters file" ) );
+    CHECK( manager.plugins().first().toMap()[ "highlighterSets" ] == 0 );
+}
+
+TEST_CASE( "A pack store from before E16c reads its filters and highlighters files as items",
+           "[packmerge][E16]" )
+{
+    // E16a2 kept a pack's filters and highlighters files as they are, under files/ (Codex review
+    // of #169): read as items, those files are never lost, also when an edit or a repair writes
+    // the content folder again.
+    auto manifest = packManifest();
+    manifest[ "content" ] = QJsonObject{ { "filters", "conf/filters.conf" },
+                                         { "highlights", "conf/highlights.conf" } };
+    const auto filters = filtersConf( SomeFilters );
+    const auto highlights = highlightsConf( SomeSets );
+    const PackFiles legacy{ { "files/conf/filters.conf", filters },
+                            { "files/conf/highlights.conf", highlights } };
+    auto items = packcanonical::fromFilters( filters );
+    const auto sets = packcanonical::fromHighlights( highlights );
+    for ( auto set = sets.cbegin(); set != sets.cend(); ++set ) {
+        items.insert( set.key(), set.value() );
+    }
+    REQUIRE( items.contains( "filters/f-one.json" ) );
+    REQUIRE( items.contains( "highlights/s-one.set" ) );
+
+    SECTION( "the conversion" )
+    {
+        CHECK( packcanonical::fromLegacyDocuments( legacy, manifest ) == items );
+        // Items already there win; other files and other kinds are left as they are.
+        auto both = items;
+        both.insert( "files/conf/filters.conf", "[stale]\n" );
+        both.insert( "files/lua/a.lua", "-- a\n" );
+        auto expected = items;
+        expected.insert( "files/lua/a.lua", "-- a\n" );
+        CHECK( packcanonical::fromLegacyDocuments( both, manifest ) == expected );
+        // A file that is not exactly what Export writes stays as it is.
+        const auto noIds = filtersConf( { { QString{}, "Old", "old", true } } );
+        const PackFiles odd{ { "files/conf/filters.conf", noIds } };
+        CHECK( packcanonical::fromLegacyDocuments( odd, manifest ) == odd );
+        // A manifest without those documents keeps the files.
+        CHECK( packcanonical::fromLegacyDocuments( legacy, packManifest() ) == legacy );
+    }
+
+    SECTION( "an unrelated edit and an update keep them" )
+    {
+        QTemporaryDir root;
+        REQUIRE( root.isValid() );
+        PackStore store( root.path(), "org.example.pack" );
+        REQUIRE( store.install( legacy, manifest, "1.0.0", "Team packs" ).isEmpty() );
+        CHECK( store.files() == items );
+        CHECK( store.upstreamFiles() == items );
+        CHECK( store.localEdits().isEmpty() );
+        const auto content = store.contentDirectory() + "/conf";
+        CHECK( contentFilters( content ).size() == 2 );
+        CHECK( contentSets( content ).size() == 3 ); // two sets and the order
+
+        // An edit of one set rewrites the content folder: the filters and the other set stay.
+        const auto one = QStringLiteral( "highlights/s-one.set" );
+        auto edited = store.files().value( one );
+        edited.replace( "\"ERROR\"", "\"ERROR|PANIC\"" );
+        REQUIRE( store.commitEdit( one, edited, "Edit highlighter set 'Errors'" ).isEmpty() );
+        CHECK( store.localEdits() == QStringList{ one } );
+        CHECK( contentFilters( content ).size() == 2 );
+        CHECK( contentSets( content ).size() == 3 );
+        CHECK( contentSets( content ).value( one ).contains( "ERROR|PANIC" ) );
+
+        // A new version in the item form merges with that edit item by item.
+        auto next = items;
+        next.insert( "highlights/s-three.set",
+                     packcanonical::fromHighlights( highlightsConf( { { "s-three", "New", {} } } ) )
+                         .value( "highlights/s-three.set" ) );
+        next.insert( "highlights/order.txt", "s-one\ns-two\ns-three\n" );
+        const auto plan = store.planUpdate( next, MergeStrategy::Fail );
+        CHECK( plan.conflicts.isEmpty() );
+        CHECK( plan.merged.value( one ).contains( "ERROR|PANIC" ) );
+        CHECK( plan.merged.contains( "highlights/s-three.set" ) );
+        CHECK( !plan.merged.contains( "files/conf/highlights.conf" ) );
+    }
+
+    SECTION( "a local edit made to the file itself" )
+    {
+        QTemporaryDir root;
+        REQUIRE( root.isValid() );
+        PackStore store( root.path(), "org.example.pack" );
+        REQUIRE( store.install( legacy, manifest, "1.0.0", "Team packs" ).isEmpty() );
+        // E16a2 committed an edit of the filters file as the whole file.
+        auto mine = legacy;
+        auto rows = SomeFilters;
+        rows[ 0 ].filter = "ERROR|PANIC";
+        mine.insert( "files/conf/filters.conf", filtersConf( rows ) );
+        REQUIRE( store.applyUpdate( legacy, mine, manifest, "1.0.0", "Team packs" ).isEmpty() );
+        CHECK( store.localEdits() == QStringList{ "filters/f-one.json" } );
+        CHECK( store.files().value( "filters/f-one.json" ).contains( "ERROR|PANIC" ) );
+        CHECK( contentFilters( store.contentDirectory() + "/conf" )
+                   .first()
+                   .value( "filter" )
+                   .toString()
+               == "ERROR|PANIC" );
+    }
+
+    SECTION( "a file that is not an export" )
+    {
+        QTemporaryDir root;
+        REQUIRE( root.isValid() );
+        PackStore store( root.path(), "org.example.pack" );
+        const auto noIds = filtersConf( { { QString{}, "Old", "old", true } } );
+        auto odd = legacy;
+        odd.insert( "files/conf/filters.conf", noIds );
+        REQUIRE( store.install( odd, manifest, "1.0.0", "Team packs" ).isEmpty() );
+        CHECK( store.files().value( "files/conf/filters.conf" ) == noIds );
+        // The content folder gets it back unchanged, never an empty filters file.
+        CHECK( readFile( store.contentDirectory() + "/conf/filters.conf" ) == noIds );
+        CHECK( contentSets( store.contentDirectory() + "/conf" ).size() == 3 );
+    }
 }

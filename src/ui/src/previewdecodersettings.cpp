@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "previewdecodersettings.h"
+#include "configpack.h"
 #include "log.h"
 #include "persistentinfo.h"
 #include "previewmanager.h"
@@ -128,16 +129,24 @@ bool normalize( const QVariantMap& input, QVariantMap* output, QString* error )
                  || route.value().userType() != QMetaType::QVariantMap )
                 return reject( "invalid_route" );
             auto entry = route.value().toMap();
+            // A route goes to a TShark dissector, or to a pack's Python decoder (MD03b).
+            const bool python = entry.contains( "python" );
             for ( auto item = entry.cbegin(); item != entry.cend(); ++item )
                 if ( !isString( item.value() )
-                     || ( item.key() != "dissector" && item.key() != "protocol"
+                     || ( ( python ? item.key() != "python"
+                                   : item.key() != "dissector" && item.key() != "protocol" )
                           && !( protocol && item.key() == "inputEncoding" ) ) )
                     return reject( "invalid_route" );
             const auto selector = entry.value( "protocol", "" ).toString();
-            if ( !named( entry.value( "dissector" ).toString() ) || selector.size() > 128
-                 || selector.contains( QChar::Null ) )
+            if ( python ) {
+                if ( !cilogg::plugins::pythonDecoderTarget( entry.value( "python" ).toString() ) )
+                    return reject( "invalid_route" );
+            }
+            else if ( !named( entry.value( "dissector" ).toString() ) || selector.size() > 128
+                      || selector.contains( QChar::Null ) )
                 return reject( "invalid_route" );
-            entry[ "protocol" ] = entry.value( "protocol", "" );
+            else
+                entry[ "protocol" ] = entry.value( "protocol", "" );
             if ( protocol ) {
                 entry[ "inputEncoding" ]
                     = entry.value( "inputEncoding", config.value( "inputEncoding" ) );
@@ -260,6 +269,8 @@ PreviewDecoderSnapshot PreviewDecoderSettings::snapshot() const
         effective[ key ] = merged;
     }
     effective[ "packLua" ] = packs_.lua;
+    // MD03b: the packs' Python decoder modules, as `{id, root, decoders: [{id, module}]}`.
+    effective[ "packPython" ] = packs_.python;
     return { effective, revision_ };
 }
 PreviewDecoderPacks PreviewDecoderSettings::packs() const
@@ -272,6 +283,7 @@ void PreviewDecoderSettings::setPacks( const PreviewDecoderPacks& packs )
         return;
     packs_ = packs;
     LOG_INFO << "Preview decoder pack contributions changed packs=" << packs_.lua.size()
+             << " python_packs=" << packs_.python.size()
              << " preview_routes=" << packs_.previewRoutes.size()
              << " protocol_routes=" << packs_.protocolRoutes.size();
     invalidate();

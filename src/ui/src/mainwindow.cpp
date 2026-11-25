@@ -123,6 +123,7 @@
 #include "favoritefiles.h"
 #include "filewatcher.h"
 #include "highlightersdialog.h"
+#include "highlighterset.h"
 #include "highlightersmenu.h"
 #include "importactionsdialog.h"
 #include "importpreviewsdialog.h"
@@ -2159,6 +2160,14 @@ void MainWindow::createMenus()
             crawler->applyConfiguration();
         }
     } );
+    // The enabled configuration packs' highlighter sets (E16c2): the menu and the highlighting
+    // follow them.
+    connect( &PackHighlighters::instance(), &PackHighlighters::changed, this, [ this ] {
+        updateHighlightersMenu();
+        if ( auto* crawler = currentCrawlerWidget() ) {
+            crawler->applyConfiguration();
+        }
+    } );
 
     toolsMenu->addAction( predefinedFiltersDialogAction );
     toolsMenu->addAction( importPreviewsAction );
@@ -2987,6 +2996,21 @@ void MainWindow::editHighlighters()
                      LOG_DEBUG << "Registered highlight editor export: " << path;
                  }
              } );
+    // Pack highlighter sets are edited in place, and the packs managed, through the plugin
+    // controller (E16c2, design 4.5).
+    if ( pluginController_ ) {
+        dialog.setPackItemEditor(
+            [ this ]( QWidget* parent, const QString& packId, const QString& path ) {
+                if ( pluginController_ ) {
+                    pluginController_->editPackItem( parent, packId, path );
+                }
+            } );
+        dialog.setPacksOpener( [ this, &dialog ] {
+            if ( pluginController_ ) {
+                pluginController_->openPacks( &dialog );
+            }
+        } );
+    }
     signalMux_.connect( &dialog, SIGNAL( optionsChanged() ), SLOT( applyConfiguration() ) );
 
     connect( &dialog, &HighlightersDialog::optionsChanged,

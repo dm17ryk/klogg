@@ -10,7 +10,9 @@
 #include <QJsonDocument>
 #include <QRegularExpression>
 #include <QSet>
+#include <QVector>
 #include <algorithm>
+#include <utility>
 
 namespace cilogg::plugins {
 namespace {
@@ -37,7 +39,9 @@ bool contentPath( const QJsonValue& value, const QString& suffix = {} )
            && ( suffix.isEmpty() || text.endsWith( suffix, Qt::CaseInsensitive ) );
 }
 
-// The rules of PreviewDecoderSettings for the user's routes, so pack routes merge cleanly.
+// The rules of PreviewDecoderSettings for the user's routes, so pack routes merge cleanly. A route
+// goes to a TShark dissector (`dissector`, optional `protocol`) or to a Python decoder (`python`,
+// `<pack-id>/<decoder-id>`, MD03b); protocol routes may also set `inputEncoding`.
 QString validateRoutes( const QJsonObject& routes, bool protocol )
 {
     const auto limit = protocol ? MaxPackProtocolRoutes : MaxPackPreviewRoutes;
@@ -47,12 +51,15 @@ QString validateRoutes( const QJsonObject& routes, bool protocol )
     }
     for ( auto route = routes.begin(); route != routes.end(); ++route ) {
         const auto entry = route.value().toObject();
+        const bool python = entry.contains( "python" );
         bool valid = !route.key().isEmpty() && route.key().size() <= ( protocol ? 128 : 4096 )
                      && !route.key().contains( QChar::Null ) && route.value().isObject()
-                     && dissectorName( entry.value( "dissector" ).toString() );
+                     && ( python ? pythonDecoderTarget( entry.value( "python" ).toString() )
+                                 : dissectorName( entry.value( "dissector" ).toString() ) );
         for ( auto item = entry.begin(); valid && item != entry.end(); ++item ) {
             valid = item.value().isString()
-                    && ( item.key() == "dissector" || item.key() == "protocol"
+                    && ( ( python ? item.key() == "python"
+                                  : item.key() == "dissector" || item.key() == "protocol" )
                          || ( protocol && item.key() == "inputEncoding"
                               && encodingName( item.value().toString() ) ) );
         }
@@ -60,6 +67,33 @@ QString validateRoutes( const QJsonObject& routes, bool protocol )
         if ( !valid || selector.size() > 128 || selector.contains( QChar::Null ) ) {
             return QStringLiteral( "Invalid decoder_routes.%1 entry: %2" )
                 .arg( key, route.key().left( 128 ) );
+        }
+    }
+    return {};
+}
+
+// A pack's Python routes name its own listed decoders (design 4.4).
+QString checkPythonRoutes( const QString& packId, const PackContent& content )
+{
+    for ( const bool protocol : { false, true } ) {
+        const auto& routes = protocol ? content.protocolRoutes : content.previewRoutes;
+        for ( auto route = routes.begin(); route != routes.end(); ++route ) {
+            const auto target = route.value().toObject().value( "python" ).toString();
+            if ( target.isEmpty() ) {
+                continue;
+            }
+            const auto listed = std::any_of(
+                content.pythonDecoders.cbegin(), content.pythonDecoders.cend(),
+                [ & ]( const PackPythonDecoder& decoder ) {
+                    return target == packId + QLatin1Char( '/' ) + decoder.id;
+                } );
+            if ( !listed ) {
+                return QStringLiteral( "decoder_routes.%1 entry %2 names a Python decoder the pack "
+                                       "does not have: %3" )
+                    .arg( protocol ? QStringLiteral( "protocolRoutes" )
+                                   : QStringLiteral( "previewRoutes" ),
+                          route.key().left( 128 ), target.left( 200 ) );
+            }
         }
     }
     return {};
@@ -129,16 +163,23 @@ QString checkReservedPaths( const PackContent& content )
     if ( !content.previews.isEmpty() && same( content.previews, manifest ) ) {
         return QStringLiteral( "content.previews cannot be plugin.json." );
     }
-    // The files carried as they are; the filters file is written from the pack's filter items.
-    QStringList raw{ content.actions, content.highlights };
+    // The files carried as they are; the filters and highlighters files are written from the
+    // pack's items (E16c).
+    QStringList raw{ content.actions };
     for ( const auto& file : content.luaLoad ) {
         raw.append( content.luaFolder + '/' + file );
     }
     for ( const auto& decoder : content.pythonDecoders ) {
         raw.append( decoder.module );
     }
+    const QVector<std::pair<QString, QString>> written{
+        { content.filters, QStringLiteral( "filters" ) },
+        { content.highlights, QStringLiteral( "highlighters" ) }
+    };
     auto others = raw;
-    others.append( content.filters );
+    for ( const auto& file : written ) {
+        others.append( file.first );
+    }
     for ( const auto& path : others ) {
         if ( !path.isEmpty()
              && ( same( path, manifest ) || ( !content.previews.isEmpty() && same( path, content.previews ) ) ) ) {
@@ -158,13 +199,22 @@ QString checkReservedPaths( const PackContent& content )
             }
         }
     }
-    // CILogg writes the filters file from the pack's filter items (E16c), so no file carried as it
-    // is may be that file too: written after it, it would replace the filters and their edits.
-    if ( !content.filters.isEmpty() ) {
-        for ( const auto& path : raw ) {
-            if ( !path.isEmpty() && same( path, content.filters ) ) {
-                return QStringLiteral( "The content file %1 is the pack's filters file." )
-                    .arg( path.left( 128 ) );
+    // CILogg writes the filters and highlighters files from the pack's items (E16c), so no other
+    // content file may be one of them: written after it, it would replace the items and their
+    // edits.
+    for ( qsizetype index = 0; index < written.size(); ++index ) {
+        const auto& [ path, what ] = written.at( index );
+        if ( path.isEmpty() ) {
+            continue;
+        }
+        auto rest = raw;
+        for ( qsizetype other = index + 1; other < written.size(); ++other ) {
+            rest.append( written.at( other ).first );
+        }
+        for ( const auto& file : rest ) {
+            if ( !file.isEmpty() && same( file, path ) ) {
+                return QStringLiteral( "The content file %1 is the pack's %2 file." )
+                    .arg( file.left( 128 ), what );
             }
         }
     }
@@ -214,6 +264,14 @@ QStringList PackContent::luaFiles( const QString& directory ) const
 bool isConfigPack( const QJsonObject& manifest )
 {
     return manifest.value( "kind" ).toString() == QLatin1String( ConfigPackKind );
+}
+
+bool pythonDecoderTarget( const QString& target )
+{
+    // A plugin ID (pluginmanifest.cpp) and a python_decoders ID.
+    static const QRegularExpression pattern( QRegularExpression::anchoredPattern(
+        "[a-z0-9][a-z0-9._-]{0,127}/[a-z0-9][a-z0-9._-]{0,63}" ) );
+    return pattern.match( target ).hasMatch();
 }
 
 QStringList packProcessKeys()
@@ -289,6 +347,10 @@ QString validatePackManifest( const QJsonObject& manifest, PackContent* content 
         if ( !error.isEmpty() ) {
             return error;
         }
+    }
+    if ( const auto error = checkPythonRoutes( manifest.value( "id" ).toString(), parsed );
+         !error.isEmpty() ) {
+        return error;
     }
     if ( const auto error = checkReservedPaths( parsed ); !error.isEmpty() ) {
         return error;
@@ -379,6 +441,22 @@ QStringList packContents( const QJsonObject& manifest )
     return contents;
 }
 
+QStringList packCodeNotInCatalog( const QJsonObject& manifest, const QJsonValue& catalogContents )
+{
+    QStringList hidden;
+    if ( !isConfigPack( manifest ) ) {
+        return hidden;
+    }
+    const auto listed = catalogContents.toArray();
+    for ( const auto& code : packContents( manifest ) ) {
+        if ( ( code == QLatin1String( "lua" ) || code == QLatin1String( "python_decoders" ) )
+             && !listed.contains( QJsonValue( code ) ) ) {
+            hidden.append( code );
+        }
+    }
+    return hidden;
+}
+
 QStringList packPreviewNames( const QByteArray& previewsJson )
 {
     const auto document = QJsonDocument::fromJson( previewsJson );
@@ -407,21 +485,44 @@ QVariantMap packSummary( const QJsonObject& manifest, const QString& directory )
             previews = static_cast<int>( packPreviewNames( file.read( MaxPackFileBytes ) ).size() );
         }
     }
-    int filters = 0;
-    if ( !content.filters.isEmpty() ) {
-        QFile file( QDir( directory ).filePath( content.filters ) );
-        if ( file.open( QIODevice::ReadOnly ) ) {
-            const auto items = packcanonical::fromFilters( file.read( MaxPackFileBytes ) );
-            filters = static_cast<int>(
-                std::count_if( items.keyBegin(), items.keyEnd(), []( const QString& path ) {
-                    return packcanonical::kindOf( path ) == QLatin1String( "filter" );
-                } ) );
-        }
+    // A filters or highlighters file that is not exactly an export (a pack enabled before E16c may
+    // carry one) contributes nothing: contentWarnings says why.
+    QStringList warnings;
+    const auto countItems
+        = [ &directory, &warnings ]( const QString& path, const char* kind,
+                                     PackFiles ( *convert )( const QByteArray&, QString* ) ) {
+              QFile file( QDir( directory ).filePath( path ) );
+              if ( !file.open( QIODevice::ReadOnly ) ) {
+                  warnings.append(
+                      QStringLiteral( "%1 cannot be read: %2" ).arg( path, file.errorString() ) );
+                  return 0;
+              }
+              QString error;
+              const auto items = convert( file.read( MaxPackFileBytes ), &error );
+              if ( !error.isEmpty() ) {
+                  warnings.append( error );
+              }
+              return static_cast<int>(
+                  std::count_if( items.keyBegin(), items.keyEnd(), [ kind ]( const QString& item ) {
+                      return packcanonical::kindOf( item ) == QLatin1String( kind );
+                  } ) );
+          };
+    const int filters = content.filters.isEmpty()
+                            ? 0
+                            : countItems( content.filters, "filter", &packcanonical::fromFilters );
+    const int highlighterSets
+        = content.highlights.isEmpty()
+              ? 0
+              : countItems( content.highlights, "highlight", &packcanonical::fromHighlights );
+    QVariantMap summary{ { "contents", packContents( manifest ) },
+                         { "previews", previews },
+                         { "filters", filters },
+                         { "highlighterSets", highlighterSets },
+                         { "luaFiles", static_cast<int>( content.luaLoad.size() ) },
+                         { "pythonDecoders", static_cast<int>( content.pythonDecoders.size() ) } };
+    if ( !warnings.isEmpty() ) {
+        summary.insert( QStringLiteral( "contentWarnings" ), warnings );
     }
-    return { { "contents", packContents( manifest ) },
-             { "previews", previews },
-             { "filters", filters },
-             { "luaFiles", static_cast<int>( content.luaLoad.size() ) },
-             { "pythonDecoders", static_cast<int>( content.pythonDecoders.size() ) } };
+    return summary;
 }
 } // namespace cilogg::plugins

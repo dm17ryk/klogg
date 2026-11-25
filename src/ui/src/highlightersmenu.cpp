@@ -43,7 +43,8 @@ void HighlightersMenu::createHighlightersMenu()
 void HighlightersMenu::populateHighlightersMenu()
 {
     const auto& highlightersCollection = HighlighterSetCollection::get();
-    const auto& highlighterSets = highlightersCollection.highlighterSets();
+    // The user's sets, then the enabled configuration packs' with the pack's name (E16c2).
+    const auto highlighterSets = highlightersCollection.listedSets();
     const auto& activeSetIds = highlightersCollection.activeSetIds();
 
     auto noneAction = addAction( tr( "None" ) );
@@ -52,8 +53,12 @@ void HighlightersMenu::populateHighlightersMenu()
 
     addSeparator();
 
-    for ( const auto& highlighter : highlighterSets ) {
-        auto setAction = addAction( highlighter.name() );
+    for ( const auto& listed : highlighterSets ) {
+        const auto& highlighter = listed.set;
+        auto setAction = addAction(
+            listed.packId.isEmpty()
+                ? highlighter.name()
+                : QStringLiteral( "%1 (%2)" ).arg( highlighter.name(), listed.packName ) );
         setAction->setActionGroup( highLighters_ );
         setAction->setCheckable( true );
         setAction->setChecked( activeSetIds.contains( highlighter.id() ) );

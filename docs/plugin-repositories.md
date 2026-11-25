@@ -538,6 +538,8 @@ optional, and a pack may carry only previews, only Lua, or everything:
 - `decoder_routes` uses the format of the TShark decoder routes. Its `previewRoutes` keys must be
   names of the pack's own previews; its `protocolRoutes` keys are assembled protocol names, as in
   the user's routes. Each list keeps the decoder's limits (128 preview routes, 32 protocol routes).
+  A route goes to a TShark `dissector` or, with `{ "python": "<pack-id>/<decoder-id>" }`, to one of
+  the pack's own `python_decoders` (section 4.4).
 - `python_decoders` is described in section 4.4; actions, highlighters and filters in section 4.5.
 
 Packs install, update, enable, disable and remove exactly like plugins, from the same repositories
@@ -614,12 +616,90 @@ for packs. Packs are platform independent, so their catalog entries use `os: any
 
 ### 4.4 Python decoders
 
-CILogg has no Python decoder backend for the preview pane yet: the Python helper that ships today
-only carries data between CILogg and TShark. Task MD03 plans the supervised decoder contract. Until
-it exists, a pack's `python_decoders` are installed and updated with the pack and listed as
-"Requires a newer CILogg"; nothing runs them. MD03 activates them without changing the pack format.
-A Python decoder that is needed sooner can be shipped as an ordinary process plugin (a `converter`
-or `tool`).
+A pack's `python_decoders` run in the preview's **Python decoder backend** (slice MD03b, issue
+#159), a narrow part of task MD03 like MD03a was for TShark and Lua. The pack format is unchanged:
+each item is `{ "id", "module" }`, the module a `.py` file inside the pack. The full MD03 decoder
+contract (datasets, conversations, scans) stays planned; this backend uses the existing
+PreviewService result version 1. A Python decoder that needs more than a preview can still be
+shipped as an ordinary process plugin (a `converter` or `tool`).
+
+**Entry point.** CILogg calls the module's `decode(payload, context)`:
+
+- `payload` is `bytes`: the preview's buffer (its `bufferCapture`, decoded by its buffer type or the
+  request's encoding), or the assembled message for a protocol route; 1 byte to 64 KiB.
+- `context` is a `dict`: `preview` (the preview's name, empty for a protocol route), `protocol` (the
+  assembled protocol, or empty), `inputEncoding` (how the log text became `payload`: `utf8`, `hex`,
+  `base64`, `bin` or `bytes`), `direction` (`unknown` until a source reports one; `rx` and `tx` are
+  reserved) and `decoder` (`<pack-id>/<decoder-id>`).
+- It returns the rows, or an object `{ "fields": [rows], "messageCompleteness", "messageIntegrity" }`.
+  A row is `{ "name", "value", "raw", "pos", "size", "depth", "attributes" }`: only `name` is
+  required; `value` is text, a number (integers exactly), a boolean or `None`; `raw` is `bytes`
+  (shown as hex) or text; `pos` and `size` are integers or text, offsets in `payload`; `depth`
+  starts at 0 and grows by at most one from row to row (preorder); `attributes` is an object of at
+  most 64 values. `messageCompleteness` is `complete`, `incomplete` or `not_reported`,
+  `messageIntegrity` `valid`, `invalid` or `not_reported` (the default); they are independent of the
+  result's own `complete`, which only says whether every row was kept.
+- It returns `None` when the bytes are not its message ("not dispatched").
+- A module's suffix may be `.py` in any case, as the pack's manifest check takes it.
+
+**Result.** PreviewService result version 1 with `backend: "python_decoder"`, `decoder`,
+`offsetSpace: "decoder_payload"`, `moduleSha256` (the session copy that decoded) and `enginePid`
+(metadata only). Rows keep the MD03a limits: 512 rows, depth 32 and 64 Ki UTF-16 units per text,
+then `limited` with the reason `rendered_field_limit`, `depth_limit` or `field_text_limit`; the
+whole response stays within 128 KiB (`response_limit`, an exact prefix of the rows). A failure is
+`decoder_failed` (the function raised), `decoder_load_failed` (the module did not import or has no
+`decode`) or `invalid_decoder_result`, with `detail` naming the exception type and the file and line
+in the pack, never the message text or the data.
+
+**Worker.** One supervised Python worker per preview session (the preview owner, as for TShark), at
+most two warm, on the MD03a transport (`message_decoder_python_worker.py`, framed JSON over stdio).
+The host starts it in a process group (Unix) or job object (Windows) of its own before sending
+anything, so ending it ends its descendants; it is not a sandbox. Deadlines are the preview's: 3 s
+by default, 10 s at most, from the request's start. A deadline, a cancellation, a crash or a
+protocol error ends the worker and fails that request; the next request starts a new worker. A
+decoder failure fails only its request; the worker and its modules stay. `print()` and a child
+process's output go to the worker's diagnostics, never into the protocol, and are bounded at 64
+KiB per request. The interpreter is chosen as for plugins (#141): `CILOGG_SCRIPT_PYTHON`, a bundled
+interpreter, then `python.exe` before `python3.exe` and launcher scripts on `PATH`. It runs with
+`-I -S`, so decoders use the standard library only.
+
+**Routing.** A decoder route names `{ "python": "<pack-id>/<decoder-id>" }` instead of a
+`dissector`, in `previewRoutes` (a preview name) or `protocolRoutes` (an assembled protocol, with an
+optional `inputEncoding`). A pack's routes name its own decoders; the user's routes (Preview Decoder
+Settings, where the decoder column takes `python:<pack-id>/<decoder-id>`) may name any pack's. In
+Automatic mode a Python route has the place a TShark route has: an assembled protocol's route
+first, then routed previews before other matching JSON previews, then the TShark default dissector,
+then JSON. A Python route applies while its decoder's pack is enabled, whether TShark is configured
+or not; a route whose decoder is not loaded does not apply. Automatic mode falls back to JSON only
+when the decoder returns `None` (`fallbackReason: "decoder_not_dispatched"`, `decoderAttempts:
+["python_decoder", "json_preview"]`); a failure, a deadline or a limit stays visible. Explicit JSON
+ignores the routes; explicit TShark, or a dissector named in the request, never uses a Python route.
+
+**Loading and isolation.** When a session starts, the worker copies every enabled pack's listed
+modules into its own folder, at most 1 MiB each and 64 in all (the pack check refuses a pack that
+would exceed 64), and hashes them; later changes of the pack's files reach the next session. Each
+pack is a package of its own whose path is its copy, so a module imports the pack's other listed
+modules relatively (`from . import common`) and two packs' modules of the same name never collide.
+Only listed modules are part of a pack (its store keeps only them), so a helper module is listed
+too. Each folder of a listed module is a package of the pack, also when its name has a `.`; a
+module and a folder of the same name (`sub.py` beside `sub/`) are refused when the session starts.
+Enabling, disabling or updating a pack starts new sessions.
+
+**Trust.** Pack Python is local code with the user's permissions. The install, enable and update
+confirmations of pack Lua cover it ("contains Python code that runs on this computer"; "Lua and
+Python code" for both), and auto-update of such a pack is the same trust decision as for a process
+plugin. A repository install or update asks from the catalog entry's `contents`, so staging
+refuses a pack package whose entry leaves out its `lua` or `python_decoders` ("The package has
+python_decoders, which its catalog entry's contents do not list"); `build_catalog.py` lists them
+from the manifest.
+
+**Capability.** The host feature `python_decoders` (version 1) says this CILogg runs pack Python
+decoders: `get_plugins` reports it in `hostFeatures`, and per pack `pythonDecodersActive` (the pack
+is enabled, has Python decoders and the host has the feature). The Installed tab shows
+"Python decoders: N", "(inactive)" while the pack is disabled, and "requires a newer CILogg" on a
+host without the feature; a pack can also say `"requires": { "host_features": ["python_decoders"] }`
+so that an older CILogg lists it as requiring a newer one. The example
+`plugins/examples/python-decoder-pack` shows a decoder with a helper module and its route.
 
 **As built (E16a1).** `Manifest::parse` reads `kind` first and checks a pack with
 `validatePackManifest` (`src/plugins/configpack.*`); `Manifest::read` then checks its files
@@ -705,6 +785,50 @@ only, with **Copy to My Filters** (a filter of the user's with the same id), **E
 pack item editor on `filters/<id>.json`) and **Packs...** (the Plugins and Packs window over the
 dialog). `get_plugins` counts a pack's `filters`.
 
+**As built (E16c2, highlighter sets).** A pack's `highlights` file is the INI file **Export**
+writes (group `HighlighterSetCollection`, version 1 or 2; each set `HighlighterSet` version 1 to 3);
+`packcanonical::fromHighlights` refuses one that is not exactly that (a set without a unique `id`
+or a name, a counted rule without its `regexp`, a value CILogg would not read back, a list where
+one value goes (an unquoted comma), a `color_variance` outside 0 to 100, any other key, more than
+4,096 sets or 4,096 rules in a set) and drops the exported `active_sets` and color
+labels, which are the user's. Rule members an older export lacks take the defaults CILogg reads
+them with (the store's set text carries all eight); requiring every counted rule's pattern keeps
+the work bounded by the file's size, so a count alone cannot make millions of rules. In the store each set is one text file,
+`highlights/<id>.set`: an `id` line, a `name` line and one `rule` line per rule (the rule as JSON
+with sorted keys), with the set order in `highlights/order.txt`. A set merges as text (diff3), so
+edits of different rules merge and edits of the same or adjacent lines conflict; Keep Mine or Take
+Theirs keeps a whole set, so no rule is left without its set. `toHighlights` writes the content
+folder's highlighters file back with QSettings. An edit, a merge result or a reset must leave every
+set one CILogg reads back the same (`highlightsInvalid`, also in `contentInvalid`); `pack_edit`
+canonicalizes a set and refuses to remove one (a pack's sets go with the pack), and a version
+without a highlighters file takes the set items with it. `PreviewPackRegistry` reads each enabled
+pack's sets as CILogg reads its own (`HighlighterSetCollection::retrieveFromStorage` on a copy)
+and hands them to `PackHighlighters` as `ListedHighlighterSet`s (the set with its pack's ID and
+name); the user's `HighlighterSetCollection` holds the user's sets only (saved, exported and put in
+project snapshots), and `listedSets()` lists them, then the packs' whose id the user has not taken.
+The active sets stay the user's: `activeSetIds` keeps pack set ids, also while the pack is
+disabled, and the combined highlighting (`updateCombinedSet`) follows `listedSets()`, so an
+active pack set highlights with its new rules as soon as the pack changes. The pack check refuses
+a set id another enabled pack has and more than 4,096 sets together; the user's own sets are not
+limited, and when they grow past that the packs' sets give way (shown as "not listed" in the
+dialog). No other content file may be the highlighters file (`checkReservedPaths`). The
+Highlighters menu shows pack sets as "<name> (<pack name>)" and follows `PackHighlighters::changed`;
+the Highlighters dialog lists them after the user's, read only (the set editor disabled), marked
+"replaced by your set" when a set of the user's has the id, with **Copy to My Highlighters** (a
+set of the user's with the same id, which stays active if the pack's was; removing that copy lists
+the pack's set again, still active if the copy was), **Edit...** (the pack
+item editor on `highlights/<id>.set`) and **Packs...**. `get_plugins` counts a pack's
+`highlighterSets`. Stores written before E16c kept the filters and highlighters files as they
+are, under `files/<path>`: every read of a store commit converts such a file to its items, with the
+commit's own manifest and any edit made to the file (`packcanonical::fromLegacyDocuments`), so
+the merge base, the local edits and the content folder see one form and the next commit is in it.
+A file that is not exactly what Export writes (an older export without ids) stays as it is and the
+content folder gets it back unchanged, never an empty file in its place. `PreviewPackRegistry`
+then leaves out only that file's items (`Contribution::warnings`): the pack's previews, Lua,
+decoders and other items still apply, enabling or updating it is refused with the reason, and
+`get_plugins` reports it in `contentWarnings`. The pack check counts only the pack items that are
+listed (a filter or set of the user's with a pack item's id replaces it), as the lists do.
+
 ### 4.6 Local edits and merge on update
 
 **Decided (Dmitry, 2026-11-17): edit in place with merge.** Process plugins (for example a CPF tool,
@@ -720,9 +844,9 @@ internal, and CILogg reads a pack's effective content from it.
 - Branch `upstream` gets one commit per installed version, exactly as shipped, with a message such
   as "Install 1.2.0 from Team packs". Branch `local` carries the user's edits as commits on top:
   CILogg commits when the user saves a pack item, with a readable message ("Edit filter 'Software
-  or Reset'", "Delete highlighter set 'Radio'").
+  or Reset'", "Edit highlighter set 'Radio'").
 - **Canonical form.** Structured content is stored one item per file (`filters/<id>.json`,
-  `highlights/<set-id>.json`, `actions/<id>.json`, `responses/<id>.json`, `previews/<name>.json`,
+  `highlights/<set-id>.set`, `actions/<id>.json`, `responses/<id>.json`, `previews/<name>.json`,
   `blocks/<name>.json`; unsafe characters of a name are encoded), as JSON with sorted keys and one
   member per line, and the rules of a highlighter set one per line. Unrelated edits then never touch
   the same lines. Lua and Python files are stored as they are. The canonical form converts to and
@@ -1147,7 +1271,10 @@ the Git Credential Manager they already use for that organization.
   profile snapshot only while enabled, copied, hashed and loaded in order, never written into the
   saved configuration, in a per-pack environment where two packs with the same global keep their
   own values; the 32-file and route limits; warm sessions discarded on update; JSON fallback
-  without TShark; `python_decoders` listed and inactive; pack actions, highlighters and filters
+  without TShark; `python_decoders` run by the Python decoder backend (MD03b: the worker's deadline,
+  crash restart, limits and the end of its descendants, routing and the JSON fallback only when not
+  dispatched, one import namespace per pack, the trust prompts, the `python_decoders` host feature
+  and an end-to-end pack preview); pack actions, highlighters and filters
   listed with the pack's name, Copy to My..., user precedence, collisions between packs refused, store limits,
   exports without pack items; pack automatic responses off after install and their on or off choice
   kept across an update. Local edits and merge: the installed version unchanged by edits; Reset to Pack Version; every three-way case per item (not edited,
@@ -1188,7 +1315,8 @@ the Git Credential Manager they already use for that organization.
   text merge, the optional external merge tool, Reset to Pack Version and the automation
   strategies, for previews, blocks and Lua or Python files. Delivered as two PRs (2026-11-19):
   **E16a1** the pack kind, previews, Lua and routes, and **E16a2** the store and merge.
-- **E16b:** Python decoders, activated with MD03.
+- **E16b:** Python decoders, activated by the MD03b Python preview backend (section 4.4; a plan
+  change approved on 2026-11-24, instead of waiting for the full MD03 contract).
 - **E16c:** actions with automatic responses (off until enabled), highlighters and predefined
   filters in packs, with their canonical forms, local edits and merge, and the Packs… buttons in
   their windows.
@@ -1218,7 +1346,8 @@ approved every remaining recommendation: "yes, approve all 11 recommended".
 3. **Updates:** notify only. Auto-update is a per-repository switch, off by default, and stays
    within the installed major version.
 4. **PAT storage:** QtKeychain on all platforms.
-5. **Python decoders:** carried in packs now and activated by MD03.
+5. **Python decoders:** carried in packs now and activated by MD03 (as built: the MD03b Python
+   preview backend, approved by Dmitry on 2026-11-24, section 4.4).
 6. **Package signing:** not in E15; SHA-256 from an authenticated repository is the integrity check.
    Signing could be added later as a catalog key.
 7. **Repository order:** a priority. Browse groups by it, and a new install of a plugin offered by
