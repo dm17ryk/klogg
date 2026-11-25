@@ -2,6 +2,7 @@
 #include <catch2/catch.hpp>
 
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDialogButtonBox>
 #include <QDir>
 #include <QFile>
@@ -1117,8 +1118,9 @@ TEST_CASE( "Pack filters join the predefined filters with the pack's name", "[pl
             .contains(
                 "\"Pack b.pack\" and \"Pack a.pack\" both have a filter with the id \"f-one\"" ) );
     {
+        // Your 2 filters, a.pack's listed 1 (your f-two replaces its f-two) and c.pack's 4,094.
         QVector<std::tuple<QString, QString, QString>> many;
-        for ( int index = 0; index < 4093; ++index ) {
+        for ( int index = 0; index < 4094; ++index ) {
             many.append( { QStringLiteral( "m%1" ).arg( index ), "M", "m" } );
         }
         const auto large = writeFilterPack( root.path(), "c.pack", filtersFile( many ) );
@@ -1127,6 +1129,13 @@ TEST_CASE( "Pack filters join the predefined filters with the pack's name", "[pl
         many.removeLast();
         const auto fits = writeFilterPack( root.path(), "c.pack", filtersFile( many ) );
         CHECK( registry.check( "c.pack", fits, Manifest::read( fits ).json ).isEmpty() );
+        // Without your f-two the pack's counts: 4,097 again (independent review of #169).
+        collection.saveToStorage(
+            { { "mine", "Mine", "mine", false }, { "other", "Other", "other", true } } );
+        CHECK( registry.check( "c.pack", fits, Manifest::read( fits ).json )
+                   .contains( "would make 4097 predefined filters" ) );
+        collection.saveToStorage(
+            { { "mine", "Mine", "mine", false }, { "f-two", "My reset", "my reset", true } } );
     }
 
     // The Filters dialog: your filters, then the pack's with its name, read only and never saved.
@@ -1521,6 +1530,15 @@ TEST_CASE( "Pack highlighter sets join the Highlighters menu and dialog with the
         many.erase( many.end() - 3, many.end() ); // 4,092, the pack's 2 and c.pack's 1: they fit
         saveUserSets( many );
         CHECK( registry.check( "c.pack", third, Manifest::read( third ).json ).isEmpty() );
+        // A set of yours that replaces a pack set (a copy keeps its id) is counted once: 4,093 and
+        // your copies of a.pack's two sets, a.pack's none listed and c.pack's 1 make 4,096
+        // (independent review of #169).
+        many.append( HighlighterSet::createNewSet( "U-again" ) );
+        saveUserSets(
+            many + userSets( { { "h-one", "Errors", "ERROR" }, { "h-two", "Reset", "reset" } } ) );
+        CHECK( HighlighterSetCollection::get().highlighterSets().size()
+               == MaxListedHighlighterSets - 1 );
+        CHECK( registry.check( "c.pack", third, Manifest::read( third ).json ).isEmpty() );
     }
 
     // Disabled, the pack's sets are gone; an active one stays in your active sets and highlights
@@ -1542,4 +1560,69 @@ TEST_CASE( "Pack highlighter sets join the Highlighters menu and dialog with the
     HighlighterSetCollection::get() = saved;
     HighlighterSetCollection::get().refreshPackSets();
     HighlighterSetCollection::get().save();
+}
+
+TEST_CASE( "A pack whose filters or highlighters file is not an export keeps its other content",
+           "[plugins][E16]" )
+{
+    // A pack enabled before E16c could carry a filters or highlighters file that is not exactly
+    // what Export writes (an older export without ids): only that file's items are left out, not
+    // the pack's previews, Lua, decoders or other items (independent review of #169).
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    HighlighterSetCollection::getSynced();
+    const auto id = QStringLiteral( "d.pack" );
+    auto manifest = packManifest( id, 0 );
+    for ( const auto* key : { "decoder_routes", "python_decoders" } ) {
+        manifest = withContent( manifest, QLatin1String( key ), QJsonValue::Undefined );
+    }
+    manifest = withContent( manifest, "filters", "filters.conf" );
+    manifest = withContent( manifest, "highlights", "highlights.conf" );
+    const auto folder = QDir( root.path() ).filePath( "plugins/" + id );
+    writeFile( folder + "/plugin.json", QJsonDocument( manifest ).toJson() );
+    writeFile( folder + "/previews.json", packPreviews() );
+    writeFile( folder + "/filters.conf", filtersFile( { { "f-d", "D", "d" } } ) );
+    writeFile( folder + "/highlights.conf", highlightersFile( { { "h-d", "D", "d" } } ) );
+    PluginManager manager( root.path(), QDir( root.path() ).filePath( "none" ) );
+    manager.discover();
+    auto& registry = PreviewPackRegistry::instance();
+    registry.attach( &manager );
+    REQUIRE( manager.manage( "enable", id, {} ).ok() );
+    REQUIRE( PackFilters::instance().filters().size() == 1 );
+    REQUIRE( PackHighlighters::instance().sets().size() == 1 );
+
+    // The highlighters file is one CILogg does not read as an export (a set without an id).
+    const auto noIds = highlightersFile( { { QString{}, "Old", "old" } } );
+    writeFile( folder + "/highlights.conf", noIds );
+    {
+        // The pack's folder changed (as after an update of CILogg): it is read again.
+        QFile file( folder + "/plugin.json" );
+        REQUIRE( file.open( QIODevice::ReadWrite ) );
+        REQUIRE( file.setFileTime( QDateTime::currentDateTime().addSecs( 60 ),
+                                   QFileDevice::FileModificationTime ) );
+    }
+    const auto read = PreviewPackRegistry::read( id, folder, manifest );
+    CHECK( read.error.isEmpty() );
+    CHECK( read.previews.previews.size() == 1 );
+    CHECK( read.filters.size() == 1 );
+    CHECK( read.highlighterSets.isEmpty() );
+    REQUIRE( read.warnings.size() == 1 );
+    CHECK( read.warnings.first().contains( "highlighters" ) );
+    registry.refresh();
+    REQUIRE( registry.contributions().size() == 1 );
+    CHECK( PackFilters::instance().filters().size() == 1 );
+    CHECK( PackHighlighters::instance().sets().isEmpty() );
+    CHECK( findIn( PreviewManager::instance().effective(), "Pack frame" ) != nullptr );
+    // get_plugins says why the pack has no highlighter sets.
+    const auto summary = packSummary( manifest, folder );
+    CHECK( summary.value( "highlighterSets" ).toInt() == 0 );
+    CHECK( summary.value( "filters" ).toInt() == 1 );
+    REQUIRE( summary.value( "contentWarnings" ).toStringList().size() == 1 );
+    CHECK( summary.value( "contentWarnings" ).toStringList().first().contains( "highlighters" ) );
+    // Enabling it again (or installing an update like it) is refused with the reason.
+    REQUIRE( manager.manage( "disable", id, {} ).ok() );
+    const auto refused = manager.manage( "enable", id, {} );
+    CHECK( !refused.ok() );
+    CHECK( refused.error.contains( "highlighters" ) );
+    registry.attach( nullptr );
 }

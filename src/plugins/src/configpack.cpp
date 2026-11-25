@@ -485,33 +485,44 @@ QVariantMap packSummary( const QJsonObject& manifest, const QString& directory )
             previews = static_cast<int>( packPreviewNames( file.read( MaxPackFileBytes ) ).size() );
         }
     }
-    int filters = 0;
-    if ( !content.filters.isEmpty() ) {
-        QFile file( QDir( directory ).filePath( content.filters ) );
-        if ( file.open( QIODevice::ReadOnly ) ) {
-            const auto items = packcanonical::fromFilters( file.read( MaxPackFileBytes ) );
-            filters = static_cast<int>(
-                std::count_if( items.keyBegin(), items.keyEnd(), []( const QString& path ) {
-                    return packcanonical::kindOf( path ) == QLatin1String( "filter" );
-                } ) );
-        }
+    // A filters or highlighters file that is not exactly an export (a pack enabled before E16c may
+    // carry one) contributes nothing: contentWarnings says why.
+    QStringList warnings;
+    const auto countItems
+        = [ &directory, &warnings ]( const QString& path, const char* kind,
+                                     PackFiles ( *convert )( const QByteArray&, QString* ) ) {
+              QFile file( QDir( directory ).filePath( path ) );
+              if ( !file.open( QIODevice::ReadOnly ) ) {
+                  warnings.append(
+                      QStringLiteral( "%1 cannot be read: %2" ).arg( path, file.errorString() ) );
+                  return 0;
+              }
+              QString error;
+              const auto items = convert( file.read( MaxPackFileBytes ), &error );
+              if ( !error.isEmpty() ) {
+                  warnings.append( error );
+              }
+              return static_cast<int>(
+                  std::count_if( items.keyBegin(), items.keyEnd(), [ kind ]( const QString& item ) {
+                      return packcanonical::kindOf( item ) == QLatin1String( kind );
+                  } ) );
+          };
+    const int filters = content.filters.isEmpty()
+                            ? 0
+                            : countItems( content.filters, "filter", &packcanonical::fromFilters );
+    const int highlighterSets
+        = content.highlights.isEmpty()
+              ? 0
+              : countItems( content.highlights, "highlight", &packcanonical::fromHighlights );
+    QVariantMap summary{ { "contents", packContents( manifest ) },
+                         { "previews", previews },
+                         { "filters", filters },
+                         { "highlighterSets", highlighterSets },
+                         { "luaFiles", static_cast<int>( content.luaLoad.size() ) },
+                         { "pythonDecoders", static_cast<int>( content.pythonDecoders.size() ) } };
+    if ( !warnings.isEmpty() ) {
+        summary.insert( QStringLiteral( "contentWarnings" ), warnings );
     }
-    int highlighterSets = 0;
-    if ( !content.highlights.isEmpty() ) {
-        QFile file( QDir( directory ).filePath( content.highlights ) );
-        if ( file.open( QIODevice::ReadOnly ) ) {
-            const auto items = packcanonical::fromHighlights( file.read( MaxPackFileBytes ) );
-            highlighterSets = static_cast<int>(
-                std::count_if( items.keyBegin(), items.keyEnd(), []( const QString& path ) {
-                    return packcanonical::kindOf( path ) == QLatin1String( "highlight" );
-                } ) );
-        }
-    }
-    return { { "contents", packContents( manifest ) },
-             { "previews", previews },
-             { "filters", filters },
-             { "highlighterSets", highlighterSets },
-             { "luaFiles", static_cast<int>( content.luaLoad.size() ) },
-             { "pythonDecoders", static_cast<int>( content.pythonDecoders.size() ) } };
+    return summary;
 }
 } // namespace cilogg::plugins

@@ -1299,6 +1299,15 @@
           "P3 (fixed): color_variance outside 0..100 accepted (user-import side: issue #170)",
           "P3 (fixed): highlightsInvalid did not compare the read-back sets with the store's"
         ]
+      },
+      {
+        "head": "ec49b95c",
+        "reviewer": "independent Claude review (cpp-reviewer); Codex bot over its usage limit, local Codex CLI out of credits",
+        "findings": [
+          "P2 (fixed): an enabled pack with a filters or highlighters file that is not an export lost its whole contribution; now only that file's items, with contentWarnings and a refusal at enable or update",
+          "P3 (fixed): the pack check counted pack sets and filters replaced by the user's items",
+          "P3 (answered, docs clarified): a project snapshot keeps active pack set ids by design"
+        ]
       }
     ],
     "masterMergedAt": "52e21ee7 (MD03b, #163)",

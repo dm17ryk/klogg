@@ -1073,15 +1073,21 @@ packs](plugin-repositories.md) section 4). The example is
   across pack updates and while the pack is disabled). A set of yours with a pack set's id
   replaces it (**Copy to My Highlighters** keeps the id); two enabled packs never share a set id;
   enabling or updating a pack that would make your sets and all enabled packs' more than 4,096 is
-  refused, and when your own grow past that the packs' sets are not listed until you have fewer.
-  Exports and project snapshots contain your sets only.
+  refused, and when your own grow past that the packs' sets are not listed until you have fewer
+  (a set of yours that replaces a pack set counts once). Exports and project snapshots contain
+  your sets only; a project snapshot keeps which sets were on, pack sets included, by id.
+- A filters or highlighters file that is not exactly what Export writes is refused when a pack is
+  installed, updated or enabled. A pack enabled before E16c may still carry one: its other
+  content applies, that file's items are left out, and `get_plugins` says why in
+  `contentWarnings`.
 - No content file may be `plugin.json`, the previews file, the filters file or the highlighters
   file (compared ignoring case): CILogg writes them itself for the pack's content with your
   edits. Two content files may not differ only in case either (one file on Windows and macOS).
 - `get_plugins` adds `contents` and the counts `previews`, `filters`, `highlighterSets`,
-  `luaFiles` and `pythonDecoders` for a pack, `pythonDecodersActive`, `localEdits` (the edited
-  items) and `needsMerge` (the version an update could not merge), and reports the host's features
-  with their versions in `hostFeatures`. Catalog entries of packs use `os: any` and `arch: any`.
+  `luaFiles` and `pythonDecoders` for a pack, `pythonDecodersActive`, `contentWarnings` (only when
+  a filters or highlighters file cannot be read), `localEdits` (the edited items) and `needsMerge`
+  (the version an update could not merge), and reports the host's features with their versions in
+  `hostFeatures`. Catalog entries of packs use `os: any` and `arch: any`.
 
 ### Local edits and updates
 

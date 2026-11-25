@@ -823,7 +823,11 @@ are, under `files/<path>`: every read of a store commit converts such a file to 
 commit's own manifest and any edit made to the file (`packcanonical::fromLegacyDocuments`), so
 the merge base, the local edits and the content folder see one form and the next commit is in it.
 A file that is not exactly what Export writes (an older export without ids) stays as it is and the
-content folder gets it back unchanged, never an empty file in its place.
+content folder gets it back unchanged, never an empty file in its place. `PreviewPackRegistry`
+then leaves out only that file's items (`Contribution::warnings`): the pack's previews, Lua,
+decoders and other items still apply, enabling or updating it is refused with the reason, and
+`get_plugins` reports it in `contentWarnings`. The pack check counts only the pack items that are
+listed (a filter or set of the user's with a pack item's id replaces it), as the lists do.
 
 ### 4.6 Local edits and merge on update
 

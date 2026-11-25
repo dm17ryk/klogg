@@ -665,7 +665,7 @@ Enabled [configuration packs](#plugins-packing-repositories-and-updates) can bri
 the menus and in the dialog, with the pack's name, and apply after yours. A set of yours with the
 same id replaces the pack's (that is what **Copy to My Highlighters** makes); **Edit…** changes the
 pack's set in place, and your edits survive its updates. Export and project snapshots contain your
-own sets only.
+own sets only; a project snapshot also keeps which sets were on, pack sets included.
 
 ### Color labels
 
