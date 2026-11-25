@@ -17,7 +17,7 @@ Complete implementation package for a general developer logger, visualizer and a
 
 **Plan change of 2026-11-24 (approved by Dmitry):** the narrow [MD03b slice](slices/MD03b-python-preview.md) (issue https://github.com/dm17ryk/klogg/issues/159), a Python preview backend that runs configuration packs' Python decoders on PreviewService result v1 and the MD03a worker transport, comes before the full MD03 contract, which stays planned after MD01. It unblocks E16b (issue https://github.com/dm17ryk/klogg/issues/146).
 
-**Execution status:** P05 is merged through PR #45; the formal runnable gate owner is G02. See [merged roadmap coverage](MERGE_MAP.md), [current execution baseline](../../docs/workbench/baseline.md), [integration decisions](../../docs/workbench/decisions.md), and `PROGRESS.json`. This directory is the canonical execution package; the original P00-P24 roadmap remains a linked specification.
+**Execution status:** P05 is merged through PR #45; the formal runnable gate owner is G02. See [merged roadmap coverage](MERGE_MAP.md), [current execution baseline](../../docs/workbench/baseline.md), [integration decisions](../../docs/workbench/decisions.md), and `PROGRESS.json`. Fixes to a task's tests are recorded in that task's `PROGRESS.json` evidence; for example, the E13 cancel-grace test was made deterministic in PR https://github.com/dm17ryk/klogg/pull/140 and given its lower bound in PR https://github.com/dm17ryk/klogg/pull/145 (issue https://github.com/dm17ryk/klogg/issues/157). This directory is the canonical execution package; the original P00-P24 roadmap remains a linked specification.
 
 ## Start here
 
