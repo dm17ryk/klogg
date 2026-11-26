@@ -123,6 +123,11 @@ public:
     using PackCheck = std::function<QString( const QString& id, const QString& directory,
                                              const QJsonObject& manifest )>;
     void setPackCheck( PackCheck check );
+    // Called with the ID of each removed package, configuration packs included (also one whose
+    // manifest no longer reads): E16c3, the application forgets the user's state of a pack's
+    // items, so a later install starts them as new.
+    using PackRemoved = std::function<void( const QString& id )>;
+    void setPackRemoved( PackRemoved removed );
     // The plugin.json of an installed plugin as read, without the `get_plugins` fields; empty
     // when unknown.
     QJsonObject manifest( const QString& pluginId ) const;
@@ -470,6 +475,7 @@ private:
     QNetworkAccessManager* networkAccess_;
     std::map<QString, std::unique_ptr<Entry>> entries_;
     PackCheck packCheck_;
+    PackRemoved packRemoved_;
     std::map<QString, Job> jobs_;
     std::map<QString, Stream> streams_;
     std::vector<OpenView> openViews_;

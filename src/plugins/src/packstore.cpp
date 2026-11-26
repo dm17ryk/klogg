@@ -458,9 +458,9 @@ QString PackStore::writeFolder( const QString& folder, const PackFiles& stored,
     if ( !invalid.isEmpty() ) {
         return invalid;
     }
-    // Files of a store from before E16c in the item form; a filters or highlighters file that is
-    // not exactly an export is still there as it is, and is written back unchanged (never as an
-    // empty file in its place).
+    // Files of a store from before E16c in the item form; a filters, highlighters or actions file
+    // that is not exactly an export is still there as it is, and is written back unchanged (never
+    // as an empty file in its place).
     const auto files = packcanonical::fromLegacyDocuments( stored, manifest );
     const auto document
         = [ &files ]( const QString& path, auto toDocument, QString* error ) -> QByteArray {
@@ -506,6 +506,14 @@ QString PackStore::writeFolder( const QString& folder, const PackFiles& stored,
             return error;
         }
         ok = ok && write( content.highlights, highlights );
+    }
+    if ( !content.actions.isEmpty() ) {
+        QString error;
+        const auto actions = document( content.actions, &packcanonical::toActions, &error );
+        if ( !error.isEmpty() ) {
+            return error;
+        }
+        ok = ok && write( content.actions, actions );
     }
     // Exactly the files the manifest lists: a listed file missing from `files` is an error, and
     // anything else under files/ is not written.
@@ -836,10 +844,14 @@ QString PackStore::planRestore( const QString& storePath, const QString& commitI
             = kind == QLatin1String( "filter" ) || kind == QLatin1String( "filter-order" );
         const bool highlights
             = kind == QLatin1String( "highlight" ) || kind == QLatin1String( "highlight-order" );
+        const bool actions
+            = kind == QLatin1String( "action" ) || kind == QLatin1String( "action-order" )
+              || kind == QLatin1String( "response" ) || kind == QLatin1String( "response-order" );
         // The document an item of this kind belongs to: without it, it never reaches the content
         // folder.
         const auto document = filters      ? std::pair{ &content.filters, "filters file" }
                               : highlights ? std::pair{ &content.highlights, "highlighters file" }
+                              : actions    ? std::pair{ &content.actions, "actions file" }
                                            : std::pair{ &content.previews, "previews document" };
         if ( kind != QLatin1String( "file" )
              && ( !validatePackManifest( manifest, &content ).isEmpty()
@@ -852,7 +864,9 @@ QString PackStore::planRestore( const QString& storePath, const QString& commitI
     }
     else if ( kind == QLatin1String( "file" ) || kind == QLatin1String( "order" )
               || kind == QLatin1String( "filter-order" )
-              || kind == QLatin1String( "highlight-order" ) || kind == QLatin1String( "meta" ) ) {
+              || kind == QLatin1String( "highlight-order" )
+              || kind == QLatin1String( "action-order" )
+              || kind == QLatin1String( "response-order" ) || kind == QLatin1String( "meta" ) ) {
         // The manifest decides which files a pack has; they are edited, never removed.
         if ( current.contains( storePath ) ) {
             return QStringLiteral( "That version has no such file, and this version of the pack "

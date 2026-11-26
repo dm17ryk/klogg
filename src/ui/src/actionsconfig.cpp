@@ -87,9 +87,12 @@ void normalizeResponseAction( ResponseActionDefinition* responseAction )
         return;
     }
 
+    // A step that names a pack action stays while no enabled pack has it (E16c3).
     responseAction->steps.erase(
         std::remove_if( responseAction->steps.begin(), responseAction->steps.end(),
-                        []( const ResponseActionStep& step ) { return step.actionId < 0; } ),
+                        []( const ResponseActionStep& step ) {
+                            return step.actionId < 0 && step.packAction.isEmpty();
+                        } ),
         responseAction->steps.end() );
 
     if ( responseAction->steps.isEmpty() && responseAction->hasActionId
@@ -1153,7 +1156,9 @@ bool validateResponseDefinition( const ResponseDefinition& response, QString* er
     }
 
     for ( const auto& step : response.response.steps ) {
-        if ( step.actionId < 0 ) {
+        // A step that names a configuration pack's action no enabled pack has runs nothing
+        // (E16c3); the actions manager says which.
+        if ( step.actionId < 0 && step.packAction.isEmpty() ) {
             setError( errorMessage, QStringLiteral( "Response linked action id is invalid." ) );
             return false;
         }
@@ -1296,6 +1301,9 @@ QVariantMap responseDefinitionToVariantMap( const ResponseDefinition& response )
         QVariantMap stepMap;
         stepMap.insert( QStringLiteral( "action_id" ), step.actionId );
         stepMap.insert( QStringLiteral( "delay_ms" ), step.delayMs );
+        if ( !step.packAction.isEmpty() ) {
+            stepMap.insert( QStringLiteral( "pack_action" ), step.packAction );
+        }
         if ( !step.parameters.isEmpty() ) {
             stepMap.insert( QStringLiteral( "parameters" ), step.parameters );
         }
@@ -1473,6 +1481,7 @@ ResponseDefinition responseDefinitionFromVariantMap( const QVariantMap& map,
         step.actionId = stepMap.value( QStringLiteral( "action_id" ), -1 ).toInt();
         step.delayMs = stepMap.value( QStringLiteral( "delay_ms" ), 0 ).toInt();
         step.parameters = stepMap.value( QStringLiteral( "parameters" ) ).toMap();
+        step.packAction = stepMap.value( QStringLiteral( "pack_action" ) ).toString();
         response.response.steps.push_back( step );
     }
     response.response.hasInlineAction

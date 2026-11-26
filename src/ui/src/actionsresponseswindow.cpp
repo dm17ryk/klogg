@@ -462,13 +462,26 @@ ActionsResponsesWindow::ActionsResponsesWindow( QWidget* parent )
     deleteActionButton_ = new QPushButton( tr( "Delete" ), actionsPanel_ );
     moveActionUpButton_ = new QPushButton( tr( "Move Up" ), actionsPanel_ );
     moveActionDownButton_ = new QPushButton( tr( "Move Down" ), actionsPanel_ );
+    // A configuration pack's action (E16c3): read only, copied to make it the user's.
+    copyActionButton_ = new QPushButton( tr( "Copy to My Actions" ), actionsPanel_ );
+    copyActionButton_->setObjectName( QStringLiteral( "copyPackActionButton" ) );
+    copyActionButton_->setToolTip(
+        tr( "Make the selected pack action one of your own, with a new id" ) );
+    actionPacksButton_ = new QPushButton( tr( "Packs..." ), actionsPanel_ );
+    actionPacksButton_->setObjectName( QStringLiteral( "actionPacksButton" ) );
+    actionPacksButton_->setVisible( false );
+    editActionButton_->setObjectName( QStringLiteral( "editActionButton" ) );
+    duplicateActionButton_->setObjectName( QStringLiteral( "duplicateActionButton" ) );
+    deleteActionButton_->setObjectName( QStringLiteral( "deleteActionButton" ) );
     actionsButtonsLayout->addWidget( addActionButton );
     actionsButtonsLayout->addWidget( editActionButton_ );
     actionsButtonsLayout->addWidget( duplicateActionButton_ );
     actionsButtonsLayout->addWidget( deleteActionButton_ );
     actionsButtonsLayout->addWidget( moveActionUpButton_ );
     actionsButtonsLayout->addWidget( moveActionDownButton_ );
+    actionsButtonsLayout->addWidget( copyActionButton_ );
     actionsButtonsLayout->addStretch();
+    actionsButtonsLayout->addWidget( actionPacksButton_ );
     actionsLayout->addWidget( actionsFilter_ );
     actionsLayout->addLayout( actionsButtonsLayout );
     actionsLayout->addWidget( actionsTable_ );
@@ -502,13 +515,32 @@ ActionsResponsesWindow::ActionsResponsesWindow( QWidget* parent )
     deleteResponseButton_ = new QPushButton( tr( "Delete" ), responsesPanel_ );
     moveResponseUpButton_ = new QPushButton( tr( "Move Up" ), responsesPanel_ );
     moveResponseDownButton_ = new QPushButton( tr( "Move Down" ), responsesPanel_ );
+    // A configuration pack's response (E16c3): read only, copied with the actions it runs; every
+    // pack response starts off, and Turn On All turns on a pack's responses after a confirmation.
+    copyResponseButton_ = new QPushButton( tr( "Copy to My Responses" ), responsesPanel_ );
+    copyResponseButton_->setObjectName( QStringLiteral( "copyPackResponseButton" ) );
+    copyResponseButton_->setToolTip( tr( "Make the selected pack response one of your own, with "
+                                         "copies of the pack actions it runs" ) );
+    turnOnPackResponsesButton_ = new QPushButton( tr( "Turn On All..." ), responsesPanel_ );
+    turnOnPackResponsesButton_->setObjectName( QStringLiteral( "turnOnPackResponsesButton" ) );
+    turnOnPackResponsesButton_->setToolTip(
+        tr( "Turn on every automatic response of the selected response's pack" ) );
+    responsePacksButton_ = new QPushButton( tr( "Packs..." ), responsesPanel_ );
+    responsePacksButton_->setObjectName( QStringLiteral( "responsePacksButton" ) );
+    responsePacksButton_->setVisible( false );
+    editResponseButton_->setObjectName( QStringLiteral( "editResponseButton" ) );
+    duplicateResponseButton_->setObjectName( QStringLiteral( "duplicateResponseButton" ) );
+    deleteResponseButton_->setObjectName( QStringLiteral( "deleteResponseButton" ) );
     responsesButtonsLayout->addWidget( addResponseButton );
     responsesButtonsLayout->addWidget( editResponseButton_ );
     responsesButtonsLayout->addWidget( duplicateResponseButton_ );
     responsesButtonsLayout->addWidget( deleteResponseButton_ );
     responsesButtonsLayout->addWidget( moveResponseUpButton_ );
     responsesButtonsLayout->addWidget( moveResponseDownButton_ );
+    responsesButtonsLayout->addWidget( copyResponseButton_ );
+    responsesButtonsLayout->addWidget( turnOnPackResponsesButton_ );
     responsesButtonsLayout->addStretch();
+    responsesButtonsLayout->addWidget( responsePacksButton_ );
     responsesLayout->addWidget( responsesFilter_ );
     responsesLayout->addLayout( responsesButtonsLayout );
     responsesLayout->addWidget( responsesTable_ );
@@ -559,6 +591,19 @@ ActionsResponsesWindow::ActionsResponsesWindow( QWidget* parent )
              &ActionsResponsesWindow::moveSelectedResponseUp );
     connect( moveResponseDownButton_, &QPushButton::clicked, this,
              &ActionsResponsesWindow::moveSelectedResponseDown );
+    connect( copyActionButton_, &QPushButton::clicked, this,
+             &ActionsResponsesWindow::copySelectedAction );
+    connect( copyResponseButton_, &QPushButton::clicked, this,
+             &ActionsResponsesWindow::copySelectedResponse );
+    connect( turnOnPackResponsesButton_, &QPushButton::clicked, this,
+             &ActionsResponsesWindow::turnOnPackResponses );
+    for ( auto* packs : { actionPacksButton_, responsePacksButton_ } ) {
+        connect( packs, &QPushButton::clicked, this, [ this ] {
+            if ( packsOpener_ ) {
+                packsOpener_();
+            }
+        } );
+    }
     connect( actionsTable_, &QTableView::doubleClicked, this,
              [ this ]( const QModelIndex& index ) {
                  if ( index.column() != 1 ) {
@@ -858,42 +903,155 @@ int ActionsResponsesWindow::selectedResponseRow() const
 
 void ActionsResponsesWindow::updateActionButtons()
 {
-    const auto hasSelection = selectedActionRow() >= 0;
+    const auto row = selectedActionRow();
+    const auto hasSelection = row >= 0;
+    // A pack's action is read only: Edit opens its store item in the pack item editor, and Copy
+    // to My Actions makes it the user's (E16c3).
+    const auto pack = hasSelection && actionsModel_ != nullptr
+                      && !actionsModel_->originAt( row ).packId.isEmpty();
     if ( editActionButton_ != nullptr ) {
-        editActionButton_->setEnabled( hasSelection );
+        editActionButton_->setEnabled( hasSelection && ( !pack || packItemEditor_ ) );
     }
-    if ( duplicateActionButton_ != nullptr ) {
-        duplicateActionButton_->setEnabled( hasSelection );
+    for ( auto* own : { duplicateActionButton_, deleteActionButton_, moveActionUpButton_,
+                        moveActionDownButton_ } ) {
+        if ( own != nullptr ) {
+            own->setEnabled( hasSelection && !pack );
+        }
     }
-    if ( deleteActionButton_ != nullptr ) {
-        deleteActionButton_->setEnabled( hasSelection );
-    }
-    if ( moveActionUpButton_ != nullptr ) {
-        moveActionUpButton_->setEnabled( hasSelection );
-    }
-    if ( moveActionDownButton_ != nullptr ) {
-        moveActionDownButton_->setEnabled( hasSelection );
+    if ( copyActionButton_ != nullptr ) {
+        copyActionButton_->setEnabled( pack );
     }
 }
 
 void ActionsResponsesWindow::updateResponseButtons()
 {
-    const auto hasSelection = selectedResponseRow() >= 0;
+    const auto row = selectedResponseRow();
+    const auto hasSelection = row >= 0;
+    const auto pack = hasSelection && responsesModel_ != nullptr
+                      && !responsesModel_->originAt( row ).packId.isEmpty();
     if ( editResponseButton_ != nullptr ) {
-        editResponseButton_->setEnabled( hasSelection );
+        editResponseButton_->setEnabled( hasSelection && ( !pack || packItemEditor_ ) );
     }
-    if ( duplicateResponseButton_ != nullptr ) {
-        duplicateResponseButton_->setEnabled( hasSelection );
+    for ( auto* own : { duplicateResponseButton_, deleteResponseButton_, moveResponseUpButton_,
+                        moveResponseDownButton_ } ) {
+        if ( own != nullptr ) {
+            own->setEnabled( hasSelection && !pack );
+        }
     }
-    if ( deleteResponseButton_ != nullptr ) {
-        deleteResponseButton_->setEnabled( hasSelection );
+    if ( copyResponseButton_ != nullptr ) {
+        copyResponseButton_->setEnabled( pack );
     }
-    if ( moveResponseUpButton_ != nullptr ) {
-        moveResponseUpButton_->setEnabled( hasSelection );
+    if ( turnOnPackResponsesButton_ != nullptr ) {
+        turnOnPackResponsesButton_->setEnabled( pack );
     }
-    if ( moveResponseDownButton_ != nullptr ) {
-        moveResponseDownButton_->setEnabled( hasSelection );
+}
+
+void ActionsResponsesWindow::setPackItemEditor( PackItemEditor editor )
+{
+    packItemEditor_ = std::move( editor );
+    updateActionButtons();
+    updateResponseButtons();
+}
+
+void ActionsResponsesWindow::setPacksOpener( std::function<void()> opener )
+{
+    packsOpener_ = std::move( opener );
+    for ( auto* packs : { actionPacksButton_, responsePacksButton_ } ) {
+        if ( packs != nullptr ) {
+            packs->setVisible( static_cast<bool>( packsOpener_ ) );
+        }
     }
+}
+
+void ActionsResponsesWindow::editPackItem( const QString& title, const QString& packId,
+                                           const QString& path )
+{
+    if ( !packItemEditor_ ) {
+        QMessageBox::information( this, title,
+                                  tr( "This item belongs to a configuration pack: copy it to "
+                                      "make it yours." ) );
+        return;
+    }
+    packItemEditor_( this, packId, path );
+}
+
+QVector<ActionDefinition> ActionsResponsesWindow::linkableActions() const
+{
+    auto actions = ActionsManager::instance().actions();
+    for ( const auto& listed : ActionsManager::instance().packActions() ) {
+        auto action = listed.action;
+        action.name = QStringLiteral( "%1 (%2)" ).arg( action.name, listed.packName );
+        actions.push_back( action );
+    }
+    return actions;
+}
+
+void ActionsResponsesWindow::copySelectedAction()
+{
+    const auto row = selectedActionRow();
+    const auto* action = actionsModel_ ? actionsModel_->actionAt( row ) : nullptr;
+    if ( action == nullptr || actionsModel_->originAt( row ).packId.isEmpty() ) {
+        return;
+    }
+    QString errorMessage;
+    if ( !ActionsManager::instance().copyPackAction( action->id, &errorMessage ) ) {
+        QMessageBox::warning( this, tr( "Copy to My Actions" ), errorMessage );
+    }
+}
+
+void ActionsResponsesWindow::copySelectedResponse()
+{
+    const auto row = selectedResponseRow();
+    const auto* response = responsesModel_ ? responsesModel_->responseAt( row ) : nullptr;
+    if ( response == nullptr || responsesModel_->originAt( row ).packId.isEmpty() ) {
+        return;
+    }
+    QString errorMessage;
+    if ( !ActionsManager::instance().copyPackResponse( response->id, &errorMessage ) ) {
+        QMessageBox::warning( this, tr( "Copy to My Responses" ), errorMessage );
+    }
+}
+
+void ActionsResponsesWindow::turnOnPackResponses()
+{
+    const auto row = selectedResponseRow();
+    const auto origin
+        = responsesModel_ ? responsesModel_->originAt( row ) : ResponsesTableModel::Origin{};
+    if ( origin.packId.isEmpty() ) {
+        return;
+    }
+    // An automatic response sends to a device without a click: the user sees which ones first.
+    QStringList off;
+    for ( const auto& listed : ActionsManager::instance().packResponses() ) {
+        if ( listed.packId == origin.packId && !listed.response.enabled ) {
+            off.append( listed.response.name );
+        }
+    }
+    if ( off.isEmpty() ) {
+        QMessageBox::information(
+            this, tr( "Turn On All" ),
+            tr( "Every automatic response of \"%1\" is on already." ).arg( origin.packName ) );
+        return;
+    }
+    constexpr qsizetype Shown = 20;
+    auto names = off.mid( 0, Shown );
+    if ( off.size() > Shown ) {
+        names.append( tr( "... and %1 more" ).arg( off.size() - Shown ) );
+    }
+    QMessageBox confirm( QMessageBox::Question, tr( "Turn On All" ),
+                         tr( "Turn on these %1 automatic responses of \"%2\"? They send to the "
+                             "device without a click when a line matches." )
+                             .arg( off.size() )
+                             .arg( origin.packName ),
+                         QMessageBox::Yes | QMessageBox::No, this );
+    confirm.setObjectName( QStringLiteral( "turnOnPackResponsesConfirmation" ) );
+    confirm.setDetailedText( names.join( '\n' ) );
+    confirm.setInformativeText( names.mid( 0, 5 ).join( QStringLiteral( ", " ) ) );
+    confirm.setDefaultButton( QMessageBox::No );
+    if ( confirm.exec() != QMessageBox::Yes ) {
+        return;
+    }
+    ActionsManager::instance().setPackResponsesEnabled( origin.packId, true );
 }
 
 void ActionsResponsesWindow::addAction()
@@ -919,7 +1077,15 @@ void ActionsResponsesWindow::editSelectedAction()
     if ( action == nullptr ) {
         return;
     }
+    if ( const auto origin = actionsModel_->originAt( row ); !origin.packId.isEmpty() ) {
+        editPackItem( tr( "Edit Action" ), origin.packId,
+                      QStringLiteral( "actions/%1.json" ).arg( origin.localId ) );
+        return;
+    }
 
+    // The id, not the row: the model is refilled while the dialog is open (an edit elsewhere, a
+    // configuration pack enabled or updated).
+    const auto actionId = action->id;
     ActionEditDialog dialog( this );
     dialog.setAction( *action );
     if ( dialog.exec() != QDialog::Accepted ) {
@@ -927,7 +1093,7 @@ void ActionsResponsesWindow::editSelectedAction()
     }
 
     QString errorMessage;
-    if ( !ActionsManager::instance().updateAction( action->id, dialog.action(), &errorMessage ) ) {
+    if ( !ActionsManager::instance().updateAction( actionId, dialog.action(), &errorMessage ) ) {
         QMessageBox::warning( this, tr( "Edit Action" ), errorMessage );
     }
 }
@@ -1003,7 +1169,7 @@ void ActionsResponsesWindow::addResponse()
     ResponseEditDialog dialog( this );
     ResponseDefinition response;
     response.id = ActionsManager::instance().nextResponseId();
-    dialog.setResponse( response, ActionsManager::instance().actions() );
+    dialog.setResponse( response, linkableActions() );
     if ( dialog.exec() != QDialog::Accepted ) {
         return;
     }
@@ -1021,15 +1187,23 @@ void ActionsResponsesWindow::editSelectedResponse()
     if ( response == nullptr ) {
         return;
     }
+    if ( const auto origin = responsesModel_->originAt( row ); !origin.packId.isEmpty() ) {
+        editPackItem( tr( "Edit Response" ), origin.packId,
+                      QStringLiteral( "responses/%1.json" ).arg( origin.localId ) );
+        return;
+    }
 
+    // The id, not the row: the model is refilled while the dialog is open.
+    const auto responseId = response->id;
     ResponseEditDialog dialog( this );
-    dialog.setResponse( *response, ActionsManager::instance().actions() );
+    dialog.setResponse( *response, linkableActions() );
     if ( dialog.exec() != QDialog::Accepted ) {
         return;
     }
 
     QString errorMessage;
-    if ( !ActionsManager::instance().updateResponse( response->id, dialog.response(), &errorMessage ) ) {
+    if ( !ActionsManager::instance().updateResponse( responseId, dialog.response(),
+                                                     &errorMessage ) ) {
         QMessageBox::warning( this, tr( "Edit Response" ), errorMessage );
     }
 }

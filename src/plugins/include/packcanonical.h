@@ -20,10 +20,15 @@
 //   highlights/<id>.set        one highlighter set as text: `id "<id>"`, `name "<name>"`, then one
 //                              `rule {...}` line per rule (compact JSON, sorted keys), merged as
 //                              text so edits of different rules never touch the same line
+//   actions/order.txt          action ids in list order, one per line
+//   actions/<id>.json          one action (without its "order")
+//   responses/order.txt        response ids in list order, one per line
+//   responses/<id>.json        one automatic response (without its "order")
 //   files/<path>               Lua and Python files, as they are, at their pack-relative path
 //
 // <name> and <id> are percent-encoded: every character outside [a-z0-9._-] (upper case included,
-// so names that differ only in case never share a file on case-insensitive file systems).
+// so names that differ only in case never share a file on case-insensitive file systems). The id
+// of an action or a response is a whole number from 0, written in decimal without leading zeros.
 namespace cilogg::plugins {
 using PackFiles = QMap<QString, QByteArray>; // store-relative path -> bytes
 
@@ -36,6 +41,9 @@ constexpr qsizetype MaxPackFilterItems = 4096;
 // The highlighter sets a pack can have, and the rules of one set: as many as an import takes.
 constexpr qsizetype MaxPackHighlightSets = 4096;
 constexpr qsizetype MaxPackHighlightRules = 4096;
+// The actions and the automatic responses a pack can have: as many as an import takes.
+constexpr qsizetype MaxPackActionItems = 4096;
+constexpr qsizetype MaxPackResponseItems = 4096;
 
 QString encodeName( const QString& name );
 QString decodeName( const QString& encoded );
@@ -69,15 +77,29 @@ QString highlightSetError( const QByteArray& setText, const QString& id );
 // The set's text as CILogg writes it (canonical lines), or empty when it is not a set's text.
 QByteArray canonicalHighlightSet( const QByteArray& setText );
 
-// Stores written before E16c (E16a2) keep a pack's filters and highlighters files as they are,
-// under files/<path>. Such a file becomes its items (the form above), with any edit made to it;
-// where the items are already there they win and the file goes. A file that is not exactly what
-// Export writes stays as it is (the content folder gets it back unchanged). Other files are left
-// as they are.
+// An actions file as CILogg exports it (JSON, version 1, 3 or 4, or none; an "actions" and a
+// "responses" list, nothing else) -> canonical files; `error` is set when it is not exactly such a
+// file. An item's identity is its id, so every action and every response needs a unique one, and a
+// response runs only actions of its own file. Comments are not kept, so a file with them is
+// refused.
+PackFiles fromActions( const QByteArray& actionsJson, QString* error = nullptr );
+// Canonical files -> the actions file (version 4; each list in the order of its order file, items
+// missing from it follow in id order; "order" from the list order). Empty, with `error` set, if an
+// item cannot be read.
+QByteArray toActions( const PackFiles& files, QString* error = nullptr );
+// The decimal text of an action's or a response's id ("7"), or an empty string when `id` is not
+// one (a whole number from 0 that fits an int).
+QString itemIdText( const QJsonValue& id );
+
+// Stores written before E16c (E16a2 to E16c2) keep a pack's filters, highlighters and actions files
+// as they are, under files/<path>. Such a file becomes its items (the form above), with any edit
+// made to it; where the items are already there they win and the file goes. A file that is not
+// exactly what Export writes stays as it is (the content folder gets it back unchanged). Other
+// files are left as they are.
 PackFiles fromLegacyDocuments( PackFiles files, const QJsonObject& manifest );
 
-// A whole pack: its previews, filters and highlighters documents and the files the manifest lists
-// (Lua and Python, and actions for now), read from the installed folder.
+// A whole pack: its previews, filters, highlighters and actions documents and the Lua and Python
+// files the manifest lists, read from the installed folder.
 PackFiles fromPackFolder( const QJsonObject& manifest, const QString& directory,
                           QString* error = nullptr );
 // The store-relative path of a pack file such as "lua/common.lua".
@@ -89,7 +111,8 @@ QStringList listedFiles( const QJsonObject& manifest );
 // encodeName() writes it, a file path that is relative, clean and stays inside the pack.
 bool isCanonical( const QString& storePath );
 // The kind of a store path: "preview", "block", "order", "meta", "filter", "filter-order",
-// "highlight", "highlight-order", "file" or "" (not content).
+// "highlight", "highlight-order", "action", "action-order", "response", "response-order", "file"
+// or "" (not content).
 QString kindOf( const QString& storePath );
 // The item name or pack-relative file path a store path stands for.
 QString itemOf( const QString& storePath );

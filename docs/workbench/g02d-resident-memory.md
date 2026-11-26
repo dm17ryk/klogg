@@ -38,13 +38,19 @@ The sampler requests a 10 ms interval while waiting for host completion. Polling
 counts against the original absolute native-suite deadline. The report records
 actual sample counts, maximum gaps and poll durations; 10 ms is not a timing
 guarantee. Member enumeration is bounded to 256 active and tracked process IDs,
-with three bounded attempts for an interrupted list query. Results retain maxima
-and counters, not an ever-growing list of samples.
+with three bounded attempts shared by an interrupted list query and a list that
+holds fewer IDs than the job's assigned count. A member that is exiting can
+still count as assigned after the kernel has left its ID out of the list, so a
+short list is queried again after a 1 ms pause (issue #167). A list that is
+still short after three attempts, or that holds more IDs than assigned,
+duplicate or invalid IDs, fails the run. Results retain maxima and counters, not
+an ever-growing list of samples.
 
 `residentMemory` labels the backend, host PID, scope, start/end boundaries,
 observed worker PIDs, empty polls and process-exit races. Workers means all owned
 non-host descendants. A process that exits between enumeration and query is
-counted as a race. Access denial, invalid membership, unavailable counters,
+counted as a race, and so is a member that left the job while its ID was missing
+from a short list. Access denial, invalid membership, unavailable counters,
 resource limits and API failures fail the run with a structured reason; they
 cannot silently become zero usage. Diagnostic errors preserve the failing API's
 Win32 code before checking for process exit. Timeout/error reports retain
@@ -106,7 +112,8 @@ This cap is separate from all application worker/job budgets.
 
 Tests exercise held resident workers, exclusion of the harness, poll-total
 aggregation, bounded history, actual selection of job members, closed owners,
-query errors, access denial versus exit races, invalid counters, timeout and
+query errors, access denial versus exit races, short member lists while a
+member exits, inconsistent member lists, invalid counters, timeout and
 one-byte budget failures. Portable aggregate/report contracts run everywhere;
 native API cases are explicitly skipped elsewhere. Runtime observations and
 their limitations are recorded separately; a passing harness test is not native

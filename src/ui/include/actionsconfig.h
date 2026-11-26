@@ -118,6 +118,10 @@ struct ResponseActionStep {
     int actionId = -1;
     int delayMs = 0;
     QVariantMap parameters{};
+    // E16c3: the configuration pack action it runs as "<pack-id>/<local-id>", the same on every
+    // PC ("pack_action"); empty for the user's own action. actionId is that action's run-time id
+    // here, or none while no enabled pack has it.
+    QString packAction{};
 };
 
 enum class ResponseParameterBindingSource { Legacy, Literal, Capture, Expression };

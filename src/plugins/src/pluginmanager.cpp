@@ -1486,6 +1486,9 @@ Result PluginManager::manage( const QString& operation, const QString& id,
             removePackStore( id ); // a pack's local edits go with it
             entries_.erase( it );
             discover();
+            if ( packRemoved_ ) {
+                packRemoved_( id );
+            }
         }
         else if ( settings_.value( configurationKey( id ) + "enabled", false ).toBool()
                   && e.manifest.valid() ) {
@@ -1646,6 +1649,9 @@ void PluginManager::completeManagement( const QString& operation, const QString&
             removePackStore( id ); // a pack's local edits go with it
             entries_.erase( entry );
             discover();
+            if ( packRemoved_ ) {
+                packRemoved_( id );
+            }
         }
     }
     else if ( settings_.value( configurationKey( id ) + "enabled", false ).toBool()
@@ -2613,6 +2619,11 @@ bool PluginManager::isPluginCapture( const QString& path ) const
 void PluginManager::setPackCheck( PackCheck check )
 {
     packCheck_ = std::move( check );
+}
+
+void PluginManager::setPackRemoved( PackRemoved removed )
+{
+    packRemoved_ = std::move( removed );
 }
 
 QJsonObject PluginManager::manifest( const QString& pluginId ) const

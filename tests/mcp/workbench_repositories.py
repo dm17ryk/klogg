@@ -60,7 +60,7 @@ def update_check(job):
 PACK_ID = "org.cilogg.example.protocol-pack"
 PACK_FOLDER = Path(__file__).resolve().parents[2] / "plugins/examples/protocol-pack"
 PACK_FIELDS = ("id", "kind", "version", "enabled", "error", "contents", "previews", "filters",
-               "luaFiles", "pythonDecoders")
+               "packActions", "packResponses", "luaFiles", "pythonDecoders")
 # E16a2: the example pack's preview in the store's canonical form ("Demo frame", encoded).
 PACK_PREVIEW = "previews/%44emo%20frame.json"
 PACK_EDITED = [{"path": PACK_PREVIEW, "kind": "preview", "item": "Demo frame", "state": "edited"}]
@@ -268,8 +268,9 @@ def exercise_repositories(cli, command, catalog, artifacts, run_python):
     compare_json("completed", installed["state"], "$.pack.install")
     command("plugin_manage", {"plugin_operation": "enable", "plugin_id": PACK_ID})
     expected_pack = {"id": PACK_ID, "kind": "config-pack", "version": "1.0.0", "enabled": True,
-                     "error": "", "contents": ["previews", "filters", "lua"], "previews": 1,
-                     "filters": 2, "luaFiles": 2, "pythonDecoders": 0}
+                     "error": "", "contents": ["previews", "actions", "filters", "lua"],
+                     "previews": 1, "filters": 2, "packActions": 1, "packResponses": 1,
+                     "luaFiles": 2, "pythonDecoders": 0}
     compare_json(expected_pack, pack_fields(cli("get_plugins")["plugins"]), "$.pack.cli")
     compare_json(expected_pack, pack_fields(command("get_plugins", {})["plugins"]), "$.pack.mcp")
     for name, refused in (

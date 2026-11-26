@@ -240,6 +240,108 @@ class ResidentSamplerTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "resident_process_limit"):
                 backend.snapshot()
 
+    def serve_member_lists(self, owner, backend, lists):
+        """Serve (assigned, pids) job lists, then fall back to the real query."""
+        real = owner.kernel.QueryInformationJobObject
+        queries = []
+
+        def query(job, kind, buffer, size, returned):
+            queries.append(kind)
+            if not lists:
+                return real(job, kind, buffer, size, returned)
+            assigned, pids = lists.pop(0)
+            members = ctypes.cast(buffer, ctypes.POINTER(backend.members_type))
+            members.contents.assigned = assigned
+            members.contents.count = len(pids)
+            members.contents.pids[: len(pids)] = pids
+            return 1
+
+        fake = patch.object(
+            owner.kernel, "QueryInformationJobObject", side_effect=query
+        )
+        return fake, queries
+
+    @unittest.skipUnless(os.name == "nt", "Windows owned working sets")
+    def test_short_member_list_while_a_member_exits_is_queried_again(self):
+        owner, host, _child_pid = self.hold_worker()
+        backend = self.resident._WindowsWorkingSet(owner)
+        # Issue #167: an exiting member still counts as assigned while the
+        # kernel already leaves its PID out of the list.
+        fake, queries = self.serve_member_lists(
+            owner, backend, [(2, [host.pid]), (1, [host.pid])]
+        )
+        with fake, self.assertLogs("workbench.resident", level="DEBUG") as logs:
+            snapshot = backend.snapshot()
+        self.assertEqual(len(queries), 2)
+        self.assertEqual(set(snapshot["rssByPid"]), {host.pid})
+        self.assertEqual(snapshot["exitRaces"], 1)
+        self.assertTrue(
+            any(
+                line.startswith("DEBUG:")
+                and "resident_member_exited phase=list" in line
+                and "assigned=2 returned=1" in line
+                for line in logs.output
+            ),
+            logs.output,
+        )
+        self.assertFalse([line for line in logs.output if line.startswith("ERROR:")])
+
+    @unittest.skipUnless(os.name == "nt", "Windows owned working sets")
+    def test_short_member_list_retry_measures_every_member_still_listed(self):
+        owner, host, child_pid = self.hold_worker()
+        backend = self.resident._WindowsWorkingSet(owner)
+        # The second query is the real one: both owned members are listed.
+        fake, queries = self.serve_member_lists(owner, backend, [(2, [host.pid])])
+        with fake:
+            snapshot = backend.snapshot()
+        self.assertEqual(len(queries), 2)
+        self.assertEqual(set(snapshot["rssByPid"]), {host.pid, child_pid})
+        self.assertEqual(snapshot["exitRaces"], 0)
+
+    @unittest.skipUnless(os.name == "nt", "Windows owned working sets")
+    def test_member_list_that_stays_short_fails_after_bounded_attempts(self):
+        owner = ProcessOwner()
+        self.addCleanup(owner.close)
+        backend = self.resident._WindowsWorkingSet(owner)
+        fake, queries = self.serve_member_lists(
+            owner, backend, [(2, [4242]), (2, [4242]), (2, [4242]), (2, [4242])]
+        )
+        with fake, patch.object(self.resident, "sleep", create=True) as pause:
+            with self.assertLogs("workbench.resident", level="ERROR") as logs:
+                with self.assertRaisesRegex(RuntimeError, "invalid_resident_members"):
+                    backend.snapshot()
+        self.assertEqual(len(queries), 3)
+        self.assertTrue(
+            any("assigned=2 returned=1" in line for line in logs.output), logs.output
+        )
+        # Pause briefly between attempts only, never past one sampling interval.
+        self.assertEqual(pause.call_count, 2)
+        for call in pause.call_args_list:
+            self.assertGreater(call.args[0], 0)
+            self.assertLessEqual(call.args[0], self.resident.INTERVAL_SECONDS)
+
+    @unittest.skipUnless(os.name == "nt", "Windows owned working sets")
+    def test_inconsistent_member_lists_fail_without_retry(self):
+        owner = ProcessOwner()
+        self.addCleanup(owner.close)
+        backend = self.resident._WindowsWorkingSet(owner)
+        for name, assigned, pids in (
+            ("more PIDs than assigned", 1, [4242, 4343]),
+            ("duplicate PID", 2, [4242, 4242]),
+            ("invalid PID", 2, [4242, 0]),
+            ("short list with a duplicate PID", 3, [4242, 4242]),
+        ):
+            with self.subTest(name):
+                fake, queries = self.serve_member_lists(
+                    owner, backend, [(assigned, pids), (assigned, pids)]
+                )
+                with fake:
+                    with self.assertRaisesRegex(
+                        RuntimeError, "invalid_resident_members"
+                    ):
+                        backend.snapshot()
+                self.assertEqual(len(queries), 1)
+
     @unittest.skipUnless(os.name == "nt", "Windows owned working sets")
     def test_zero_counter_and_member_mismatch_fail_and_close_query_handle(self):
         owner, _host, _child_pid = self.hold_worker()

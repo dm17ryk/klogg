@@ -1074,7 +1074,14 @@ void ResponseEditDialog::refreshStepTable()
     stepsTable_->setRowCount( stepCount );
     for ( int row = 0; row < stepCount; ++row ) {
         const auto& step = steps_.at( row );
-        auto* actionItem = new QTableWidgetItem( actionLabel( actions_, step.actionId ) );
+        // A pack action no enabled pack has is shown by its name (E16c3).
+        const bool listed = std::any_of(
+            actions_.cbegin(), actions_.cend(),
+            [ &step ]( const ActionDefinition& action ) { return action.id == step.actionId; } );
+        auto* actionItem = new QTableWidgetItem(
+            !listed && !step.packAction.isEmpty()
+                ? tr( "%1 (its pack is not enabled)" ).arg( step.packAction )
+                : actionLabel( actions_, step.actionId ) );
         actionItem->setData( Qt::UserRole, step.actionId );
         auto* delayItem = new QTableWidgetItem( QString::number( step.delayMs ) );
         delayItem->setData( Qt::UserRole, step.delayMs );
@@ -1121,6 +1128,20 @@ void ResponseEditDialog::editSelectedStep()
 {
     const auto row = selectedStepRow();
     if ( row < 0 || row >= steps_.size() ) {
+        return;
+    }
+    // A step that runs a configuration pack's action no enabled pack has: the editor lists no such
+    // action, so it would run another one (E16c3). It is kept, or deleted, as it is.
+    const auto& current = steps_.at( row );
+    const bool listed = std::any_of(
+        actions_.cbegin(), actions_.cend(),
+        [ &current ]( const ActionDefinition& action ) { return action.id == current.actionId; } );
+    if ( !current.packAction.isEmpty() && !listed ) {
+        QMessageBox::information(
+            this, tr( "Edit Response" ),
+            tr( "This step runs the pack action %1, which no enabled pack has. Enable that pack to "
+                "change the step, or delete it." )
+                .arg( current.packAction ) );
         return;
     }
 

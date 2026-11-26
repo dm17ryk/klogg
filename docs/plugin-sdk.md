@@ -1186,7 +1186,6 @@ packs](plugin-repositories.md) section 4). The example is
   permissions, so the GUI asks as for Lua. The host feature `python_decoders` says a CILogg runs
   them (see [plugin repositories](plugin-repositories.md) section 4.4 and
   [plugins/examples/python-decoder-pack](../plugins/examples/python-decoder-pack)).
-  `actions` is validated as a file and loaded by a later slice (E16c3).
 - `filters` is a predefined filters file as CILogg exports it (**Export** in the Predefined
   Filters dialog: INI, group `PredefinedFiltersCollection`, version 1 to 3, at most 4,096 filters).
   Every filter needs an `id` (unique in the pack: it is the filter's identity), a `name` and a
@@ -1214,18 +1213,42 @@ packs](plugin-repositories.md) section 4). The example is
   refused, and when your own grow past that the packs' sets are not listed until you have fewer
   (a set of yours that replaces a pack set counts once). Exports and project snapshots contain
   your sets only; a project snapshot keeps which sets were on, pack sets included, by id.
-- A filters or highlighters file that is not exactly what Export writes is refused when a pack is
-  installed, updated or enabled. A pack enabled before E16c may still carry one: its other
+- `actions` (E16c3) is the JSON file **Export** in the Actions window writes: `version` 1, 3 or 4
+  (or none), an `actions` and a `responses` list, nothing else and no comments. Every action and
+  every response needs a whole-number `id` from 0, unique in its list (actions and responses have
+  ids of their own), and a name, and a response runs only actions of the same file (its
+  `action_id` may be -1 for none; every step names an action of the file, and none has a
+  `pack_action`); at most 4,096
+  actions and 4,096 responses, and each must be one CILogg would accept as yours. In CILogg each
+  item gets a run-time id from 1,000,000 (assigned once and kept in your settings) and is named
+  `<pack-id>/<local-id>` on every PC: Commander's `entityId` (or `entityKey`), the CLI's `--id` and
+  the Python SDK's action and response ids take that name too. Pack actions and responses follow
+  yours in the Actions and Responses windows, read only (**Copy to My Actions**, **Copy to My
+  Responses**, **Edit** in the pack, **Packs...**); a response of yours may run pack actions.
+  Every pack response starts **off**: it sends to a device without a click, so you turn it on (or
+  **Turn On All...** of a pack, after a confirmation that lists them); on or off is yours, kept per
+  pack and item across updates. Your responses are matched first, then the packs'. Your actions or
+  responses and all enabled packs' stay within 4,096 of each kind: enabling or updating a pack past
+  that is refused, and when your own grow past it the packs' are not listed. `get_actions` and
+  `get_responses` list pack items after yours with `packId`, `packName`, `localId` and
+  `namespacedId`. Exports and project snapshots contain your items only; a step of your response
+  that runs a pack action carries its name (`"pack_action": "<pack-id>/<local-id>"`) next to the
+  run-time `action_id`, so an import on another PC runs that pack's action there (or nothing,
+  with a warning, until that pack is enabled).
+- A filters, highlighters or actions file that is not exactly what Export writes is refused when a
+  pack is installed, updated or enabled. A pack enabled before E16c may still carry one: its other
   content applies, that file's items are left out, and `get_plugins` says why in
   `contentWarnings`.
-- No content file may be `plugin.json`, the previews file, the filters file or the highlighters
-  file (compared ignoring case): CILogg writes them itself for the pack's content with your
-  edits. Two content files may not differ only in case either (one file on Windows and macOS).
+- No content file may be `plugin.json`, the previews file, the filters file, the highlighters file
+  or the actions file (compared ignoring case): CILogg writes them itself for the pack's content
+  with your edits. Two content files may not differ only in case either (one file on Windows and
+  macOS).
 - `get_plugins` adds `contents` and the counts `previews`, `filters`, `highlighterSets`,
-  `luaFiles` and `pythonDecoders` for a pack, `pythonDecodersActive`, `contentWarnings` (only when
-  a filters or highlighters file cannot be read), `localEdits` (the edited items) and `needsMerge`
-  (the version an update could not merge), and reports the host's features with their versions in
-  `hostFeatures`. Catalog entries of packs use `os: any` and `arch: any`.
+  `packActions`, `packResponses`, `luaFiles` and `pythonDecoders` for a pack,
+  `pythonDecodersActive`, `contentWarnings` (only when a filters, highlighters or actions file
+  cannot be read), `localEdits` (the edited items) and `needsMerge` (the version an update could
+  not merge), and reports the host's features with their versions in `hostFeatures`. Catalog
+  entries of packs use `os: any` and `arch: any`.
 
 ### Local edits and updates
 
@@ -1235,12 +1258,15 @@ libgit2, never shown to users) whose `upstream` branch holds the versions as shi
 `blocks/<name>.json`, `previews/order.txt` (evaluation order), `previews/meta.json`,
 `filters/<id>.json` (`filter`, `id`, `name`, `regex`), `filters/order.txt` (list order),
 `highlights/<id>.set` (a highlighter set as text: an `id` line, a `name` line and one `rule` line
-per rule, each value JSON), `highlights/order.txt` (set order) and
-`files/<path>` for Lua and Python, names and ids percent-encoded outside `[a-z0-9._-]`. An install
+per rule, each value JSON), `highlights/order.txt` (set order), `actions/<id>.json` and
+`responses/<id>.json` (an action or response without its `order`), `actions/order.txt` and
+`responses/order.txt` (list orders) and `files/<path>` for Lua and Python, names and ids
+percent-encoded outside `[a-z0-9._-]`. An install
 or update merges the new version with the edits: an item not edited takes the new version, fields
 changed on one side merge, the same new value on both sides is no conflict, and the same field
 changed differently, or deleted on one side and changed on the other, is a conflict. Preview
-`fields` merge by `name`. Lua and Python files, highlighter sets and the orders merge as text, like
+`fields` merge by `name`; an action's or response's `id` is its identity, never changed by an edit
+or a resolution. Lua and Python files, highlighter sets and the orders merge as text, like
 `git merge-file`: edits of different rules of a set merge, and edits of the same or adjacent
 lines are a conflict.
 

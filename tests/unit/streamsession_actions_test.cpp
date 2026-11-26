@@ -14,6 +14,7 @@
 #include "actionruntime.h"
 #include "actionsmanager.h"
 #include "diagnostics.h"
+#include "persistentinfo.h"
 #include "serialcaptureworker.h"
 
 namespace {
@@ -262,6 +263,39 @@ TEST_CASE( "Automatic response counters are independent and disabled tabs still 
     CHECK( first.responseCounter( response.id ) == 2 );
     StreamSessionTestAccess::feedData( second, QByteArrayLiteral( "READY\n" ) );
     CHECK( second.responseCounter( response.id ) == 2 );
+}
+
+TEST_CASE( "Pack responses are matched after the user's, and only once turned on",
+           "[serial][session][actions][E16]" )
+{
+    // E16c3: an enabled configuration pack's responses follow the user's and start off.
+    ScopedActionsState restore;
+    auto& settings = PersistentInfo::getSettings( app_settings{} );
+    settings.remove( "PackActions" );
+    auto& manager = ActionsManager::instance();
+    REQUIRE( manager.importFromDefinitions( {}, { testResponse( 7201 ) } ).ok );
+    manager.setAutoResponsesEnabled( true );
+    auto packResponse = testResponse( 1 );
+    packResponse.name = QStringLiteral( "Pack response" );
+    manager.setPackItems( { { "a.pack", "Pack A", {}, { packResponse } } } );
+    REQUIRE( manager.packResponses().size() == 1 );
+    const auto packId = manager.packResponses().first().response.id;
+    StreamSession session( settingsFor( QStringLiteral( "TEST_PACK_RESPONSES" ) ) );
+    StreamSessionTestAccess::openConnection( session );
+    QSignalSpy matches( &session, &StreamSession::responseMatched );
+    StreamSessionTestAccess::feedData( session, QByteArrayLiteral( "READY\n" ) );
+    CHECK( session.responseCounter( 7201 ) == 1 );
+    CHECK( session.responseCounter( packId ) == 0 );
+    REQUIRE( manager.setResponseEnabled( packId, true ) );
+    StreamSessionTestAccess::feedData( session, QByteArrayLiteral( "READY\n" ) );
+    CHECK( session.responseCounter( packId ) == 1 );
+    REQUIRE( matches.size() == 3 );
+    CHECK( matches.at( 1 ).at( 0 ).toInt() == 7201 );
+    CHECK( matches.at( 2 ).at( 0 ).toInt() == packId );
+    // The counters list the packs' responses too.
+    CHECK( session.responseCounters().size() == 2 );
+    manager.setPackItems( {} );
+    settings.remove( "PackActions" );
 }
 
 TEST_CASE( "Per-tab automatic response switches preserve manual actions and persisted state",
@@ -676,6 +710,104 @@ TEST_CASE( "Delayed response steps and finalization cannot revive after tab chan
     CHECK( dispatched.size() == ( change == 0 && !finalize ? 1 : 0 ) );
     CHECK( closed.size() == ( change == 0 && finalize ? 1 : 0 ) );
     CHECK( session.isConnectionOpen() == ( change != 0 || !finalize ) );
+}
+
+TEST_CASE( "Delayed work of a pack's response stops when the packs change",
+           "[serial][session][actions][actionruntime][E16]" )
+{
+    // E16c3 (Codex review of #176): a pack disabled, updated or removed before a delayed step or
+    // the finalization of its response leaves nothing to send or close.
+    ScopedActionsState restore;
+    auto& settings = PersistentInfo::getSettings( app_settings{} );
+    settings.remove( "PackActions" );
+    const auto change = GENERATE( false, true );
+    const auto finalize = GENERATE( false, true );
+    CAPTURE( change, finalize );
+    auto& manager = ActionsManager::instance();
+    manager.setAutoResponsesEnabled( true );
+    auto action = testAction( 1 );
+    action.parameters.delay = finalize ? 30 : 0;
+    auto response = testResponse( 1 );
+    response.response.steps = { { 1, 10 } };
+    response.response.stopCommunication = finalize;
+    manager.setPackItems( { { "a.pack", "Pack A", { action }, { response } } } );
+    REQUIRE( manager.packResponses().size() == 1 );
+    const auto packResponse = manager.packResponses().first().response;
+    StreamSession session( settingsFor( QStringLiteral( "TEST_PACK_DELAYED" ) ) );
+    StreamSessionTestAccess::openConnection( session );
+    QSignalSpy dispatched( &session, &StreamSession::actionSent );
+    QSignalSpy closed( &session, &StreamSession::connectionClosed );
+    QString error;
+    REQUIRE( executeResponseDefinition( &session, packResponse, {}, &error ) );
+    if ( change ) {
+        manager.setPackItems( {} );
+    }
+    else {
+        // The packs as they were: the delayed work runs.
+        REQUIRE( QTest::qWaitFor(
+            [ & ] { return finalize ? !closed.isEmpty() : !dispatched.isEmpty(); }, 5000 ) );
+    }
+    REQUIRE( waitForActionTimers() );
+    CHECK( dispatched.size() == ( !change && !finalize ? 1 : 0 ) );
+    CHECK( closed.size() == ( !change && finalize ? 1 : 0 ) );
+    CHECK( session.isConnectionOpen() == ( change || !finalize ) );
+    manager.setPackItems( {} );
+    settings.remove( "PackActions" );
+}
+
+TEST_CASE( "A pack action's later sends stop when the packs change",
+           "[serial][session][actions][actionruntime][E16]" )
+{
+    // E16c3 (independent review of #176): its repeats (and a delayed first send) are scheduled in
+    // sendActionDefinition, apart from the response's steps.
+    ScopedActionsState restore;
+    auto& settings = PersistentInfo::getSettings( app_settings{} );
+    settings.remove( "PackActions" );
+    const auto change = GENERATE( false, true );
+    CAPTURE( change );
+    auto& manager = ActionsManager::instance();
+    auto action = testAction( 1 );
+    action.parameters.repeat = true;
+    action.parameters.repeatCount = 3;
+    action.parameters.repeatInterval = 20;
+    manager.setPackItems( { { "a.pack", "Pack A", { action }, {} } } );
+    REQUIRE( manager.packActions().size() == 1 );
+    const auto packAction = manager.packActions().first().action;
+    StreamSession session( settingsFor( QStringLiteral( "TEST_PACK_REPEATS" ) ) );
+    StreamSessionTestAccess::openConnection( session );
+    QSignalSpy dispatched( &session, &StreamSession::actionSent );
+    QString error;
+    REQUIRE(
+        sendActionDefinition( &session, packAction, ActionSendOrigin::Manual, {}, -1, &error ) );
+    CHECK( dispatched.size() == 1 );
+    if ( change ) {
+        manager.setPackItems( {} );
+    }
+    REQUIRE( waitForActionTimers() );
+    CHECK( dispatched.size() == ( change ? 1 : 3 ) );
+    manager.setPackItems( {} );
+    settings.remove( "PackActions" );
+}
+
+TEST_CASE( "A response that cannot run every step sends nothing, its inline action included",
+           "[serial][session][actions][actionruntime][E16]" )
+{
+    // E16c3 (independent review of #176): a step whose pack action no enabled pack has.
+    ScopedActionsState restore;
+    auto& manager = ActionsManager::instance();
+    manager.setAutoResponsesEnabled( true );
+    auto response = testResponse( 7301 );
+    response.response.hasInlineAction = true;
+    response.response.inlineAction.value = QStringLiteral( "INLINE" );
+    response.response.steps = { { -2, 0, {}, QStringLiteral( "a.pack/1" ) } };
+    StreamSession session( settingsFor( QStringLiteral( "TEST_RESPONSE_UNRESOLVED" ) ) );
+    StreamSessionTestAccess::openConnection( session );
+    QSignalSpy dispatched( &session, &StreamSession::actionSent );
+    QString error;
+    CHECK_FALSE( executeResponseDefinition( &session, response, {}, &error ) );
+    CHECK( error.contains( "Unknown action id" ) );
+    REQUIRE( waitForActionTimers() );
+    CHECK( dispatched.isEmpty() );
 }
 
 TEST_CASE( "Synchronous observers can invalidate automatic work before subsequent effects",

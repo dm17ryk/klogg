@@ -12,6 +12,11 @@ CILogg reads its content.
 - `filters.conf`: two predefined filters ("Demo frames", "Demo errors") in the file **Export** in
   the Predefined Filters dialog writes. Each has an `id` of its own, which is its identity: they
   appear after your filters as "Demo frames (Example protocol pack)".
+- `actions.json`: the action "Demo status request" and the automatic response "Demo ready: request
+  status", in the file **Export** in the Actions window writes (JSON, no comments). Their ids are
+  the pack's own: in CILogg they are `org.cilogg.example.protocol-pack/1` on every PC. The response
+  is off until you turn it on in the Responses window, because it sends to the device without a
+  click.
 
 Install it from **Plugins > Plugins and Packs > Installed > Install Folder…** and enable it. The
 Lua runs on your computer with your permissions while the pack is enabled, so CILogg asks first.

@@ -1558,9 +1558,11 @@ private:
             QStringLiteral( "Prefix add_comment output with a timestamp." ) );
         const QCommandLineOption allOption(
             QStringLiteral( "all" ), QStringLiteral( "Target all matching response counters." ) );
-        const QCommandLineOption idOption( QStringLiteral( "id" ),
-                                           QStringLiteral( "Action/response id." ),
-                                           QStringLiteral( "id" ) );
+        const QCommandLineOption idOption(
+            QStringLiteral( "id" ),
+            QStringLiteral( "Action/response id, or a configuration pack's "
+                            "<pack-id>/<local-id>." ),
+            QStringLiteral( "id" ) );
         const QCommandLineOption nameOption( QStringLiteral( "name" ),
                                              QStringLiteral( "Action/response name." ),
                                              QStringLiteral( "name" ) );
@@ -1972,13 +1974,24 @@ private:
 
         if ( parser.isSet( idOption ) ) {
             bool ok = false;
-            const auto parsedId = parser.value( idOption ).toInt( &ok );
-            if ( !ok || parsedId < 0 ) {
+            const auto value = parser.value( idOption ).trimmed();
+            const auto parsedId = value.toInt( &ok );
+            // A configuration pack's item (E16c3): the running instance resolves it.
+            const auto slash = value.lastIndexOf( QLatin1Char( '/' ) );
+            bool localOk = false;
+            const auto local = value.mid( slash + 1 ).toInt( &localOk );
+            if ( slash > 0 && localOk && local >= 0
+                 && QString::number( local ) == value.mid( slash + 1 ) ) {
+                request.entityKey = value;
+            }
+            else if ( !ok || parsedId < 0 ) {
                 result.output_message
                     = formatParserError( parser, QStringLiteral( "Invalid --id value." ) );
                 return result;
             }
-            request.entityId = parsedId;
+            else {
+                request.entityId = parsedId;
+            }
         }
 
         if ( parser.isSet( timeoutMsOption ) ) {
@@ -2547,7 +2560,7 @@ private:
                  && !validateTabSelector( commanderActionToString( *action ), false ) ) {
                 return result;
             }
-            if ( !request.entityId ) {
+            if ( !request.entityId && request.entityKey.isEmpty() ) {
                 result.output_message = formatParserError(
                     parser, QStringLiteral( "--id is required for this action." ) );
                 return result;
@@ -2564,7 +2577,9 @@ private:
             if ( !validateTabSelector( commanderActionToString( *action ), false ) ) {
                 return result;
             }
-            if ( ( request.entityId ? 1 : 0 ) + ( request.entityName.isEmpty() ? 0 : 1 ) != 1 ) {
+            if ( ( request.entityId || !request.entityKey.isEmpty() ? 1 : 0 )
+                     + ( request.entityName.isEmpty() ? 0 : 1 )
+                 != 1 ) {
                 result.output_message = formatParserError(
                     parser,
                     QStringLiteral( "wait_response requires exactly one of --id or --name." ) );
@@ -2605,8 +2620,8 @@ private:
             if ( !validateTabSelector( commanderActionToString( *action ), false ) ) {
                 return result;
             }
-            if ( ( request.entityId ? 1 : 0 ) + ( request.entityName.isEmpty() ? 0 : 1 )
-                     + ( request.allEntities ? 1 : 0 )
+            if ( ( request.entityId || !request.entityKey.isEmpty() ? 1 : 0 )
+                     + ( request.entityName.isEmpty() ? 0 : 1 ) + ( request.allEntities ? 1 : 0 )
                  != 1 ) {
                 result.output_message = formatParserError(
                     parser, QStringLiteral( "%1 requires exactly one of --id, --name, or --all." )

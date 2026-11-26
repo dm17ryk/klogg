@@ -761,19 +761,35 @@ The rules of section 4.2 apply to the other content of a pack:
   sets and predefined filters by their `id` (a UUID), previews and blocks by their name. A user item
   with the same name takes precedence over the pack's, which shows "Replaced by your item". Two
   enabled packs with an item of the same identity or name are refused at enable or update time,
-  with a message naming both packs.
+  with a message naming both packs. Actions and responses are namespaced, so two packs never share
+  one (decided by the user on 2026-11-25, below).
+- **Action and response ids (decided by the user on 2026-11-25).** A pack's actions and responses
+  keep their pack-local integer ids in the pack and its store. At run time each (pack, kind, local
+  id) gets a stable integer from a reserved range (1,000,000 and up), assigned once and kept in the
+  user's settings, so a response of the user's or a scenario that names it keeps working across
+  restarts, updates and a disable and enable; the user's own items cannot use that range. Commander,
+  the CLI and the Python SDK also accept `<pack-id>/<local-id>` wherever they take an action or
+  response id, so a scenario that names a pack item is portable between PCs (the run-time integers
+  can differ per PC), and listings show that name next to the integer.
+- **Links (decided 2026-11-25).** A pack response runs only its own pack's actions; a response of
+  the user's may also run pack actions. While that pack is disabled the link runs nothing, as an
+  unknown action id does.
 - **Automatic responses start off.** An automatic response sends data to a device without a click,
   so every response a pack brings is installed switched off, and the user turns on each one (or all
   of the pack's responses at once, after a confirmation that lists them). Responses keep the
   existing coupling with Actions (decision D05). Pack actions only run when the user or a scenario
-  runs them, as for the user's own actions.
+  runs them, as for the user's own actions. The user's responses are matched first, then the
+  enabled packs' (decided 2026-11-25).
+- **Copies (decided 2026-11-25).** Copy to My Actions makes the user's own copy with a new id;
+  copying a response also copies the pack actions it runs, and the copy runs those copies.
 - **User state is not content.** Whether an action or response is on, and which highlighter sets
   are active, is the user's state, kept per pack and item in the user's settings. It survives pack
   updates, is never a local edit and never causes a merge conflict.
 - **Exports** and project snapshots contain only the user's own items, as for previews.
 - **Limits.** The existing limits of the action, highlighter and filter stores apply to the user's
   items and all enabled packs together; enabling or updating a pack that would exceed one is
-  refused with a message.
+  refused with a message. For actions and responses (decided 2026-11-25): at most 4,096 actions and
+  4,096 responses per pack, and the user's items plus all enabled packs' within 4,096 of each kind.
 
 **As built (E16c1, predefined filters).** E16c is delivered as three PRs (decided on 2026-11-24):
 E16c1 predefined filters, E16c2 highlighter sets, E16c3 actions with automatic responses. A
@@ -846,6 +862,68 @@ then leaves out only that file's items (`Contribution::warnings`): the pack's pr
 decoders and other items still apply, enabling or updating it is refused with the reason, and
 `get_plugins` reports it in `contentWarnings`. The pack check counts only the pack items that are
 listed (a filter or set of the user's with a pack item's id replaces it), as the lists do.
+
+**As built (E16c3, actions with automatic responses).** A pack's `actions` file is the JSON file
+**Export** in the Actions window writes (`version` 1, 3 or 4, or none; an `actions` and a
+`responses` list and nothing else); `packcanonical::fromActions` refuses one that is not exactly
+that (comments, another key, an item without a unique whole-number `id` or a name, a response
+that runs an action of another file, more than 4,096 actions or responses), so nothing in it is
+lost on the way to the store. In the store each action is `actions/<id>.json` and each response
+`responses/<id>.json` (the item without its `order`), with the list orders in `actions/order.txt`
+and `responses/order.txt`; items merge field by field like filters (the `id` is the identity,
+compared as a number, so no edit or resolution changes it), the orders as text (edited, never
+deleted), and `toActions` writes the content folder's actions file back (version 4, `order` from
+the list order). An edit, a merge result or a reset must leave every item one CILogg reads back the
+same (`actionsInvalid` in `contentInvalid`), so an action a response of the pack runs cannot be
+removed; a version without an actions file takes the items with it (`droppedEdits` says "action
+7"). Stores from before E16c3 kept the actions file under `files/<path>`: `fromLegacyDocuments`
+converts it as it converts the filters and highlighters files, and one that is not an export
+(with comments, say) stays as it is. No other content file may be the actions file
+(`checkReservedPaths`). `PreviewPackRegistry` reads each enabled pack's actions file as the store
+does and then as CILogg reads the user's (`ActionsConfigParser`, `validateActionDefinition`,
+`validateResponseDefinition`; a parser warning counts, as it means a value read otherwise than
+written): a file that fails costs only its own items (`Contribution::warnings`), and enabling or
+updating the pack is refused with the reason. What a pack's response (or a step that runs a pack
+action) schedules for later, and a pack action's own delayed send and repeats, run only while the
+packs' items are the same (`ActionsManager::packGeneration`), so disabling, updating or removing a
+pack stops them. `ActionsManager::
+setPackItems` gives every item its run-time id (`PackItemIdBase` = 1,000,000 and up, kept under
+`PackActions/<pack-id>/actions|responses/<local-id>` in the settings with `PackActions/nextId`),
+points a pack response's links at its own pack's run-time ids, and sets whether it is on from
+`PackActions/<pack-id>/on/<local-id>` (off until the user turns it on). `actions()` and
+`responses()` stay the user's own (saved, exported, put in project snapshots); `findActionById`,
+`findResponseById` and `findResponseByName` look at the user's first, then the packs';
+`effectiveResponses()` (the user's, then the packs') is what a session matches lines against and
+counts. The user's items cannot be created or imported with an id from 1,000,000 (a new one takes
+a free id below it), a pack item's run-time id is never one of the user's (an older CILogg let
+those reach the range), and an update, delete or move of a pack's item is refused with its
+`<pack-id>/<local-id>`. A step of the user's response that runs a pack action also names it
+(`pack_action`: `<pack-id>/<local-id>`), so the user's file, Actions exports and project
+snapshots keep that response and an import runs that pack's action under its run-time id there;
+while no enabled pack has it, the step keeps the name and the response can still be edited (the
+step editor leaves such a step as it is), but the response sends nothing, its inline action
+included, as any response one of whose steps cannot run (an import says so). The packs' item
+state (`PackActions/`: run-time ids, which responses are on) is this PC's: no preferences export,
+project snapshot or project carries it, and applying a project keeps it. The
+pack check refuses more than 4,096 actions or responses with the user's, only for a pack that
+brings items of that kind; when the user's grow past that, the packs' give way (not listed), and
+the packs' responses give way with the actions they run. Disabling or updating a pack keeps which
+of its responses are on; removing it forgets that (`PluginManager::setPackRemoved`), so installing
+it again starts them off. The Actions and Responses windows list the packs' items after the user's
+as "<name> (<pack name>)", read only (Duplicate, Delete and Move disabled), with the pack and its
+`<pack-id>/<local-id>` in the tooltip: **Edit** opens the pack item editor on `actions/<id>.json`
+or `responses/<id>.json`, **Copy to My Actions** and **Copy to My Responses** call
+`copyPackAction` / `copyPackResponse` (a response's copy brings copies of the actions it runs and
+starts off, so it never answers alongside the pack's), **Turn On All...** turns on every response
+of the selected response's pack after a confirmation that lists them, the Enabled check box turns
+one on or off, and **Packs...** opens the Plugins and Packs window. A response of the user's can
+run pack actions (the response editor lists them with their pack's name). Commander's `entityId`
+may be `"<pack-id>/<local-id>"` (or `entityKey`), as may the CLI's `--id` and the Python SDK's
+action and response ids; the running instance resolves it (`resolvePackAction`,
+`resolvePackResponse`) and refuses one that no enabled pack has. `get_actions` and `get_responses`
+list the packs' items after the user's with `packId`, `packName`, `localId` and `namespacedId`;
+`get_plugins` counts a pack's `packActions` and `packResponses` (not `actions`, which is a
+plugin's menu actions there). The example pack carries an action and a response.
 
 ### 4.6 Local edits and merge on update
 
