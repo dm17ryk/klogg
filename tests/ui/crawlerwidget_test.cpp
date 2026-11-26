@@ -688,6 +688,8 @@ TEST_CASE( "view_tooltips_stay_while_a_followed_file_grows", "[ui][previewhover]
     visitor.resizeAndShow( 800, 600 );
     visitor.disableBooleanCombinationMode();
     visitor.enableRegexSearch();
+    // As in a live capture tab, the search takes in the new lines.
+    visitor.setAutoRefresh( true );
     visitor.setSearchPattern( "match_x+" );
     visitor.runSearch();
     REQUIRE( waitUiState( [ & ] { return visitor.getLogFilteredNbLines() == 40_lcount; } ) );
