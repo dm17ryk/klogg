@@ -202,6 +202,8 @@ struct RestoreDecoder {
     PreviewDecoderPacks packs = PreviewDecoderSettings::instance().packs();
     RestoreDecoder()
     {
+        // No manager left attached by an earlier case may replace the packs a case sets.
+        PreviewPackRegistry::instance().attach( nullptr );
         REQUIRE( PreviewDecoderSettings::instance().setConfiguration(
             { { "enabled", false }, { "inputEncoding", "hex" } } ) );
         REQUIRE( PreviewManager::instance().clearAll() );
@@ -555,17 +557,27 @@ TEST_CASE( "The decoder settings dialog offers the enabled packs' Python decoder
     REQUIRE( PreviewDecoderSettings::instance().setConfiguration(
         { { "inputEncoding", "hex" },
           { "previewRoutes",
-            QVariantMap{ { "Demo", pythonRoute( "org.example.alpha/summary" ) },
+            QVariantMap{ { "Bold", pythonRoute( "org.example.beta/summary" ) },
+                         { "Demo", pythonRoute( "org.example.alpha/summary" ) },
                          { "Gone", pythonRoute( "org.example.gone/summary" ) },
                          { "Shark", QVariantMap{ { "dissector", "data" } } } } } } ) );
     PreviewDecoderPacks packs;
-    packs.python = { QVariantMap{
-        { "id", "org.example.alpha" },
-        { "root", QDir::tempPath() },
-        { "decoders",
-          QVariantList{ QVariantMap{ { "id", "summary" }, { "module", "python/summary.py" } },
-                        QVariantMap{ { "id", "common" }, { "module", "python/common.py" } } } } } };
-    packs.pythonNames = { { "org.example.alpha", "Alpha pack" } };
+    packs.python
+        = { QVariantMap{
+                { "id", "org.example.alpha" },
+                { "root", QDir::tempPath() },
+                { "decoders",
+                  QVariantList{
+                      QVariantMap{ { "id", "summary" }, { "module", "python/summary.py" } },
+                      QVariantMap{ { "id", "common" }, { "module", "python/common.py" } } } } },
+            // A second pack with a decoder of the same ID, and a name with markup and an ampersand.
+            QVariantMap{
+                { "id", "org.example.beta" },
+                { "root", QDir::tempPath() },
+                { "decoders", QVariantList{ QVariantMap{ { "id", "summary" },
+                                                         { "module", "python/<b>.py" } } } } } };
+    packs.pythonNames
+        = { { "org.example.alpha", "Alpha pack" }, { "org.example.beta", "Beta & <b>bold</b>" } };
     packs.key = QStringLiteral( "dialog-%1" ).arg( QDateTime::currentMSecsSinceEpoch() );
     PreviewDecoderSettings::instance().setPacks( packs );
 
@@ -578,31 +590,38 @@ TEST_CASE( "The decoder settings dialog offers the enabled packs' Python decoder
         CHECK( !add->accessibleName().isEmpty() );
         REQUIRE( add->menu() );
         const auto actions = add->menu()->actions();
-        REQUIRE( actions.size() == 2 );
+        REQUIRE( actions.size() == 3 );
         CHECK( actions[ 0 ]->text() == "Alpha pack: summary" );
         CHECK( actions[ 0 ]->data() == "python:org.example.alpha/summary" );
         CHECK( actions[ 0 ]->toolTip().contains( "python/summary.py" ) );
         CHECK( actions[ 1 ]->text() == "Alpha pack: common" );
+        // The same decoder ID in another pack is its own choice; an ampersand is shown, not a
+        // shortcut, and the name's markup is text.
+        CHECK( actions[ 2 ]->text() == "Beta && <b>bold</b>: summary" );
+        CHECK( actions[ 2 ]->data() == "python:org.example.beta/summary" );
+        CHECK( actions[ 2 ]->toolTip().contains( "&lt;b&gt;bold&lt;/b&gt;" ) );
+        CHECK( !actions[ 2 ]->toolTip().contains( "<b>bold" ) );
     }
 
     // A route's decoder is shown with its pack, or as not loaded.
     auto* previewRoutes = routeTable( dialog, "decoderPreviewRoutes" );
-    REQUIRE( previewRoutes->rowCount() == 3 );
+    REQUIRE( previewRoutes->rowCount() == 4 );
     const auto tip = [ previewRoutes ]( const QString& route ) {
         const auto row = rowNamed( previewRoutes, route );
         REQUIRE( row >= 0 );
         return previewRoutes->item( row, 1 )->toolTip();
     };
     CHECK( tip( "Demo" ).contains( "Alpha pack" ) );
+    CHECK( tip( "Bold" ).contains( "Beta &amp; &lt;b&gt;bold&lt;/b&gt;" ) );
     CHECK( tip( "Gone" ).contains( "not enabled" ) );
     CHECK( tip( "Shark" ).isEmpty() );
 
     // Choosing a decoder adds a route to it, ready for the preview's name.
     auto* add = dialog.findChild<QPushButton*>( "decoderPreviewRoutesAddPython" );
     add->menu()->actions()[ 1 ]->trigger();
-    REQUIRE( previewRoutes->rowCount() == 4 );
+    REQUIRE( previewRoutes->rowCount() == 5 );
     const auto added = previewRoutes->currentRow();
-    REQUIRE( added == 3 );
+    REQUIRE( added == 4 );
     CHECK( previewRoutes->item( added, 1 )->text() == "python:org.example.alpha/common" );
     CHECK( previewRoutes->item( added, 1 )->toolTip().contains( "Alpha pack" ) );
     previewRoutes->setItem( added, 0, new QTableWidgetItem( "Added" ) );

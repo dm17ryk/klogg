@@ -21,6 +21,13 @@
 
 namespace {
 const QString PythonPrefix = QStringLiteral( "python:" );
+// A tooltip from text (a pack's name, a typed decoder): escaped inside rich text, so markup in it
+// is shown as written; empty for no tooltip.
+QString plainTip( const QString& text )
+{
+    return text.isEmpty() ? QString{}
+                          : QStringLiteral( "<span>%1</span>" ).arg( text.toHtmlEscaped() );
+}
 void identity( QWidget* widget, const QString& name, const QString& label )
 {
     widget->setObjectName( name );
@@ -264,10 +271,15 @@ void PreviewDecoderSettingsDialog::refreshPythonDecoders()
             for ( const auto& listed : pack.value( "decoders" ).toList() ) {
                 const auto decoder = listed.toMap();
                 const auto decoderId = decoder.value( "id" ).toString();
-                auto* action = menu->addAction( tr( "%1: %2" ).arg( name, decoderId ) );
+                // A pack's name is text: an ampersand is shown, not a shortcut, and markup in it
+                // is not rendered.
+                auto shown = name;
+                shown.replace( QLatin1Char( '&' ), QStringLiteral( "&&" ) );
+                auto* action = menu->addAction( tr( "%1: %2" ).arg( shown, decoderId ) );
                 action->setData( PythonPrefix + packId + QLatin1Char( '/' ) + decoderId );
-                action->setToolTip( tr( "%1 in the pack \"%2\"" )
-                                        .arg( decoder.value( "module" ).toString(), name ) );
+                action->setToolTip(
+                    plainTip( tr( "%1 in the pack \"%2\"" )
+                                  .arg( decoder.value( "module" ).toString(), name ) ) );
             }
         }
         const bool any = !menu->isEmpty();
@@ -297,6 +309,8 @@ void PreviewDecoderSettingsDialog::describeTarget( QTableWidgetItem* item ) cons
                   : tr( "Python decoder \"%1\" of the pack \"%2\"." )
                         .arg( decoder.mid( decoder.indexOf( QLatin1Char( '/' ) ) + 1 ), pack );
     }
+    // The pack's name and the typed decoder are text, never markup.
+    tip = plainTip( tip );
     // Setting a tooltip changes the item, which calls this again: only a new text is set.
     if ( item->toolTip() != tip )
         item->setToolTip( tip );

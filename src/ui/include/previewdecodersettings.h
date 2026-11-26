@@ -22,7 +22,9 @@ struct PreviewDecoderPacks {
     // changes it, so sessions restart. Never sent to the worker.
     QString key;
     // E16b: the name of each pack in `python` (pack ID -> name), for the places that show a
-    // pack's decoders. Never sent to the worker.
+    // pack's decoders. Never sent to the worker. A pack's name comes from its plugin.json, whose
+    // version and modification time are part of `key`, so comparing it here restarts no session
+    // that would not restart anyway.
     QVariantMap pythonNames;
 
     bool operator==( const PreviewDecoderPacks& other ) const
