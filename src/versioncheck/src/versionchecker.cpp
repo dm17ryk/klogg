@@ -1706,11 +1706,34 @@ void VersionChecker::reconcileLaunchedUpdate()
         LOG_INFO << "Exit-time install record belongs to " << launched->currentPath
                  << "; left untouched";
         return;
-    case PendingDisposition::Completed:
+    case PendingDisposition::Completed: {
         LOG_INFO << "Exit-time install of " << launched->release.version
                  << " completed; clearing its record";
-        QFile::remove( path );
+        // Installed, yet the installer may have reported that files of the previous version it
+        // does not replace could not be put back. Only the process that removes the record
+        // reports it.
+        InstallResult result;
+        const bool haveResult = readInstallResult(
+            QFileInfo( launched->helperLogPath ).absolutePath(), launched->transactionToken,
+            &result );
+        if ( QFile::remove( path ) && haveResult
+             && result.phase == QLatin1String( cilogg::update_protocol::InstallerPhase )
+             && result.code == cilogg::update_protocol::InstallerFinishIncompleteExitCode ) {
+            auto details = QDir::toNativeSeparators( launched->helperLogPath );
+            if ( !result.installerLog.isEmpty() )
+                details += QStringLiteral( "\n" ) + QDir::toNativeSeparators( result.installerLog );
+            const auto message
+                = tr( "CILogg %1 was installed when CILogg last exited.\n\n%2\n\nDetails: %3" )
+                      .arg( launched->release.version,
+                            describeInstallResult( result.code, result.phase ), details );
+            LOG_WARNING << "Exit-time install of " << launched->release.version
+                        << " completed with a warning: " << message;
+            QMetaObject::invokeMethod(
+                this, [ this, message ] { Q_EMIT installFailed( message ); },
+                Qt::QueuedConnection );
+        }
         return;
+    }
     case PendingDisposition::Applicable:
         break;
     }
@@ -1995,6 +2018,11 @@ bool VersionChecker::scheduleReadyUpdate( QString* errorMessage )
     if ( !fileMatchesVerifiedAsset( ready->packagePath, ready->release.asset ) )
         return refuse( tr( "The downloaded update package no longer matches its verified "
                            "digest. Use Help > Check for Updates to download it again." ) );
+    // A failed portable or macOS replacement can have used up its staged copy.
+    if ( !validateLaunchPaths( *ready, updateRoot(), &error ) )
+        return refuse( tr( "The downloaded update can no longer be installed (%1). Use Help > "
+                           "Check for Updates to download it again." )
+                           .arg( error ) );
     auto scheduled = *ready;
     scheduled.installOnExit = true;
     scheduled.launchedAt = 0;

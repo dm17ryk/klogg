@@ -41,6 +41,9 @@ constexpr auto MoveRetryDelay = std::chrono::milliseconds( 500 );
 // Appended to the manifest before the old copies are deleted: an update interrupted after it is
 // completed by the next one, an update interrupted before it is undone.
 constexpr char FinishingMarker[] = "#finishing";
+// Appended once every file prepare moved aside is recorded. Only then does the manifest list
+// every file of the previous version, so a rollback may remove all other files as added ones.
+constexpr char PreparedMarker[] = "#prepared";
 
 // The folders cilogg.nsi installs below the installation folder; its uninstaller removes each as a
 // whole. Files in any other folder belong to someone else and are never touched.
@@ -555,24 +558,48 @@ std::vector<MovedFile> readManifest( const fs::path& directory, const fs::path& 
     return trusted;
 }
 
-bool isFinishing( const fs::path& manifestPath )
+// "#left\t<path>": a file of the installation that prepare left where it was (a top-level DLL
+// that may be another program's). Rollback keeps it; every other file it did not restore was
+// written by the failed installation and is removed.
+constexpr char LeftInPlacePrefix[] = "#left\t";
+
+std::vector<fs::path> readLeftInPlace( const fs::path& manifestPath )
+{
+    std::vector<fs::path> left;
+    std::ifstream file( manifestPath, std::ios::binary );
+    std::string line;
+    const std::string prefix = LeftInPlacePrefix;
+    while ( std::getline( file, line ) ) {
+        if ( !line.empty() && line.back() == '\r' )
+            line.pop_back();
+        if ( line.compare( 0, prefix.size(), prefix ) == 0 )
+            left.push_back( fromUtf8( line.substr( prefix.size() ) ) );
+    }
+    return left;
+}
+
+bool hasMarker( const fs::path& manifestPath, const char* marker )
 {
     std::ifstream file( manifestPath, std::ios::binary );
     std::string line;
     while ( std::getline( file, line ) ) {
         if ( !line.empty() && line.back() == '\r' )
             line.pop_back();
-        if ( line == FinishingMarker )
+        if ( line == marker )
             return true;
     }
     return false;
 }
 
-void writeManifest( const fs::path& path, const std::vector<MovedFile>& entries )
+// Keeps only `entries`; `marker` (FinishingMarker or none) says how the next run treats them.
+void writeManifest( const fs::path& path, const std::vector<MovedFile>& entries,
+                    const char* marker = nullptr )
 {
     std::ofstream file( path, std::ios::binary | std::ios::trunc );
     for ( const auto& entry : entries )
         file << formatManifestLine( entry ) << "\n";
+    if ( marker )
+        file << marker << "\n";
 }
 
 void writeReport( const fs::path& report, const std::vector<fs::path>& blocked,
@@ -868,6 +895,7 @@ PrepareResult moveAside( const fs::path& directory, const Log& log,
         if ( file.parent_path() == directory && lowerExtension( file ) == ".dll"
              && error != OutsideError ) {
             log( "Left in place (" + error + "): " + toUtf8( file ) );
+            result.leftInPlace.push_back( file );
             continue;
         }
         log( "Cannot move aside " + toUtf8( file ) + ": " + error );
@@ -935,8 +963,49 @@ std::vector<MovedFile> finish( const fs::path& directory, const std::vector<Move
     return left;
 }
 
+namespace {
+bool samePath( const fs::path& left, const fs::path& right )
+{
+#ifdef _WIN32
+    return sameText( left.lexically_normal().wstring(), right.lexically_normal().wstring() );
+#else
+    return left.lexically_normal() == right.lexically_normal();
+#endif
+}
+
+// After the previous files are back: every other file of the installation was written by the
+// failed installation (prepare moved all of them aside), unless prepare left it in place.
+std::size_t removeNewFiles( const fs::path& directory, const std::vector<MovedFile>& moved,
+                            const std::vector<fs::path>& leftInPlace, const Log& log )
+{
+    std::size_t removed = 0;
+    for ( const auto& file : installationFiles( directory ) ) {
+        if ( isMovedAside( file ) )
+            continue;
+        const auto known = [ &file ]( const fs::path& path ) { return samePath( path, file ); };
+        if ( std::any_of( leftInPlace.begin(), leftInPlace.end(), known )
+             || std::any_of( moved.begin(), moved.end(), [ &known ]( const MovedFile& entry ) {
+                    return known( entry.original );
+                } ) )
+            continue;
+        fs::path newCopy;
+        std::string error;
+        if ( moveToFreeName( file, directory, &newCopy, &error ) != RenameResult::Renamed ) {
+            log( "Cannot remove the new " + toUtf8( file ) + ": " + error );
+            continue;
+        }
+        deleteOrSchedule( newCopy, directory, log );
+        ++removed;
+    }
+    if ( removed > 0 )
+        log( "Removed " + std::to_string( removed ) + " files the installation had added" );
+    return removed;
+}
+} // namespace
+
 std::vector<MovedFile> rollback( const fs::path& directory, const std::vector<MovedFile>& moved,
-                                 const Log& log )
+                                 const Log& log, bool removeAdded,
+                                 const std::vector<fs::path>& leftInPlace )
 {
     std::vector<MovedFile> left;
     std::size_t lost = 0;
@@ -977,6 +1046,8 @@ std::vector<MovedFile> rollback( const fs::path& directory, const std::vector<Mo
              ? "Restored " + std::to_string( moved.size() ) + " files"
              : "Restored the previous files except " + std::to_string( left.size() )
                    + " to try again and " + std::to_string( lost ) + " lost" );
+    if ( removeAdded )
+        removeNewFiles( directory, moved, leftInPlace, log );
     return left;
 }
 
@@ -995,12 +1066,12 @@ int runPrepare( const fs::path& directory, const fs::path& report, const Log& lo
         // it is undone: the previous version is put back. Stopped while deleting the old copies,
         // the new version is complete and the cleanup is finished.
         const auto earlier = readManifest( directory, manifestPath, log );
-        if ( isFinishing( manifestPath ) ) {
+        if ( hasMarker( manifestPath, FinishingMarker ) ) {
             log( "Finishing an interrupted update of " + std::to_string( earlier.size() )
                  + " files" );
             const auto notPutBack = finish( directory, earlier, log );
             if ( !notPutBack.empty() ) {
-                writeManifest( manifestPath, notPutBack );
+                writeManifest( manifestPath, notPutBack, FinishingMarker );
                 log( "Kept " + toUtf8( manifestPath ) + "; run setup again" );
                 return RollbackIncompleteExitCode;
             }
@@ -1008,7 +1079,9 @@ int runPrepare( const fs::path& directory, const fs::path& report, const Log& lo
         else {
             log( "Restoring " + std::to_string( earlier.size() )
                  + " files an interrupted update moved aside" );
-            const auto left = rollback( directory, earlier, log );
+            const auto left
+                = rollback( directory, earlier, log, hasMarker( manifestPath, PreparedMarker ),
+                            readLeftInPlace( manifestPath ) );
             if ( !left.empty() ) {
                 writeManifest( manifestPath, left );
                 log( "Kept " + toUtf8( manifestPath ) + "; run setup again" );
@@ -1036,6 +1109,12 @@ int runPrepare( const fs::path& directory, const fs::path& report, const Log& lo
         manifest.flush();
         recorded = recorded && static_cast<bool>( manifest );
     } );
+    for ( const auto& file : result.leftInPlace )
+        manifest << LeftInPlacePrefix << withoutSeparators( toUtf8( file ) ) << "\n";
+    if ( result.blocked.empty() )
+        manifest << PreparedMarker << "\n";
+    manifest.flush();
+    recorded = recorded && static_cast<bool>( manifest );
     if ( result.blocked.empty() && recorded ) {
         log( "Moved aside " + std::to_string( result.moved.size() ) + " files" );
         return PreparedExitCode;
@@ -1052,7 +1131,10 @@ int runPrepare( const fs::path& directory, const fs::path& report, const Log& lo
     else {
         log( "Cannot record the moved files in " + toUtf8( manifestPath ) );
     }
-    const auto left = rollback( directory, result.moved, log );
+    // Nothing was copied yet: the blocked files are the previous version's too.
+    auto untouched = result.leftInPlace;
+    untouched.insert( untouched.end(), result.blocked.begin(), result.blocked.end() );
+    const auto left = rollback( directory, result.moved, log, false, untouched );
     manifest.close();
     writeReport( report, result.blocked, blockers, log );
     if ( !left.empty() ) {
@@ -1073,17 +1155,24 @@ int runFinish( const fs::path& directory, const Log& log )
         return PreparedExitCode;
     }
     {
-        // On a line of its own, also after a line an interrupted pass left unfinished.
+        // On a line of its own, also after a line an interrupted pass left unfinished. Without
+        // it, a later recovery would undo this installation: nothing is cleaned up then.
         std::ofstream marker( manifestPath, std::ios::binary | std::ios::app );
         marker << "\n" << FinishingMarker << "\n";
+        marker.flush();
+        if ( !marker ) {
+            log( "Cannot mark " + toUtf8( manifestPath )
+                 + "; the old copies stay until setup runs again" );
+            return ManifestFailedExitCode;
+        }
     }
     const auto notPutBack = finish( directory, readManifest( directory, manifestPath, log ), log );
     if ( notPutBack.empty() ) {
         fs::remove( manifestPath, error );
         return PreparedExitCode;
     }
-    // Only what still has to be put back stays recorded: the next update restores it first.
-    writeManifest( manifestPath, notPutBack );
+    // Only what still has to be put back stays recorded: the next update puts it back first.
+    writeManifest( manifestPath, notPutBack, FinishingMarker );
     log( "Kept " + toUtf8( manifestPath ) + "; the next update puts these files back" );
     return FinishIncompleteExitCode;
 }
@@ -1096,7 +1185,9 @@ int runRollback( const fs::path& directory, const Log& log )
         log( "No files were moved aside" );
         return PreparedExitCode;
     }
-    const auto left = rollback( directory, readManifest( directory, manifestPath, log ), log );
+    const auto left = rollback( directory, readManifest( directory, manifestPath, log ), log,
+                                hasMarker( manifestPath, PreparedMarker ),
+                                readLeftInPlace( manifestPath ) );
     if ( !left.empty() ) {
         writeManifest( manifestPath, left );
         log( "Kept " + toUtf8( manifestPath ) + "; run setup again" );

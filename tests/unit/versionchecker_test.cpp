@@ -606,6 +606,56 @@ TEST_CASE( "A failed install can be scheduled again", "[updater]" )
     REQUIRE_FALSE( passive->scheduleReadyUpdate( &error ) );
 }
 
+TEST_CASE( "A ready update whose staged copy is gone is not scheduled again", "[updater]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    auto ready = makeTransaction( root.path(), "999.0.0", thisInstallation() );
+    ready.installOnExit = false;
+    // A failed portable replacement used up its staged copy.
+    ready.stagedPath = QFileInfo( ready.packagePath ).dir().filePath( QStringLiteral( "staged" ) );
+    writeTransaction( QDir( root.path() ).filePath( PendingName ), ready );
+
+    const auto checker = makeOfflineChecker( root.path(), "26.04.2.1197" );
+    checker->activate();
+    REQUIRE( checker->state() == UpdateState::Ready );
+    QString error;
+    REQUIRE_FALSE( checker->scheduleReadyUpdate( &error ) );
+    REQUIRE( error.contains( "can no longer be installed" ) );
+    REQUIRE( checker->state() == UpdateState::Ready );
+}
+
+TEST_CASE( "An installed update that could not put files back is reported once", "[updater]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    const QDir rootDir( root.path() );
+    const auto launched = makeTransaction( root.path(), "26.04.2.1203", thisInstallation() );
+    writeTransaction( rootDir.filePath( LaunchedName ), launched );
+    writeFile( QFileInfo( launched.helperLogPath )
+                   .dir()
+                   .filePath( cilogg::update_protocol::InstallResultFileName ),
+               "token=" + launched.transactionToken.toLatin1()
+                   + "\nmode=windows-setup\nphase=installer\ncode="
+                   + QByteArray::number( cilogg::update_protocol::InstallerFinishIncompleteExitCode )
+                   + "\n" );
+
+    const auto checker = makeOfflineChecker( root.path(), "26.04.2.1203" );
+    QSignalSpy reported( checker.get(), &VersionChecker::installFailed );
+    checker->activate();
+    REQUIRE( reported.wait( 2000 ) );
+    const auto message = reported.at( 0 ).at( 0 ).toString();
+    REQUIRE( message.contains( "was installed" ) );
+    REQUIRE( message.contains( "could not be put back" ) );
+    REQUIRE_FALSE( QFile::exists( rootDir.filePath( LaunchedName ) ) );
+    REQUIRE( checker->state() == UpdateState::Idle );
+
+    const auto later = makeOfflineChecker( root.path(), "26.04.2.1203" );
+    QSignalSpy again( later.get(), &VersionChecker::installFailed );
+    later->activate();
+    REQUIRE_FALSE( again.wait( 200 ) );
+}
+
 TEST_CASE( "A completed exit-time install clears its record silently", "[updater]" )
 {
     QTemporaryDir root;

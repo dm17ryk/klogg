@@ -95,6 +95,8 @@ struct PrepareResult {
     std::vector<MovedFile> moved;
     // Files that could not be moved aside. The caller then puts `moved` back with rollback().
     std::vector<std::filesystem::path> blocked;
+    // Top-level DLLs that could not be moved and may be another program's: left where they were.
+    std::vector<std::filesystem::path> leftInPlace;
 };
 
 // Moves aside every file of the CILogg installation in `directory`, so running processes keep
@@ -117,12 +119,16 @@ PrepareResult moveAside( const std::filesystem::path& directory, const Log& log,
 std::vector<MovedFile> finish( const std::filesystem::path& directory,
                                const std::vector<MovedFile>& moved, const Log& log );
 
-// After a failed copy: puts every original back, moving a partly installed new file aside.
-// Entries an earlier pass restored are skipped. Returns the entries that could not be restored
-// for now (another attempt may succeed); a file lost meanwhile and an entry outside the
-// installation folder are logged and dropped, as nothing can ever act on them.
+// After a failed copy: puts every original back, moving a partly installed new file aside. With
+// `removeAdded` (only when `moved` lists every file of the previous version), it then removes the
+// files the failed installation added: every other file of the installation except
+// `leftInPlace`. Entries an earlier pass restored are skipped. Returns the entries that could
+// not be restored for now (another attempt may succeed); a file lost meanwhile and an entry
+// outside the installation folder are logged and dropped, as nothing can ever act on them.
 std::vector<MovedFile> rollback( const std::filesystem::path& directory,
-                                 const std::vector<MovedFile>& moved, const Log& log );
+                                 const std::vector<MovedFile>& moved, const Log& log,
+                                 bool removeAdded = false,
+                                 const std::vector<std::filesystem::path>& leftInPlace = {} );
 
 // The installer modes of cilogg_updater. "prepare" first restores what an interrupted earlier
 // update left (from its manifest), then moves files aside and records them in the manifest; when

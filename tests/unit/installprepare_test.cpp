@@ -250,14 +250,17 @@ TEST_CASE( "A failed installation restores every file of the previous version",
     std::vector<std::string> lines;
     const auto result = prepare::moveAside( root, recorder( lines ) );
     REQUIRE( result.moved.size() == 3 );
-    // The copy wrote a new module and part of a library, then stopped.
+    // The copy wrote a new module, a file the previous version did not have and part of a
+    // library, then stopped.
     writeText( root / "python_runtime" / "Lib" / "os.py", "new module" );
+    writeText( root / "plugins" / "added.json", "only in the new version" );
     writeText( root / "Qt6Core.dll", "partly written" );
 
-    REQUIRE( prepare::rollback( root, result.moved, recorder( lines ) ).empty() );
+    REQUIRE( prepare::rollback( root, result.moved, recorder( lines ), true ).empty() );
     REQUIRE( readText( root / "cilogg.exe" ) == "old executable" );
     REQUIRE( readText( root / "Qt6Core.dll" ) == "old library" );
     REQUIRE( readText( root / "python_runtime" / "Lib" / "os.py" ) == "old module" );
+    REQUIRE_FALSE( fs::exists( root / "plugins" / "added.json" ) );
     REQUIRE( movedAsideFiles( root ).empty() );
     // A second pass (the installer retries an incomplete restore) leaves restored files alone.
     REQUIRE( prepare::rollback( root, result.moved, recorder( lines ) ).empty() );
@@ -411,6 +414,29 @@ TEST_CASE( "Another program's DLL in use in the same folder does not block the i
     REQUIRE( fs::exists( root / "other.dll" ) );
     REQUIRE( prepare::runRollback( root, recorder( lines ) ) == prepare::PreparedExitCode );
     REQUIRE( readText( root / "cilogg.exe" ) == "old executable" );
+}
+
+TEST_CASE( "Without its finishing mark, nothing is cleaned up", "[installprepare]" )
+{
+    QTemporaryDir temporary;
+    REQUIRE( temporary.isValid() );
+    const auto root = nativePath( temporary.path() );
+    writeText( root / "cilogg.exe", "old executable" );
+    std::vector<std::string> lines;
+    REQUIRE( prepare::runPrepare( root, {}, recorder( lines ) ) == prepare::PreparedExitCode );
+    writeText( root / "cilogg.exe", "new executable" );
+    const auto manifest = root / prepare::ManifestFileName;
+    // Security software holds the manifest: it cannot be marked.
+    {
+        ExclusiveHandle scanner( manifest );
+        REQUIRE( scanner.isOpen() );
+        REQUIRE( prepare::runFinish( root, recorder( lines ) )
+                 == prepare::ManifestFailedExitCode );
+    }
+    REQUIRE( readText( root / "cilogg.exe.cilogg-old" ) == "old executable" );
+    REQUIRE( prepare::runFinish( root, recorder( lines ) ) == prepare::PreparedExitCode );
+    REQUIRE( readText( root / "cilogg.exe" ) == "new executable" );
+    REQUIRE( movedAsideFiles( root ).empty() );
 }
 
 TEST_CASE( "A running executable is moved aside and replaced, not closed", "[installprepare]" )
