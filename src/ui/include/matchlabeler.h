@@ -13,18 +13,38 @@
 #include "predefinedfilters.h"
 #include "regularexpressionpattern.h"
 
-// Explains which part of a search selected a line of the filtered view: the predefined filters
-// the search was built from, the alternatives of a combined pattern, or the matched text.
+// Explains which part of a search selected a line of the filtered view: the text that matched,
+// and which predefined filter, alternative of a combined pattern or search term matched it.
 // A labeler is immutable once built; the filtered view labels lines on a background thread.
 class MatchLabeler {
   public:
     MatchLabeler() = default;
 
+    // A term or alternative of the search that matches a line.
+    struct Match {
+        // What matched: "Modem: WiFi" for the alternative "WiFi" of the predefined filter
+        // "Modem", the alternative alone for a filter without a name of its own or a typed
+        // search, or the predefined filter or the search term.
+        QString name;
+        // The text it matched on the line. Anchors, lookarounds and ".*" at the ends of the
+        // alternative are left out, so "^(?!.*X).*ERROR" gives "ERROR". When it matched nothing
+        // or the whole line, the alternative itself is shown (see alternativeDisplayName).
+        QString text;
+    };
+
+    // What the "Matched by" cell of a line shows.
+    struct Annotation {
+        // The text of each match, joined with ", "; a text matched twice is listed once.
+        QString text;
+        // Rich text: a table of the matches, the name of each with its text.
+        QString toolTip;
+    };
+
     // `filters` are the predefined filters the search text was built from. Pass them only while
     // the search text still equals their combination; otherwise the pattern itself is split.
-    // Lines of a search built from filters are labelled with the filter names, even for one.
+    // Matches of a search built from filters are named after the filters, even for one.
     // `knownFilters` are all predefined filters: a quoted term of a boolean search whose pattern
-    // is one of them is labelled like that filter, so a search restored from the session or the
+    // is one of them is named like that filter, so a search restored from the session or the
     // history ("p1" or "p2") still names its filters and the alternatives that matched.
     static MatchLabeler fromSearch( const RegularExpressionPattern& search,
                                     const QList<PredefinedFilter>& filters = {},
@@ -44,10 +64,14 @@ class MatchLabeler {
         return terms_.empty();
     }
 
-    // The names of the terms that match `line`, joined with ", ". A typed search with a single
-    // term of one alternative reports the matched text instead. A predefined filter or quoted
-    // term made of several top-level alternatives reports the alternatives that matched, after
-    // the filter name when the filter has one of its own. Empty when nothing matches.
+    // The terms that match `line`, in the order of the search. A predefined filter or quoted
+    // term made of several top-level alternatives gives one match per alternative that matched.
+    std::vector<Match> matches( const QString& line ) const;
+
+    // The cell text and tooltip of `line`; both are empty when nothing matches.
+    Annotation annotate( const QString& line ) const;
+
+    // The cell text alone: annotate( line ).text.
     QString label( const QString& line ) const;
 
     // How an alternative is shown in a label: a lone capturing group "(x)" is shown as "x";
@@ -59,12 +83,15 @@ class MatchLabeler {
     // A column width, in characters, that fits typical labels.
     int preferredColumnChars() const;
 
-    // Labels are cut here; the view elides them further to its column and shows the label in a
-    // tooltip.
+    // Labels, and the texts in a tooltip, are cut here; the view elides a label further to its
+    // column.
     static constexpr int MaxLabelLength = 256;
+    // Rows of a tooltip; more matches end it with a count of the rest.
+    static constexpr int MaxToolTipRows = 16;
 
 private:
-    // A top-level alternative of a predefined filter, compiled on its own.
+    // A top-level alternative of a predefined filter, compiled on its own. Its `expression`
+    // captures the text that matters (see Match::text) when it can.
     struct Part {
         QString name;
         QRegularExpression expression;
@@ -75,9 +102,11 @@ private:
         QRegularExpression expression;
         // Alternatives of a predefined filter with several of them; empty otherwise.
         std::vector<Part> parts;
-        // The label starts with `name` before the matched parts (a filter with a name of its
-        // own, not just its pattern).
+        // A match of an alternative is named "<name>: <alternative>" (a filter with a name of
+        // its own, not just its pattern).
         bool namePrefix = false;
+        // How the pattern is shown when its match says nothing (empty or the whole line).
+        QString shownPattern;
     };
 
     // What a term is built from, before its expressions are compiled.
@@ -88,10 +117,6 @@ private:
         QStringList partNames;
         bool namePrefix = false;
     };
-
-    QString termLabel( const Term& term, const QString& line ) const;
-    // label() reports the matched text rather than term names.
-    bool showsMatchedText() const;
 
     struct Alternative {
         QString text;
@@ -105,8 +130,6 @@ private:
     static MatchLabeler fromSpecs( const std::vector<TermSpec>& specs );
 
     std::vector<Term> terms_;
-    // The terms are predefined filters: lines are labelled with their names.
-    bool namesFilters_ = false;
 };
 
 #endif

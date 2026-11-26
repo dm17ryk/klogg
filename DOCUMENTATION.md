@@ -473,15 +473,24 @@ view mode to show either only the lines matching search pattern or only marked l
 
 Marks also appear as blue lines in the match overview.
 
-The filtered view has a "Matched by" column between the line numbers and the text:
+The filtered view has a "Matched by" column at its right edge. It shows the text that matched
+on each line:
 
-* for a search built from predefined filters it shows the name of the filter (or filters)
-  that selected each line, also when only one filter is used;
-* for a typed expression with alternatives, such as `WARN|ERROR`, it shows the alternative
+* for a search built from predefined filters, the text each filter matched, also when only one
+  filter is used. For a filter made of several alternatives, such as
+  `(C_PROC:)|(EHCP)|(WiFi)`, it shows the text of each alternative that matched;
+* for a typed expression with alternatives, such as `WARN|ERROR`, the text of each alternative
   that matched. A leading inline option such as `(?i)` applies to the alternatives after it,
   exactly as in the search;
-* for a single typed pattern it shows the matched text;
-* an inverse search names nothing, and marked lines show `mark`.
+* anchors, lookarounds and `.*` at the ends of an alternative are not part of the shown text,
+  so `^(?!.*X).*ERROR` shows `ERROR`. A match of the whole line, or of nothing, shows the
+  alternative as written instead;
+* several matches are separated by `, `, and a text matched twice is shown once;
+* an inverse search shows nothing, and marked lines show `mark`.
+
+Resting the mouse on a cell shows what matched the line, each with the text it matched: the
+predefined filter and its alternative (for example `Modem: WiFi`), or the alternative or the
+pattern of a typed search.
 
 Labels are computed in the background, so a cell can stay blank for a moment after the line
 appears. The column is shown or hidden from the filtered view context menu.

@@ -221,12 +221,19 @@ protected:
     virtual LineNumber lineIndex( LineNumber lineNumber ) const;
     virtual LineNumber maxDisplayLineNumber() const;
 
-    // An optional column at the right edge of the view, for example the filter that selected a
-    // filtered line. A width of zero characters hides it. Called for visible lines only. A label
-    // cut short by the column is shown whole in a tooltip.
+    // An optional column at the right edge of the view, for example the text that selected a
+    // filtered line. A width of zero characters hides it. Called for visible lines only. Resting
+    // the mouse on a line's annotation shows lineAnnotationToolTip(), or, without one, the
+    // annotation in full when the column cuts it short.
     virtual int annotationColumnChars() const
     {
         return 0;
+    }
+    virtual QString lineAnnotationToolTip( LineNumber lineNumber, const QString& lineText ) const
+    {
+        Q_UNUSED( lineNumber );
+        Q_UNUSED( lineText );
+        return {};
     }
     virtual QString lineAnnotation( LineNumber lineNumber, const QString& lineText ) const
     {
@@ -398,8 +405,8 @@ private:
     int annotationAreaWidthPx() const;
     // Width left for the text between the margins
     int textAreaWidthPx() const;
-    // The full annotation of the line under `position` when its column cuts it short
-    QString elidedAnnotationAt( const QPoint& position ) const;
+    // The tooltip of the annotation under `position` (see lineAnnotationToolTip)
+    QString annotationToolTipAt( const QPoint& position ) const;
     // Pane commands of the window, filled when the context menu opens
     QMenu* paneMenu_ = nullptr;
 
