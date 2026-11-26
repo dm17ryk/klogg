@@ -28,13 +28,16 @@ using cilogg::plugins::validatePackFiles;
 using cilogg::plugins::validatePackManifest;
 
 // A Python module's source without its comments and with each string literal's contents left out
-// (the literal becomes `""`), its newlines kept, so a docstring or a comment that shows code binds
-// nothing.
+// (the literal becomes `""`), so a docstring or a comment that shows code binds nothing. Only a
+// new logical line starts a line: inside brackets and after a backslash a line continues its
+// statement (its newline becomes a space), so a keyword argument at the start of a line is not
+// taken for an assignment.
 QString pythonCode( const QString& text )
 {
     QString code;
     code.reserve( text.size() );
     const auto size = text.size();
+    int depth = 0;
     const auto closes = [ &text, size ]( qsizetype at, QChar quote, bool triple ) {
         return text[ at ] == quote
                && ( !triple
@@ -49,7 +52,21 @@ QString pythonCode( const QString& text )
             continue;
         }
         if ( c != QLatin1Char( '\'' ) && c != QLatin1Char( '"' ) ) {
-            code += c;
+            if ( c == QLatin1Char( '\\' ) && at + 1 < size
+                 && text[ at + 1 ] == QLatin1Char( '\n' ) ) {
+                code += QLatin1Char( ' ' );
+                at += 2;
+                continue;
+            }
+            if ( c == QLatin1Char( '(' ) || c == QLatin1Char( '[' ) || c == QLatin1Char( '{' ) ) {
+                ++depth;
+            }
+            else if ( ( c == QLatin1Char( ')' ) || c == QLatin1Char( ']' )
+                        || c == QLatin1Char( '}' ) )
+                      && depth > 0 ) {
+                --depth;
+            }
+            code += c == QLatin1Char( '\n' ) && depth > 0 ? QChar( QLatin1Char( ' ' ) ) : c;
             ++at;
             continue;
         }
@@ -70,7 +87,7 @@ QString pythonCode( const QString& text )
                 if ( !triple ) {
                     break;
                 }
-                code += QLatin1Char( '\n' );
+                code += depth > 0 ? QLatin1Char( ' ' ) : QLatin1Char( '\n' );
             }
             ++at;
         }

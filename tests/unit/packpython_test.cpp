@@ -525,6 +525,11 @@ TEST_CASE( "Only the modules that define decode() are offered as decoders", "[pa
                        "MARKER = 1\n" },
         { "quoted", "EXAMPLE = '''\ndecode = None\nfrom .plain import decode\n'''\n" },
         { "commented", "from .plain import other  # not decode\n" },
+        // A keyword argument at the start of a line inside a call binds nothing either.
+        { "keyword", "def make(**kw):\n    return kw\nCODEC = make(\ndecode = make,\n)\n" },
+        // Real ones after a bracket and a backslash that continue a statement over lines.
+        { "afterbrackets", "ITEMS = (\n    1,\n)\ndecode = None\n" },
+        { "continued", "VALUE = 1 + \\\n    2\ndecode = None\n" },
         // A real one after a string with an escaped quote and a quote inside a comment.
         { "escaped",
           "TEXT = \"a \\\" b\" # it's\ndef decode(payload, context):\n    return None\n" },
@@ -548,8 +553,8 @@ TEST_CASE( "Only the modules that define decode() are offered as decoders", "[pa
     auto entries = pack.pythonEntries;
     entries.sort();
     CHECK( entries
-           == QStringList{ "annotated", "assigned", "asynchronous", "crlf", "escaped", "imported",
-                           "parenthesized", "plain", "rebound" } );
+           == QStringList{ "afterbrackets", "annotated", "assigned", "asynchronous", "continued",
+                           "crlf", "escaped", "imported", "parenthesized", "plain", "rebound" } );
 }
 
 TEST_CASE( "A pack lists at most 32 Python decoders", "[packpython][E16]" )

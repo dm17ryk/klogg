@@ -1561,6 +1561,14 @@
           "P2 (fixed): text in a docstring or string counted as a decode() binding; the scan now ignores strings and comments"
         ],
         "result": "fixed in the commit after eb920aa0"
+      },
+      {
+        "head": "f7303284",
+        "reviewer": "Codex review bot",
+        "findings": [
+          "P2 (fixed): a keyword argument at the start of a line inside a call counted as decode =; lines inside brackets and after a backslash now continue their statement"
+        ],
+        "result": "fixed in the commit after f7303284"
       }
     ]
   }
