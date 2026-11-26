@@ -5,9 +5,10 @@
 # Usage: publish_legacy_latest_json.sh <ci|stable> <version> <branch>
 #
 # Run from a checkout of <branch>. The branch can move while "Make CI Release"
-# runs; a rejected push is retried after rebasing the one-file commit onto the
-# branch's new tip. A concurrent change to latest.json itself stops the script
-# instead of overwriting it.
+# runs, so a rejected push is retried: the one-key edit is made again on the
+# branch's new tip (a rebase that cannot conflict) and pushed. Other changes to
+# latest.json are kept, and a newer version already recorded for the channel,
+# for example by an overlapping release, is never replaced by an older one.
 set -euo pipefail
 
 channel="$1"
@@ -27,25 +28,51 @@ if ! git ls-remote --exit-code --heads origin "$branch" > /dev/null; then
   exit 1
 fi
 
-CHANNEL="$channel" VERSION="$version" TAG="$tag" python3 - <<'PY'
+# Records the release in latest.json and commits it. Returns 0 after committing
+# and 1 when latest.json needs no change; exits the script on errors (set -e
+# does not apply inside a function called from `if`).
+commit_release() {
+  local status=0
+  CHANNEL="$channel" VERSION="$version" TAG="$tag" python3 - <<'PY' || status=$?
 import json
 import os
 from pathlib import Path
 
+
+def numbers(text):
+    try:
+        return tuple(int(part) for part in text.split("."))
+    except (AttributeError, ValueError):
+        return None
+
+
 path = Path("latest.json")
 data = json.loads(path.read_text(encoding="utf-8"))
 channel = os.environ["CHANNEL"]
-data[channel] = os.environ["VERSION"]
+version = os.environ["VERSION"]
+current = data.get(channel)
+if numbers(current) and numbers(version) and numbers(current) > numbers(version):
+    print(f"latest.json already names {channel} {current}, newer than {version}; leaving it.")
+    raise SystemExit(0)
+data[channel] = version
 data[channel + "_url"] = "https://github.com/dm17ryk/klogg/releases/tag/" + os.environ["TAG"]
 path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 PY
+  if ((status != 0)); then
+    echo "::error::Could not update latest.json (python exited with $status)."
+    exit 1
+  fi
+  git add latest.json || exit 1
+  if git diff --cached --quiet; then
+    return 1
+  fi
+  git commit -q -m "chore: update legacy release metadata [skip ci]" || exit 1
+}
 
-git add latest.json
-if git diff --cached --quiet; then
-  echo "latest.json already names $channel $version."
+if ! commit_release; then
+  echo "latest.json needs no change for $channel $version."
   exit 0
 fi
-git commit -q -m "chore: update legacy release metadata [skip ci]"
 
 for ((attempt = 1; ; attempt++)); do
   if git push origin "HEAD:refs/heads/$branch"; then
@@ -56,12 +83,13 @@ for ((attempt = 1; ; attempt++)); do
     echo "::error::Could not push latest.json to $branch after $attempts attempts."
     exit 1
   fi
-  echo "::warning::Push of latest.json to $branch was rejected (attempt $attempt of $attempts); rebasing onto its new tip."
+  echo "::warning::Push of latest.json to $branch was rejected (attempt $attempt of $attempts); redoing it on the new tip."
   sleep $((delay * attempt))
   git fetch --no-tags origin "$branch"
-  if ! git rebase --autostash FETCH_HEAD; then
-    git rebase --abort || true
-    echo "::error::latest.json changed on $branch since this release started; record $channel $version in it by hand."
-    exit 1
+  # Only latest.json is tracked-and-changed here; the release files are untracked.
+  git reset -q --hard FETCH_HEAD
+  if ! commit_release; then
+    echo "latest.json on $branch needs no change for $channel $version."
+    exit 0
   fi
 done

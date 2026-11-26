@@ -56,8 +56,8 @@ echo "PASS: master moved during the release; latest.json rebased and pushed"
 
 # 2. Nothing to record: no commit, no push.
 before=$(git -C "$workdir/moved" rev-parse master)
-(cd "$workdir/moved-job" && bash "$script" ci 26.04.2.1462 master) | grep -q "already names" \
-  || fail "expected 'already names' for an unchanged latest.json"
+(cd "$workdir/moved-job" && bash "$script" ci 26.04.2.1462 master) | grep -q "needs no change" \
+  || fail "expected 'needs no change' for an unchanged latest.json"
 [[ "$(git -C "$workdir/moved" rev-parse master)" == "$before" ]] || fail "unchanged latest.json was pushed"
 echo "PASS: an unchanged latest.json is not committed"
 
@@ -70,18 +70,29 @@ remote_latest stable | grep -q '"stable_url": "https://github.com/dm17ryk/klogg/
 remote_latest stable | grep -q '"ci": "26.04.2.1"' || fail "ci entry changed by a stable release"
 echo "PASS: stable release updates only the stable entries"
 
-# 4. Someone else changed latest.json meanwhile: stop, leave no rebase behind.
-new_origin conflict
-push_other_commit conflict latest.json $'{\n  "ci": "26.04.2.2",\n  "ci_url": "other"\n}\n'
-if (cd "$workdir/conflict-job" && bash "$script" ci 26.04.2.1462 master) > "$workdir/conflict.log" 2>&1; then
-  fail "a conflicting latest.json was overwritten"
-fi
-grep -q "changed on master" "$workdir/conflict.log" || { cat "$workdir/conflict.log"; fail "unclear conflict message"; }
-[[ ! -d "$(git -C "$workdir/conflict-job" rev-parse --git-path rebase-merge)" ]] || fail "rebase left in progress"
-remote_latest conflict | grep -q '"ci": "26.04.2.2"' || fail "remote latest.json was changed"
-echo "PASS: a concurrent latest.json change stops the push with a clear message"
+# 4. An overlapping older release changed the same lines meanwhile (a textual
+#    conflict for a rebase): the edit is redone on the new tip, other keys kept.
+new_origin older
+push_other_commit older latest.json $'{\n  "ci": "26.04.2.2",\n  "ci_url": "other",\n  "note": "kept"\n}\n'
+(cd "$workdir/older-job" && bash "$script" ci 26.04.2.1462 master) > "$workdir/older.log" 2>&1 \
+  || { cat "$workdir/older.log"; fail "push after a concurrent latest.json change"; }
+remote_latest older | grep -q '"ci": "26.04.2.1462"' || fail "newer release not recorded"
+remote_latest older | grep -q '"note": "kept"' || fail "concurrent latest.json change lost"
+[[ "$(git -C "$workdir/older" log --format=%s master)" == $'chore: update legacy release metadata [skip ci]\nother change to latest.json\ninitial' ]] \
+  || fail "unexpected master history: $(git -C "$workdir/older" log --oneline master)"
+echo "PASS: a concurrent latest.json change is kept and the release recorded on top of it"
 
-# 5. A ref that is not a branch on origin is refused before any push.
+# 5. An overlapping newer release got there first: it is not downgraded.
+new_origin newer
+push_other_commit newer latest.json $'{\n  "ci": "26.04.2.9999",\n  "ci_url": "newer"\n}\n'
+before=$(git -C "$workdir/newer" rev-parse master)
+(cd "$workdir/newer-job" && bash "$script" ci 26.04.2.1462 master) > "$workdir/newer.log" 2>&1 \
+  || { cat "$workdir/newer.log"; fail "run after a newer release"; }
+grep -q "newer than 26.04.2.1462" "$workdir/newer.log" || { cat "$workdir/newer.log"; fail "no newer-release message"; }
+[[ "$(git -C "$workdir/newer" rev-parse master)" == "$before" ]] || fail "a newer release was overwritten"
+echo "PASS: a newer release already on master is not downgraded"
+
+# 6. A ref that is not a branch on origin is refused before any push.
 new_origin tag
 if (cd "$workdir/tag-job" && bash "$script" ci 26.04.2.1462 continuous-26.04.2.1462) > "$workdir/tag.log" 2>&1; then
   fail "pushed to a ref that is not a branch"
@@ -89,3 +100,12 @@ fi
 grep -q "not a branch" "$workdir/tag.log" || { cat "$workdir/tag.log"; fail "unclear branch message"; }
 [[ -z "$(git -C "$workdir/tag" branch --list 'continuous-*')" ]] || fail "created a branch"
 echo "PASS: only an existing branch is updated"
+
+# 7. A latest.json that cannot be read fails the step instead of passing silently.
+new_origin broken
+printf '{ not json' > "$workdir/broken-job/latest.json"
+if (cd "$workdir/broken-job" && bash "$script" ci 26.04.2.1462 master) > "$workdir/broken.log" 2>&1; then
+  fail "an unreadable latest.json passed"
+fi
+grep -q "Could not update latest.json" "$workdir/broken.log" || { cat "$workdir/broken.log"; fail "unclear error"; }
+echo "PASS: an unreadable latest.json fails with a clear error"
