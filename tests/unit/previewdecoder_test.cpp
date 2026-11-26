@@ -300,10 +300,10 @@ TEST_CASE( "Disabled explicit native decoder is visible and JSON override stays 
     request.dissector.clear();
     request.definitions = R"({"version":1,"previews":[]})";
     CHECK( PreviewService::evaluateAndWait( request ).value( "reason" ) == "invalid_dissector" );
-    // Without a named dissector the definitions find the line's route (#182), so they are checked;
-    // a named dissector decodes the input directly and ignores them.
+    // Definitions explicit TShark cannot use leave it the default dissector, as before it looked
+    // up routes (#182 review): here none, so still invalid_dissector.
     request.definitions = QByteArray( 1024 * 1024 + 1, 'x' );
-    CHECK( PreviewService::evaluateAndWait( request ).value( "reason" ) == "definitions_limit" );
+    CHECK( PreviewService::evaluateAndWait( request ).value( "reason" ) == "invalid_dissector" );
     request.dissector = "data";
     request.executable = "must-not-launch";
     CHECK( PreviewService::evaluateAndWait( request ).value( "reason" ) != "definitions_limit" );
@@ -944,12 +944,11 @@ TEST_CASE( "Automatic falls back to JSON after any TShark/Lua failure", "[previe
             CHECK_FALSE( result.value( "fallbackReason" ).toString().isEmpty() );
         else
             CHECK( result.value( "fallbackReason" ) == reason );
-        // The JSON preview of the same carrier: within the request's budget, or after a stall
-        // that used it all, within the fallback's own 1.5 s.
+        // The JSON preview of the same carrier, within the budget or, after a stall that used it
+        // all, the fallback's own 3 s (a later one would be a timeout, not this result).
         CHECK( result.value( "previewName" ) == "Mapped carrier" );
         CHECK( firstValue( result ) == "AB" );
-        CHECK( result.value( "elapsedMs" ).toLongLong()
-               < request.timeoutMs + ( mode == "stall" ? 1500 : 0 ) );
+        CHECK( result.value( "elapsedMs" ).toLongLong() < request.timeoutMs + 3000 );
     }
     // Explicit TShark never falls back: the failure is the result.
     qputenv( "CILOGG_PREVIEW_FIXTURE_MODE", "lua_failure" );
@@ -1132,6 +1131,16 @@ TEST_CASE( "Explicit TShark resolves its dissector from the route Automatic woul
     request.text = "AB";
     request.definitions = R"({"version":1,"previews":[]})";
     CHECK( PreviewService::evaluateAndWait( request ).value( "reason" ) == "invalid_dissector" );
+    // Definitions it cannot parse leave explicit TShark the default dissector on the input, as
+    // before it looked up routes (#182 review).
+    auto withDefault = PreviewDecoderSettings::instance().configuration();
+    withDefault[ "defaultDissector" ] = "fallback_entry";
+    REQUIRE( PreviewDecoderSettings::instance().setConfiguration( withDefault ) );
+    request.definitions = "{ not json";
+    const auto unparsed = PreviewService::evaluateAndWait( request );
+    INFO( QJsonDocument::fromVariant( unparsed ).toJson( QJsonDocument::Compact ).toStdString() );
+    REQUIRE( unparsed.value( "available" ).toBool() );
+    CHECK( firstValue( unparsed ) == "fallback_entry|" );
 }
 
 TEST_CASE( "Native stop and worker timeout failures retain the same required envelope",
@@ -1253,14 +1262,14 @@ TEST_CASE( "A warmed real Lua stall retains its carrier and recovers after resto
         return reason == "timeout" || reason == "execution_timeout";
     };
     // Automatic mode shows the carrier's JSON preview and names the stall (#182); the stall used
-    // the whole budget, so the fallback has its own 1.5 s.
+    // the whole budget, so the fallback has its own 3 s.
     const auto fallback = PreviewService::evaluateAndWait( request );
     INFO( QJsonDocument::fromVariant( fallback ).toJson( QJsonDocument::Compact ).toStdString() );
     CHECK( fallback.value( "backend" ) == "json_preview" );
     CHECK( fallback.value( "state" ) == "completed" );
     CHECK( isTimeout( fallback.value( "fallbackReason" ) ) );
     CHECK( fallback.value( "previewName" ) == "Mapped carrier" );
-    CHECK( fallback.value( "elapsedMs" ).toLongLong() < request.timeoutMs + 1500 );
+    CHECK( fallback.value( "elapsedMs" ).toLongLong() < request.timeoutMs + 3000 );
     // Explicit TShark shows the stall itself.
     request.decoder = "tshark";
     const auto timed = PreviewService::evaluateAndWait( request );

@@ -37,7 +37,8 @@ constexpr int RequestLimit = 2 * 1024 * 1024;
 constexpr int ResponseLimit = 128 * 1024;
 // The least time Automatic mode gives its JSON fallback after a TShark/Lua failure, beyond the
 // request's budget when the engine used it all (#182).
-constexpr int FallbackGraceMs = 1500;
+// The JSON preview is another selector run, a process start that a busy machine can slow down.
+constexpr int FallbackGraceMs = 3000;
 int activeRequests = 0; // All entry points are confined to the application thread.
 QVariantMap failure( const QString& reason )
 {
@@ -771,6 +772,11 @@ QProcess* PreviewService::evaluate( QObject* owner, PreviewEvaluationRequest req
         request.definitions = R"({"version":1,"previews":[]})";
     if ( invalid.isEmpty() && request.definitions.isEmpty() )
         request.definitions = definitions();
+    // Definitions explicit TShark cannot use leave it the default dissector on the input, as
+    // before routes were looked up (#182 review).
+    if ( invalid.isEmpty() && request.decoder == "tshark" && request.previewName.isEmpty()
+         && ( request.definitions.isEmpty() || request.definitions.size() > DefinitionsLimit ) )
+        request.definitions = R"({"version":1,"previews":[]})";
     if ( invalid.isEmpty()
          && ( request.definitions.isEmpty() || request.definitions.size() > DefinitionsLimit ) )
         invalid = "definitions_limit";
@@ -938,7 +944,13 @@ int PreviewService::workerMain( int argc, char* argv[] )
     if ( text.toUtf8().size() > TextLimit || config.size() > DefinitionsLimit )
         result = failure( "input_limit" );
     else {
-        const auto parsed = PreviewConfigParser().parseJson( config );
+        auto parsed = PreviewConfigParser().parseJson( config );
+        // Explicit TShark without a preview name reads the line's route from the definitions;
+        // ones it cannot parse leave it the default dissector on the input (#182 review).
+        if ( !parsed.errors.isEmpty()
+             && object.value( "options" ).toObject().value( "decoder" ) == "tshark"
+             && object.value( "previewName" ).toString().isEmpty() )
+            parsed = PreviewConfigParser().parseJson( R"({"version":1,"previews":[]})" );
         if ( !parsed.errors.isEmpty() )
             result = failure( "invalid_definitions" );
         else {
@@ -996,6 +1008,8 @@ int PreviewService::workerMain( int argc, char* argv[] )
             if ( !route.isEmpty() && !python && route.value( "dissector" ).toString().isEmpty() ) {
                 result = failure( "invalid_dissector" );
                 result[ "backend" ] = "tshark_lua";
+                // As for a carrier that cannot be prepared: the fallback's preview (#182 review).
+                result[ "carrierName" ] = direct ? QString() : name;
             }
             else if ( !route.isEmpty() ) {
                 const auto prepared

@@ -63,7 +63,7 @@ dissector on the input. A named dissector decodes the input directly, as UTF-8,
 hex or base64. JSON explicitly selects the legacy renderer. The request budget
 is available in every mode, defaults to 3000 ms and is bounded to 100-10000 ms.
 Its displayed value covers selection, startup and delivery, including Automatic
-routes; a JSON fallback after a TShark/Lua failure may add up to 1.5 s (see
+routes; a JSON fallback after a TShark/Lua failure may add up to 3 s (see
 below). A cold engine may need a larger budget; increase it and run
 again while keeping Automatic selected. Hover keeps its fixed 3000 ms budget.
 
@@ -74,9 +74,10 @@ or an engine failure. The fallback shows the JSON preview of the carrier the
 route was for. Results expose the actual backend, `preferredBackend`,
 `decoderAttempts` and `fallbackReason` (the TShark/Lua failure), and the
 preview pane's status names it. The engine keeps the whole budget; the JSON
-fallback gets what is left of it, and at least 1.5 s, so after a TShark/Lua
-timeout the JSON result arrives up to 1.5 s after the budget. Explicit TShark
-does not fall back: its failure is the result. A completed processing
+fallback gets what is left of it, and at least 3 s, so after a TShark/Lua
+timeout the JSON result arrives up to 3 s after the budget. Explicit TShark
+does not fall back: its failure is the result; definitions it cannot use leave
+it the default dissector on the input. A completed processing
 result does not establish protocol integrity. Engine offsets refer to decoded
 buffers and have unresolved source mapping, not guaranteed positions in the
 original log.
