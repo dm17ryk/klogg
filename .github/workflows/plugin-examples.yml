@@ -44,8 +44,23 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Check that a missing Wireshark fails the install step clearly
+        shell: pwsh
+        run: |
+          # #177: without the tools the install step must stop the job with a clear
+          # message instead of letting 36 decoder tests fail with input_missing.
+          $output = pwsh -NoProfile -File scripts/plugins/install_wireshark.ps1 -VerifyOnly `
+            -InstallDir (Join-Path $env:RUNNER_TEMP 'no-wireshark') 2>&1 | Out-String
+          $exitCode = $LASTEXITCODE
+          # Shown without "::" so this expected failure adds no error annotation.
+          Write-Host "Exit code $exitCode; message: $($output.Trim() -replace '::', ': ')"
+          if ($exitCode -eq 0 -or $output -notmatch 'tshark\.exe, text2pcap\.exe not found') {
+            throw 'install_wireshark.ps1 did not fail clearly without the Wireshark tools'
+          }
       - name: Install real Wireshark command-line tools
-        run: choco install wireshark --yes --no-progress
+        shell: pwsh
+        # Chocolatey with retries, then the pinned official MSI checked by SHA-256 (#177).
+        run: ./scripts/plugins/install_wireshark.ps1
       - name: Prove named Lua PDU dispatch and output limits
         env:
           CILOGG_TSHARK: C:\Program Files\Wireshark\tshark.exe
