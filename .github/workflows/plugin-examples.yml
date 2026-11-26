@@ -29,6 +29,9 @@ jobs:
           if ($exitCode -eq 0 -or $output -notmatch 'tshark\.exe, text2pcap\.exe not found') {
             throw 'install_wireshark.ps1 did not fail clearly without the Wireshark tools'
           }
+          # The runner ends a pwsh step with `exit $LASTEXITCODE`; the expected 1 above
+          # must not fail this step.
+          exit 0
       - name: Install real Wireshark command-line tools
         shell: pwsh
         # Chocolatey with retries, then the pinned official MSI checked by SHA-256 (#177).
