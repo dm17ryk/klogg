@@ -982,6 +982,24 @@ TEST_CASE( "Automatic falls back to JSON after any TShark/Lua failure", "[previe
     }
     CHECK( cancelled.value( "reason" ) == "cancelled" );
     CHECK_FALSE( cancelled.contains( "fallbackReason" ) );
+    // Input the mapped carrier's route cannot carry falls back to that carrier's JSON preview,
+    // even when an earlier JSON-only definition matches the line too.
+    request.definitions
+        = R"({"version":1,"previews":[{"name":"Earlier JSON","regex":"^(?<payload>.*)$","fields":[{"name":"Earlier","source":"capture","capture":"payload","type":"string","format":"string"}]},{"name":"Mapped carrier","regex":"^(?<payload>.*)$","bufferCapture":"payload","type":"string","fields":[{"name":"Message","source":"capture","capture":"payload","type":"string","format":"string"}]}]})";
+    request.text = "invalid hex";
+    request.inputEncoding = "hex";
+    const auto selector = PreviewService::evaluateAndWait( request );
+    INFO( QJsonDocument::fromVariant( selector ).toJson( QJsonDocument::Compact ).toStdString() );
+    CHECK( selector.value( "backend" ) == "json_preview" );
+    CHECK( selector.value( "fallbackReason" ) == "invalid_hex" );
+    CHECK( selector.value( "previewName" ) == "Mapped carrier" );
+    CHECK( firstValue( selector ) == "invalid hex" );
+    CHECK_FALSE( selector.contains( "carrierName" ) );
+    // Explicit TShark shows the failure, without the internal carrier name.
+    request.decoder = "tshark";
+    const auto explicitFailure = PreviewService::evaluateAndWait( request );
+    CHECK( explicitFailure.value( "reason" ) == "invalid_hex" );
+    CHECK_FALSE( explicitFailure.contains( "carrierName" ) );
 }
 
 TEST_CASE( "Explicit TShark resolves its dissector from the route Automatic would use",
