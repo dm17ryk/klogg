@@ -1817,8 +1817,8 @@ void PreviewMessageTab::presentResult( const QVariantMap& result )
         if ( parents.size() > depth )
             parents.resize( depth );
         parents.push_back( item );
-        // Each cell's tooltip starts with its whole text, so a name or value the column cuts off
-        // can be read (#181); an engine row adds the item's attributes.
+        // The Name, Value and Raw tooltips start with the cell's whole text, so a name or value
+        // the column cuts off can be read (#181); an engine row adds the item's attributes.
         const auto attributes = field.value( "attributes" ).toMap();
         const auto details
             = attributes.isEmpty()
@@ -1829,7 +1829,7 @@ void PreviewMessageTab::presentResult( const QVariantMap& result )
                               .toHtmlEscaped()
                         + "</pre>";
         for ( int column = 0; column < 5; ++column ) {
-            const auto text = item->text( column );
+            const auto text = column < 3 ? item->text( column ) : QString();
             if ( text.isEmpty() && details.isEmpty() )
                 continue;
             item->setToolTip( column, text.isEmpty() ? details

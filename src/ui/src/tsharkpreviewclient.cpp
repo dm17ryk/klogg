@@ -21,7 +21,7 @@ bool integer( const QJsonValue& value, double minimum, double maximum )
 // A row's columns as the worker derives them from the item's PDML attributes (#181, see
 // display_columns in message_decoder_preview_worker.py): Name, the display text (showname after
 // "label: ") as Value, Raw, Pos and Size. Text-only items are named by their text, a protocol
-// keeps its showname, and a label Wireshark cut off keeps the raw show value.
+// keeps its showname, and a label or value Wireshark cut off keeps the raw show value.
 QJsonArray displayColumns( const QJsonObject& attributes, bool protocol )
 {
     static const QStringList textOnlyNames{ "", "_ws.lua.text", "text" };
@@ -31,20 +31,28 @@ QJsonArray displayColumns( const QJsonObject& attributes, bool protocol )
     const auto show = text( "show" );
     const auto showname = text( "showname" );
     QString value;
-    if ( !protocol && textOnlyNames.contains( name ) && !( showname + show ).isEmpty() )
+    const bool textOnly
+        = !protocol && textOnlyNames.contains( name ) && !( showname + show ).isEmpty();
+    if ( textOnly )
         name = showname.isEmpty() ? show : showname;
     else if ( protocol || !attributes.contains( "showname" ) || !showname.contains( ": " ) )
         value = attributes.contains( "show" ) ? show : showname;
     else {
-        // Wireshark's mark follows the field's name ("Name […]: ..."); the same text in the
-        // value is the dissector's own (appended text).
+        // Wireshark marks a cut label with " […]" right after the field's name ("Name […]: ...")
+        // and a cut value with "…" after a prefix of the value; the same text elsewhere is the
+        // dissector's own (appended text).
         const auto separator = showname.indexOf( ": " );
-        value = showname.left( separator ).endsWith( truncatedLabel ) && !show.isEmpty()
-                    ? show
-                    : showname.mid( separator + 2 );
+        value = showname.mid( separator + 2 );
+        const bool cutValue = value.endsWith( QChar( 0x2026 ) ) && show != value
+                              && show.startsWith( value.chopped( 1 ) );
+        if ( !show.isEmpty()
+             && ( showname.left( separator ).endsWith( truncatedLabel ) || cutValue ) )
+            value = show;
     }
-    // The raw bytes, or else the raw show value (also when it reads as Value does).
-    const auto raw = attributes.contains( "value" ) ? text( "value" ) : show;
+    // The raw bytes, or else the raw show value; a text-only item's text is its name already.
+    const auto raw = attributes.contains( "value" ) ? text( "value" )
+                     : textOnly                     ? QString()
+                                                    : show;
     return { name, value, raw, text( "pos" ), text( "size" ) };
 }
 bool validResponse( const QJsonObject& value, const QString& id )

@@ -340,8 +340,10 @@ def response_base(identity, profile):
 
 # Items without a field of their own: a Lua TreeItem added with a text label, and legacy text.
 TEXT_ONLY_NAMES = {"", "_ws.lua.text", "text"}
-# Wireshark marks a label it cut off with this after the field's name.
+# Wireshark marks a label it cut off with this after the field's name, and a value it cut off
+# with an ellipsis at its end.
 TRUNCATED_LABEL = " […]"
+ELLIPSIS = "…"
 
 
 def display_columns(kind, attr):
@@ -351,19 +353,26 @@ def display_columns(kind, attr):
     a label Wireshark cut off keeps the whole raw show value."""
     name = attr.get("name", "")
     show, showname = attr.get("show"), attr.get("showname")
-    if kind != "proto" and name in TEXT_ONLY_NAMES and (showname or show):
+    text_only = kind != "proto" and name in TEXT_ONLY_NAMES and bool(showname or show)
+    if text_only:
         name, value = showname or show, ""
     elif kind == "proto" or showname is None or ": " not in showname:
         value = show if show is not None else showname or ""
     else:
-        # Wireshark puts its mark right after the field's name ("Name […]: ..."); the same text
-        # in the value is the dissector's own (appended text).
+        # Wireshark marks a label it cut with " […]" right after the field's name ("Name […]: ..."),
+        # and a value it cut with "…" after a prefix of the value. The same text elsewhere is the
+        # dissector's own (appended text).
         label, value = showname.split(": ", 1)
-        if label.endswith(TRUNCATED_LABEL) and show:
+        cut_value = (
+            bool(show) and value.endswith(ELLIPSIS) and show != value
+            and show.startswith(value[:-1])
+        )
+        if show and (label.endswith(TRUNCATED_LABEL) or cut_value):
             value = show
+    # The raw bytes, or else the raw show value; a text-only item's text is its name already.
     raw = attr.get("value")
     if raw is None:
-        raw = show or ""
+        raw = "" if text_only else show or ""
     return [name, value, raw, attr.get("pos", ""), attr.get("size", "")]
 
 

@@ -116,7 +116,9 @@ class WireTests(unittest.TestCase):
         <field name="probe.more" showname="More: Battery OK (0) […]" size="1" pos="2" show="0" value="00"/>
         <field name="probe.generated" showname="Generated: Ready (7)" size="0" pos="0" show="7"/>
         <field name="probe.count" showname="Count: 3" size="0" pos="0" show="3"/>
+        <field name="probe.long" showname="Long: abcde…" size="10" pos="0" show="abcdefghij" value="6162636465666768696a"/>
         <field show="Plain legacy text" size="1" pos="4" value="00"/>
+        <field show="Bare legacy text" size="0" pos="4"/>
         </proto></packet></pdml>""".encode("utf-8"),
             node_limit=2048,
             depth_limit=32,
@@ -139,11 +141,15 @@ class WireTests(unittest.TestCase):
                 # Without raw bytes, Raw keeps the raw show value, also when Value reads the same.
                 ["probe.generated", "Ready (7)", "7", "0", "0"],
                 ["probe.count", "3", "3", "0", "0"],
+                # A value Wireshark cut off ("…" after a prefix of show) shows the whole show.
+                ["probe.long", "abcdefghij", "6162636465666768696a", "0", "10"],
                 ["Plain legacy text", "", "00", "4", "1"],
+                # A text-only item's text is its name; Raw holds raw bytes only.
+                ["Bare legacy text", "", "", "4", "0"],
             ],
         )
         self.assertEqual(fields[1]["attributes"]["name"], "_ws.lua.text")
-        self.assertEqual([field["depth"] for field in fields], [0, 1, 2, 2, 1, 1, 1, 1, 1, 1])
+        self.assertEqual([field["depth"] for field in fields], [0, 1, 2, 2] + [1] * 8)
 
     def test_pdml_limits_and_dtd_are_explicit_errors(self):
         for data, limits, reason in [
