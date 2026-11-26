@@ -747,7 +747,8 @@ tabs ("<pack name>: <decoder id>", the pack's ID added when two packs share a na
 and the module in its tooltip), each route's decoder says whose it is, that it has no `decode()`, or
 that its pack is not enabled, and a preview's tooltip and status name the decoder with its pack
 (`PreviewService::pythonDecoderLabel`). The menu offers the modules that bind `decode` at their top
-level (`def` or `async def decode(`, `decode =`, or an import that binds the name), kept in
+level (`def decode(`, `decode =`, or an import that binds the name; not `async def`, since the
+worker calls `decode()` without awaiting it), kept in
 `PreviewDecoderPacks::pythonEntries`; the helper modules a pack lists so the worker copies them are
 left out. The check reads the module's statements (not its strings, comments, bracketed
 continuation lines or one-line compound bodies) and never runs it, so a module that binds the name

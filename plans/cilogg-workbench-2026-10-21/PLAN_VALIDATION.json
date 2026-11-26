@@ -1593,6 +1593,15 @@
           "P2 (fixed): match/case used as names before a semicolon hid the binding; only hard keywords open a compound statement, and an indented semicolon no longer yields a top-level statement"
         ],
         "result": "fixed in the commit after cf4547fd"
+      },
+      {
+        "head": "beb5125b",
+        "reviewer": "Codex review bot",
+        "findings": [
+          "P2 (fixed): async def decode was offered but the worker never awaits it; async def no longer counts",
+          "P2 (fixed): semicolons on a long one-line suite rescanned the line (quadratic); the scan keeps the line start and reads its first characters only"
+        ],
+        "result": "fixed in the commit after beb5125b"
       }
     ]
   }

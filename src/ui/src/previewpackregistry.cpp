@@ -38,6 +38,15 @@ QString pythonCode( const QString& text )
     code.reserve( text.size() );
     const auto size = text.size();
     int depth = 0;
+    // Where the current line starts in `code`: each semicolon looks at that line's first
+    // characters only, so a long line costs linear time.
+    qsizetype lineStart = 0;
+    const auto append = [ &code, &lineStart ]( QChar character ) {
+        code += character;
+        if ( character == QLatin1Char( '\n' ) ) {
+            lineStart = code.size();
+        }
+    };
     const auto closes = [ &text, size ]( qsizetype at, QChar quote, bool triple ) {
         return text[ at ] == quote
                && ( !triple
@@ -54,7 +63,7 @@ QString pythonCode( const QString& text )
         if ( c != QLatin1Char( '\'' ) && c != QLatin1Char( '"' ) ) {
             if ( c == QLatin1Char( '\\' ) && at + 1 < size
                  && text[ at + 1 ] == QLatin1Char( '\n' ) ) {
-                code += QLatin1Char( ' ' );
+                append( QLatin1Char( ' ' ) );
                 at += 2;
                 continue;
             }
@@ -75,9 +84,9 @@ QString pythonCode( const QString& text )
             if ( c == QLatin1Char( ';' ) && depth == 0 ) {
                 static const QRegularExpression statement( QStringLiteral(
                     R"(^(?![ \t])(?!(?:async[ \t]+)?(?:def|class|if|elif|else|for|while|with|try|except|finally)\b))" ) );
-                if ( statement.match( code.mid( code.lastIndexOf( QLatin1Char( '\n' ) ) + 1 ) )
-                         .hasMatch() ) {
-                    code += QLatin1Char( '\n' );
+                // The keywords fit in the line's first characters.
+                if ( statement.match( code.mid( lineStart, 48 ) ).hasMatch() ) {
+                    append( QLatin1Char( '\n' ) );
                     ++at;
                     // The next statement starts here: no indentation before it.
                     while ( at < size
@@ -88,7 +97,7 @@ QString pythonCode( const QString& text )
                     continue;
                 }
             }
-            code += c == QLatin1Char( '\n' ) && depth > 0 ? QChar( QLatin1Char( ' ' ) ) : c;
+            append( c == QLatin1Char( '\n' ) && depth > 0 ? QChar( QLatin1Char( ' ' ) ) : c );
             ++at;
             continue;
         }
@@ -109,7 +118,7 @@ QString pythonCode( const QString& text )
                 if ( !triple ) {
                     break;
                 }
-                code += depth > 0 ? QLatin1Char( ' ' ) : QLatin1Char( '\n' );
+                append( depth > 0 ? QLatin1Char( ' ' ) : QLatin1Char( '\n' ) );
             }
             ++at;
         }
@@ -118,11 +127,11 @@ QString pythonCode( const QString& text )
     return code;
 }
 
-// Whether a pack's Python module binds `decode` at its top level (E16b): `def` or `async def
-// decode(`, `decode =` (annotated too) or an import that binds the name, outside strings and
-// comments. Preview Decoder Settings offers these modules as decoders and leaves out the helpers a
-// pack lists so the worker copies them; a module that binds the name otherwise can still be routed
-// by typing its target.
+// Whether a pack's Python module binds `decode` at its top level (E16b): `def decode(`, `decode =`
+// (annotated too) or an import that binds the name, outside strings and comments. Not `async def`:
+// the worker calls decode() and never awaits it. Preview Decoder Settings offers these modules as
+// decoders and leaves out the helpers a pack lists so the worker copies them; a module that binds
+// the name otherwise can still be routed by typing its target.
 bool bindsDecode( const QString& path )
 {
     QFile file( path );
@@ -131,7 +140,7 @@ bool bindsDecode( const QString& path )
     }
     auto text = QString::fromUtf8( file.read( cilogg::plugins::MaxPackFileBytes ) );
     // Python reads a module that starts with a UTF-8 byte order mark; fromUtf8 keeps it as U+FEFF.
-    if ( text.startsWith( QChar( u'﻿' ) ) ) {
+    if ( text.startsWith( QChar( char16_t( 0xFEFF ) ) ) ) {
         text.remove( 0, 1 );
     }
     // Python's newlines: \r\n, \n and a lone \r.
@@ -139,8 +148,7 @@ bool bindsDecode( const QString& path )
     text.replace( QLatin1Char( '\r' ), QLatin1Char( '\n' ) );
     const auto code = pythonCode( text );
     static const QRegularExpression definition(
-        QStringLiteral(
-            R"(^(?:async[ \t]+)?def[ \t]+decode[ \t]*\(|^decode[ \t]*(?::[^=\n]*)?=(?!=))" ),
+        QStringLiteral( R"(^def[ \t]+decode[ \t]*\(|^decode[ \t]*(?::[^=\n]*)?=(?!=))" ),
         QRegularExpression::MultilineOption );
     if ( definition.match( code ).hasMatch() ) {
         return true;

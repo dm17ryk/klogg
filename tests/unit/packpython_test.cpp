@@ -506,6 +506,7 @@ TEST_CASE( "Only the modules that define decode() are offered as decoders", "[pa
     const QMap<QString, QByteArray> modules{
         { "plain", "def decode(payload, context):\n    return None\n" },
         { "crlf", "import struct\r\n\r\ndef decode(payload, context):\r\n    return None\r\n" },
+        // The worker calls decode() and never awaits it: an async one is not offered.
         { "asynchronous", "async def decode(payload, context):\n    return None\n" },
         { "assigned", "def _impl(payload, context):\n    return None\ndecode = _impl\n" },
         { "annotated", "from typing import Callable\ndecode: Callable = lambda p, c: None\n" },
@@ -566,9 +567,43 @@ TEST_CASE( "Only the modules that define decode() are offered as decoders", "[pa
     auto entries = pack.pythonEntries;
     entries.sort();
     CHECK( entries
-           == QStringList{ "afterbrackets", "annotated", "assigned", "asynchronous", "bom",
-                           "continued", "cr", "crlf", "escaped", "imported", "parenthesized",
-                           "plain", "rebound", "semicolon", "semicolonassign", "softkeyword" } );
+           == QStringList{ "afterbrackets", "annotated", "assigned", "bom", "continued", "cr",
+                           "crlf", "escaped", "imported", "parenthesized", "plain", "rebound",
+                           "semicolon", "semicolonassign", "softkeyword" } );
+}
+
+TEST_CASE( "The decode() check reads a module near the size limit in linear time",
+           "[packpython][E16]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    // One line of 200,000 statements after a compound header (about 1 MB), then a real decode().
+    QByteArray module = "def helper(): ";
+    for ( int index = 0; index < 200000; ++index ) {
+        module += "x=1; ";
+    }
+    module += "\ndef decode(payload, context):\n    return None\n";
+    REQUIRE( module.size() < MaxPackFileBytes );
+    writeFile( root.filePath( "python/long.py" ), module );
+    const QJsonObject manifest{
+        { "id", PackId },
+        { "name", PackName },
+        { "version", "1.0.0" },
+        { "protocol_version", 1 },
+        { "kind", "config-pack" },
+        { "pack_format", 1 },
+        { "content", QJsonObject{ { "python_decoders",
+                                    QJsonArray{ QJsonObject{
+                                        { "id", "long" }, { "module", "python/long.py" } } } } } }
+    };
+    QElapsedTimer clock;
+    clock.start();
+    const auto pack = PreviewPackRegistry::read( PackId, root.path(), manifest );
+    INFO( "elapsed ms " << clock.elapsed() );
+    REQUIRE( pack.error.isEmpty() );
+    CHECK( pack.pythonEntries == QStringList{ "long" } );
+    // Linear work takes milliseconds; copying the line at each semicolon took minutes.
+    CHECK( clock.elapsed() < 5000 );
 }
 
 TEST_CASE( "A pack lists at most 32 Python decoders", "[packpython][E16]" )
