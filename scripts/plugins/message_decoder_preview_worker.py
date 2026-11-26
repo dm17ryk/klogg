@@ -346,8 +346,8 @@ TRUNCATED_LABEL = " […]"
 
 def display_columns(kind, attr):
     """A row's columns as Wireshark shows the item (#181): Name, the dissector's display text as
-    Value (its showname after "label: "), Raw (the raw bytes, or the raw show value when the item
-    has none), Pos and Size. A text-only item is named by its text; a protocol keeps its showname;
+    Value (its showname after "label: "), Raw (the raw bytes, or else the raw show value), Pos and
+    Size. A text-only item is named by its text; a protocol keeps its showname;
     a label Wireshark cut off keeps the whole raw show value."""
     name = attr.get("name", "")
     show, showname = attr.get("show"), attr.get("showname")
@@ -363,7 +363,7 @@ def display_columns(kind, attr):
             value = show
     raw = attr.get("value")
     if raw is None:
-        raw = show if show and show != value else ""
+        raw = show or ""
     return [name, value, raw, attr.get("pos", ""), attr.get("size", "")]
 
 

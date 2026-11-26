@@ -43,9 +43,8 @@ QJsonArray displayColumns( const QJsonObject& attributes, bool protocol )
                     ? show
                     : showname.mid( separator + 2 );
     }
-    const auto raw = attributes.contains( "value" ) ? text( "value" )
-                     : !show.isEmpty() && show != value ? show
-                                                        : QString();
+    // The raw bytes, or else the raw show value (also when it reads as Value does).
+    const auto raw = attributes.contains( "value" ) ? text( "value" ) : show;
     return { name, value, raw, text( "pos" ), text( "size" ) };
 }
 bool validResponse( const QJsonObject& value, const QString& id )
