@@ -798,6 +798,21 @@ TEST_CASE( "The dialog lists the saved TShark's protocols once it proves its iso
         REQUIRE( QTest::qWaitFor( [ & ] { return !dialog.isVisible(); }, 10000 ) );
         CHECK( warnings->text().isEmpty() );
     }
+    SECTION( "OK waiting for a list that no longer comes decides at once" )
+    {
+        qputenv( "CILOGG_FAKE_TSHARK_MODE", "slow" );
+        dialog.show();
+        buttons->button( QDialogButtonBox::Ok )->click();
+        CHECK( dialog.isVisible() );
+        CHECK( note->text().contains( "Checking the routes" ) );
+        // The decoder disabled elsewhere while TShark lists: that list is dropped, nothing is
+        // left to wait for, and with nothing new to show OK closes.
+        auto config = PreviewDecoderSettings::instance().configuration();
+        config.insert( "enabled", false );
+        REQUIRE( PreviewDecoderSettings::instance().setConfiguration( config ) );
+        CHECK_FALSE( dialog.isVisible() );
+        CHECK( warnings->text().isEmpty() );
+    }
     SECTION( "nothing is listed unless the isolation is proven" )
     {
         qputenv( "CILOGG_FAKE_TSHARK_MODE", "unisolated" );

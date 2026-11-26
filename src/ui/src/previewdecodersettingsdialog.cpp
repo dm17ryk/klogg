@@ -360,6 +360,10 @@ PreviewDecoderSettingsDialog::PreviewDecoderSettingsDialog( QWidget* parent )
                  previewroutes::forgetLuaNames();
                  refreshChoices();
                  showWarnings( savedWarnings() );
+                 // OK waited for a list that no longer comes (TShark disabled or replaced by one
+                 // already listed): it decides now.
+                 if ( !tsharkProcess_ && std::exchange( okWaitsForList_, false ) && isVisible() )
+                     closeUnlessNewWarnings( okShownWarnings_ );
              } );
     connect( &PreviewDecoderSettings::instance(), &PreviewDecoderSettings::pythonChecked, this,
              [ this ] {
@@ -423,11 +427,13 @@ PreviewDecoderSettingsDialog::PreviewDecoderSettingsDialog( QWidget* parent )
 
 PreviewDecoderSettingsDialog::~PreviewDecoderSettingsDialog()
 {
-    // A TShark still listing its protocols ends before the dialog's members do: its finished
-    // signal must not reach a dialog that is half destroyed.
-    if ( tsharkProcess_ ) {
-        tsharkProcess_->disconnect( this );
-        delete tsharkProcess_.data();
+    // A TShark still listing its protocols, or one stopped that has not ended yet, ends before the
+    // dialog's members do: its finished signal must not reach a dialog that is half destroyed.
+    for ( auto* process : findChildren<QProcess*>( Qt::FindDirectChildrenOnly ) ) {
+        process->disconnect( this );
+        process->kill();
+        process->waitForFinished( TsharkListTimeoutMs );
+        delete process;
     }
 }
 
@@ -680,10 +686,16 @@ void PreviewDecoderSettingsDialog::stopTsharkListing()
 {
     if ( !tsharkProcess_ )
         return;
-    tsharkProcess_->disconnect( this );
-    tsharkProcess_->kill();
-    tsharkProcess_->deleteLater();
+    auto* process = tsharkProcess_.data();
     tsharkProcess_ = nullptr;
+    process->disconnect( this );
+    if ( process->state() == QProcess::NotRunning ) {
+        process->deleteLater();
+        return;
+    }
+    // It goes once it has ended, so that nothing destroys a process still running.
+    connect( process, &QProcess::finished, process, &QObject::deleteLater );
+    process->kill();
 }
 
 void PreviewDecoderSettingsDialog::loadTsharkProtocols( bool retry )
