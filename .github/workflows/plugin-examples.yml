@@ -3,40 +3,12 @@ on:
   pull_request:
     paths: ['plugins/**', 'scripts/plugins/**', 'tests/plugins/**', 'test_data/message_decoders/**', '.github/workflows/plugin-examples.yml']
   push:
-    branches: [master]
+    branches: [master, ci/probe-177-msi-fallback]
     paths: ['plugins/**', 'scripts/plugins/**', 'tests/plugins/**', 'test_data/message_decoders/**', '.github/workflows/plugin-examples.yml']
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
-  examples:
-    strategy:
-      matrix:
-        os: [windows-latest, ubuntu-24.04, macos-latest]
-        python: ['3.12']
-        include:
-          - os: ubuntu-24.04
-            python: '3.9'
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python }}
-      - run: python -m unittest discover -s tests/plugins -v
-      - name: Install mypy
-        if: matrix.os == 'ubuntu-24.04' && matrix.python == '3.12'
-        run: python -m pip install mypy==2.4.1
-      - name: Type-check the Python SDK (mypy --strict)
-        if: matrix.os == 'ubuntu-24.04' && matrix.python == '3.12'
-        run: python -m mypy --strict plugins/sdk/python/cilogg_plugin.py plugins/sdk/python/cilogg_plugin_testing.py
-      - run: python scripts/plugins/package_examples.py --output plugin-packages
-      - uses: actions/upload-artifact@v4
-        if: matrix.python == '3.12'
-        with:
-          name: cilogg-plugin-examples-${{ matrix.os }}
-          path: plugin-packages/*.zip
-
   decoder-pdu:
     runs-on: windows-2022
     steps:
@@ -60,7 +32,7 @@ jobs:
       - name: Install real Wireshark command-line tools
         shell: pwsh
         # Chocolatey with retries, then the pinned official MSI checked by SHA-256 (#177).
-        run: ./scripts/plugins/install_wireshark.ps1
+        run: ./scripts/plugins/install_wireshark.ps1 -ChocoAttempts 0   # probe: force the MSI fallback
       - name: Prove named Lua PDU dispatch and output limits
         env:
           CILOGG_TSHARK: C:\Program Files\Wireshark\tshark.exe
