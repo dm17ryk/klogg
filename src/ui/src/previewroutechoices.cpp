@@ -7,8 +7,10 @@
 #include "previewmanager.h"
 
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
 #include <QSet>
 
 #include <algorithm>
@@ -227,6 +229,29 @@ QStringList Choices::routeTargets() const
     return names;
 }
 
+namespace {
+// The names a Lua file declares, read once per version of it (path, size and time): the dialog
+// collects its choices on opening, on Apply and when the packs change, and the selected and pack
+// files together may be 32 files of up to 1 MiB.
+QStringList cachedLuaNames( const QString& path )
+{
+    constexpr int CacheLimit = 256;
+    static QHash<QString, QStringList> cache;
+    const QFileInfo info( path );
+    const auto key = QStringLiteral( "%1|%2|%3" )
+                         .arg( info.absoluteFilePath() )
+                         .arg( info.size() )
+                         .arg( info.lastModified().toMSecsSinceEpoch() );
+    if ( const auto found = cache.constFind( key ); found != cache.cend() )
+        return *found;
+    if ( cache.size() >= CacheLimit )
+        cache.clear();
+    const auto names = luaProtoNamesInFile( path );
+    cache.insert( key, names );
+    return names;
+}
+} // namespace
+
 Choices collect( const QStringList& userLua )
 {
     Choices choices;
@@ -237,11 +262,11 @@ Choices collect( const QStringList& userLua )
         appendUnique( &choices.previews, { preview.name } );
     choices.assemblyProtocols = assembledPreviewProtocols();
     for ( const auto& path : userLua )
-        choices.lua.append( { path, luaProtoNamesInFile( path ) } );
+        choices.lua.append( { path, cachedLuaNames( path ) } );
     const auto packs = PreviewDecoderSettings::instance().packs();
     for ( const auto& pack : packs.lua ) {
         for ( const auto& path : pack.toMap().value( "files" ).toStringList() )
-            choices.lua.append( { path, luaProtoNamesInFile( path ) } );
+            choices.lua.append( { path, cachedLuaNames( path ) } );
     }
     // Only the modules Python's check found a decode() in are decoders; the others are helpers
     // the pack lists so the worker copies them (E16b).
@@ -257,7 +282,6 @@ Choices collect( const QStringList& userLua )
                 appendUnique( &choices.python, { target } );
         }
     }
-    choices.pythonPending = packs.pythonCheck != QLatin1String( "done" );
     LOG_DEBUG << "Preview route choices collected previews=" << choices.previews.size()
               << " lua_files=" << choices.lua.size() << " lua_names=" << choices.luaNames().size()
               << " python=" << choices.python.size();
@@ -348,10 +372,9 @@ void checkRoutes( const QVariantMap& routes, const QString& label, const Choices
         const auto field = label.arg( route.key() );
         if ( entry.contains( "python" ) ) {
             const auto target = entry.value( "python" ).toString();
-            // A listed module waits for Python's check to tell whether it is a decoder.
-            const bool unchecked = choices.pythonPending
-                                   && choices.pythonModules.contains( PythonPrefix + target );
-            if ( !choices.python.contains( PythonPrefix + target ) && !unchecked ) {
+            // Routing runs any module an enabled pack lists; whether Python's check offers it as
+            // a decoder is told by the route's tooltip.
+            if ( !choices.pythonModules.contains( PythonPrefix + target ) ) {
                 warnings->append(
                     { field, target, {},
                       tr( "`python:%1`: no enabled pack has this decoder, so the route does "

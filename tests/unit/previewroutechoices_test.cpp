@@ -161,6 +161,21 @@ TEST_CASE( "Lua Proto declarations give the dissector names", "[previewroutes]" 
     }
 }
 
+TEST_CASE( "Collected Lua names follow the file's changes", "[previewroutes]" )
+{
+    // The names are read once per version of a file (path, size and time), not on each collect.
+    QTemporaryDir dir;
+    REQUIRE( dir.isValid() );
+    const auto path = writeFile( dir, "changing.lua", "local a = Proto('first', 'x')\n" );
+    // The selected files come first, before any enabled pack's.
+    const auto names = [ & ] { return previewroutes::collect( { path } ).lua.front().names; };
+    CHECK( names() == QStringList{ "first" } );
+    CHECK( names() == QStringList{ "first" } );
+    writeFile( dir, "changing.lua",
+               "local a = Proto('second', 'x')\nlocal b = Proto('third_one', 'y')\n" );
+    CHECK( names() == QStringList{ "second", "third_one" } );
+}
+
 TEST_CASE( "TShark's protocol list gives its filter names", "[previewroutes]" )
 {
     const QByteArray output = "Data\tData\tdata\tT\tT\tF\r\n"
@@ -181,6 +196,7 @@ TEST_CASE( "Apply warns about dissectors nothing declares", "[previewroutes]" )
                     // Declares its name through a variable: nothing to read.
                     { "C:/lua/dynamic.lua", {} } };
     choices.python = { "python:org.example.alpha/summary" };
+    choices.pythonModules = { "python:org.example.alpha/summary" };
     choices.tshark = { "data", "json" };
     choices.tsharkLoaded = true;
     QVariantMap configuration{
@@ -276,23 +292,19 @@ TEST_CASE( "Apply warns about dissectors nothing declares", "[previewroutes]" )
         CHECK( names.contains( "my_proto.lua" ) );
         CHECK( names.contains( "org.example.alpha/missing" ) );
     }
-    SECTION( "a helper module is no decoder, unless Python's check has not ended" )
+    SECTION( "a module its pack lists is not reported, even one not offered as a decoder" )
     {
+        // Routing runs every listed module; Python's check only decides what is offered (its
+        // reasons show in the route's tooltip), and a decode() bound at run time still works.
         choices.pythonModules = { "python:org.example.alpha/summary",
                                   "python:org.example.alpha/helper" };
         configuration[ "protocolRoutes" ] = QVariantMap{
             { "EHCI", QVariantMap{ { "python", "org.example.alpha/helper" } } } };
-        const auto pythonNames = [ & ] {
-            QStringList names;
-            for ( const auto& warning : previewroutes::check( configuration, choices ) )
-                names << warning.name;
-            return names;
-        };
-        CHECK( pythonNames().contains( "org.example.alpha/helper" ) );
-        choices.pythonPending = true;
-        CHECK_FALSE( pythonNames().contains( "org.example.alpha/helper" ) );
-        // A module no enabled pack lists is reported all the same.
-        CHECK( pythonNames().contains( "org.example.alpha/missing" ) );
+        QStringList names;
+        for ( const auto& warning : previewroutes::check( configuration, choices ) )
+            names << warning.name;
+        CHECK_FALSE( names.contains( "org.example.alpha/helper" ) );
+        CHECK( names.contains( "org.example.alpha/missing" ) );
     }
     SECTION( "nothing to report" )
     {

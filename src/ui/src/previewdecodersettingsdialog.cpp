@@ -350,17 +350,24 @@ PreviewDecoderSettingsDialog::PreviewDecoderSettingsDialog( QWidget* parent )
                                  &previewAddPython_ );
     protocolRoutes_ = routeTable( tabs, "decoderProtocolRoutes", tr( "Assembly protocol routes" ),
                                   true, &protocolAddPython_ );
-    // The packs can change while the dialog is open: its menus, descriptions, drop-downs and
-    // warnings follow them, also when Python's check of the packs' modules ends (E16b).
-    const auto packsChanged = [ this ] {
-        refreshPythonDecoders();
-        refreshChoices();
-        showWarnings( savedWarnings() );
-    };
+    // The settings and the packs can change while the dialog is open: its menus, descriptions,
+    // drop-downs and warnings follow them, also when Python's check of the packs' modules ends
+    // (E16b). A change of the settings (another TShark saved elsewhere, or the watched TShark
+    // replaced) also reads the TShark list again; an unchanged TShark keeps its list.
     connect( &PreviewDecoderSettings::instance(), &PreviewDecoderSettings::changed, this,
-             packsChanged );
+             [ this ] {
+                 refreshPythonDecoders();
+                 if ( isVisible() )
+                     loadTsharkProtocols();
+                 refreshChoices();
+                 showWarnings( savedWarnings() );
+             } );
     connect( &PreviewDecoderSettings::instance(), &PreviewDecoderSettings::pythonChecked, this,
-             packsChanged );
+             [ this ] {
+                 refreshPythonDecoders();
+                 refreshChoices();
+                 showWarnings( savedWarnings() );
+             } );
     layout->addWidget( tabs, 1 );
     choicesStatus_ = new QLabel( this );
     identity( choicesStatus_, "decoderChoicesStatus", tr( "Offered dissectors" ) );
