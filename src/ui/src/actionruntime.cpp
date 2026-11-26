@@ -492,17 +492,6 @@ bool executeResponseDefinition( StreamSession* session, const ResponseDefinition
         { { QStringLiteral( "responseId" ), response.id },
           { QStringLiteral( "captureNames" ), QStringList( captures.keys() ) } } );
 
-    if ( response.response.hasInlineAction ) {
-        ActionDefinition inlineAction;
-        inlineAction.name = response.name;
-        inlineAction.sequence = response.response.inlineAction;
-        LOG_DEBUG << "Response id=" << response.id << " executing inline action";
-        if ( !sendActionDefinition( session, inlineAction, capturesToParameters( captures ), -1,
-                                    errorMessage, true ) ) {
-            return false;
-        }
-    }
-
     QVector<ActionDefinition> linkedActions;
     QVector<int> linkedDelays;
     QVector<QVariantMap> linkedParameters;
@@ -526,6 +515,19 @@ bool executeResponseDefinition( StreamSession* session, const ResponseDefinition
             return false;
         }
         linkedParameters.push_back( *parameters );
+    }
+
+    // Only once every step can run: a response that cannot run all of it (a step whose action is
+    // gone, or a pack action whose pack is disabled) sends nothing, its inline action included.
+    if ( response.response.hasInlineAction ) {
+        ActionDefinition inlineAction;
+        inlineAction.name = response.name;
+        inlineAction.sequence = response.response.inlineAction;
+        LOG_DEBUG << "Response id=" << response.id << " executing inline action";
+        if ( !sendActionDefinition( session, inlineAction, capturesToParameters( captures ), -1,
+                                    errorMessage, true ) ) {
+            return false;
+        }
     }
 
     int cumulativeDelay = 0;

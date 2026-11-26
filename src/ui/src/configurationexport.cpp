@@ -99,10 +99,18 @@ bool validPaneLayouts( const SessionInfo& session, QString* error )
     return true;
 }
 
+// Keys that are not preferences: the highlighter and filter definitions (exported on their own),
+// and the configuration packs' item state of this PC (E16c3: run-time ids and which pack
+// responses are on), which no export, project snapshot or project ever carries or replaces.
+bool isPackStateKey( const QString& key )
+{
+    return key.startsWith( "PackActions/" );
+}
+
 bool isDefinitionKey( const QString& key )
 {
     return key.startsWith( "HighlighterSetCollection/" )
-           || key.startsWith( "PredefinedFiltersCollection/" );
+           || key.startsWith( "PredefinedFiltersCollection/" ) || isPackStateKey( key );
 }
 
 QVector<int> allRows( int count )
@@ -671,7 +679,15 @@ bool applyProjectConfiguration( const ConfigurationProject& project, QString* er
     }
     settings.clear();
     for ( auto it = project.preferences.cbegin(); it != project.preferences.cend(); ++it ) {
-        settings.setValue( it.key(), it.value() );
+        if ( !isPackStateKey( it.key() ) ) {
+            settings.setValue( it.key(), it.value() );
+        }
+    }
+    // The packs' item state stays this PC's (a project never turns a pack response on).
+    for ( auto it = oldSettings.cbegin(); it != oldSettings.cend(); ++it ) {
+        if ( isPackStateKey( it.key() ) ) {
+            settings.setValue( it.key(), it.value() );
+        }
     }
     project.highlights.saveToStorage( settings );
     project.filters.saveToStorage( settings );

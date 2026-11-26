@@ -10,6 +10,7 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QPushButton>
+#include <QSettings>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -257,6 +258,44 @@ TEST_CASE( "Project round trip restores all definitions preferences session and 
     REQUIRE_FALSE( Configuration::get().showTabsBarByDefault() );
     const auto activeHighlightId = loaded.highlights.activeSetIds().front();
     REQUIRE( HighlighterSetCollection::get().activeSetIds().contains( activeHighlightId ) );
+}
+
+TEST_CASE( "Projects and exports never carry or replace this PC's pack item state",
+           "[configurationexport][project][E16]" )
+{
+    // E16c3 (review of #176): which pack responses are on, and the packs' run-time ids, are this
+    // PC's; a project or a preferences export never carries them, and a project never turns a
+    // pack response on.
+    ConfigurationRestoreGuard restore;
+    seedConfiguration();
+    auto& settings = PersistentInfo::getSettings( app_settings{} );
+    settings.setValue( "PackActions/a.pack/on/3", true );
+    settings.setValue( "PackActions/a.pack/actions/7", 1000004 );
+    settings.sync();
+    QTemporaryDir directory;
+    REQUIRE( directory.isValid() );
+    QString error;
+    ConfigurationProject snapshot;
+    REQUIRE( ConfigurationExport::captureConfiguration( &snapshot, &error ) );
+    for ( auto it = snapshot.preferences.cbegin(); it != snapshot.preferences.cend(); ++it ) {
+        INFO( it.key().toStdString() );
+        CHECK_FALSE( it.key().startsWith( "PackActions/" ) );
+    }
+    const auto preferencesPath = directory.filePath( "preferences.conf" );
+    REQUIRE( ConfigurationExport::exportSelected( ConfigurationExportKind::Preferences, {},
+                                                  preferencesPath, &error ) );
+    QSettings exported( preferencesPath, QSettings::IniFormat );
+    for ( const auto& key : exported.allKeys() ) {
+        INFO( key.toStdString() );
+        CHECK_FALSE( key.startsWith( "PackActions/" ) );
+    }
+    // A project from another PC (or a crafted one) with pack state of its own.
+    snapshot.preferences.insert( "PackActions/a.pack/on/4", true );
+    REQUIRE( ConfigurationExport::applyProjectConfiguration( snapshot, &error ) );
+    CHECK( settings.value( "PackActions/a.pack/on/3" ).toBool() );
+    CHECK( settings.value( "PackActions/a.pack/actions/7" ).toInt() == 1000004 );
+    CHECK_FALSE( settings.contains( "PackActions/a.pack/on/4" ) );
+    settings.remove( "PackActions" );
 }
 
 TEST_CASE( "Project snapshots use relative references and failed save preserves previous manifest",

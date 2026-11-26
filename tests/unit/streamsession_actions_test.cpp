@@ -739,6 +739,27 @@ TEST_CASE( "Delayed work of a pack's response stops when the packs change",
     settings.remove( "PackActions" );
 }
 
+TEST_CASE( "A response that cannot run every step sends nothing, its inline action included",
+           "[serial][session][actions][actionruntime][E16]" )
+{
+    // E16c3 (independent review of #176): a step whose pack action no enabled pack has.
+    ScopedActionsState restore;
+    auto& manager = ActionsManager::instance();
+    manager.setAutoResponsesEnabled( true );
+    auto response = testResponse( 7301 );
+    response.response.hasInlineAction = true;
+    response.response.inlineAction.value = QStringLiteral( "INLINE" );
+    response.response.steps = { { -2, 0, {}, QStringLiteral( "a.pack/1" ) } };
+    StreamSession session( settingsFor( QStringLiteral( "TEST_RESPONSE_UNRESOLVED" ) ) );
+    StreamSessionTestAccess::openConnection( session );
+    QSignalSpy dispatched( &session, &StreamSession::actionSent );
+    QString error;
+    CHECK_FALSE( executeResponseDefinition( &session, response, {}, &error ) );
+    CHECK( error.contains( "Unknown action id" ) );
+    REQUIRE( waitForActionTimers() );
+    CHECK( dispatched.isEmpty() );
+}
+
 TEST_CASE( "Synchronous observers can invalidate automatic work before subsequent effects",
            "[serial][session][actions][actionruntime]" )
 {

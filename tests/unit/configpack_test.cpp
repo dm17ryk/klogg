@@ -2145,10 +2145,19 @@ TEST_CASE( "A response of the user's that runs a pack action names it, so it is 
     REQUIRE( without.ok );
     REQUIRE( without.warnings.size() == 1 );
     CHECK( without.warnings.first().contains( "a.pack/7" ) );
+    // A response that runs it can still be made or edited (it keeps the name and runs nothing
+    // until the pack is back), as after an import (independent review of #176).
     auto runsPack = userResponse( 3, 1 );
     runsPack.response.steps.first().packAction = "a.pack/7";
-    CHECK( !actions.createResponse( runsPack, &error ) );
-    CHECK( error.contains( "no enabled pack has" ) );
+    REQUIRE( actions.createResponse( runsPack, &error ) );
+    REQUIRE( actions.findResponseById( 3 ) != nullptr );
+    CHECK( actions.findResponseById( 3 )->response.steps.first().packAction == "a.pack/7" );
+    CHECK( actions.findActionById( actions.findResponseById( 3 )->response.steps.first().actionId )
+           == nullptr );
+    auto renamed = *actions.findResponseById( 2 );
+    renamed.name = QStringLiteral( "Renamed" );
+    REQUIRE( actions.updateResponse( 2, renamed, &error ) );
     actions.setPackItems( { pack } );
     CHECK( actions.findResponseById( 2 )->response.steps.first().actionId == *elsewhere );
+    CHECK( actions.findResponseById( 3 )->response.steps.first().actionId == *elsewhere );
 }

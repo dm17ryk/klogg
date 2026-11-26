@@ -881,7 +881,11 @@ those reach the range), and an update, delete or move of a pack's item is refuse
 `<pack-id>/<local-id>`. A step of the user's response that runs a pack action also names it
 (`pack_action`: `<pack-id>/<local-id>`), so the user's file, Actions exports and project
 snapshots keep that response and an import runs that pack's action under its run-time id there;
-while no enabled pack has it, the step runs nothing and keeps the name (an import says so). The
+while no enabled pack has it, the step keeps the name and the response can still be edited (the
+step editor leaves such a step as it is), but the response sends nothing, its inline action
+included, as any response one of whose steps cannot run (an import says so). The packs' item
+state (`PackActions/`: run-time ids, which responses are on) is this PC's: no preferences export,
+project snapshot or project carries it, and applying a project keeps it. The
 pack check refuses more than 4,096 actions or responses with the user's, only for a pack that
 brings items of that kind; when the user's grow past that, the packs' give way (not listed), and
 the packs' responses give way with the actions they run. Disabling or updating a pack keeps which

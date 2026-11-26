@@ -112,12 +112,11 @@ bool ActionsManager::validateResponseLinks( const ResponseDefinition& response,
                                             QString* errorMessage ) const
 {
     // The user's actions and the listed packs' (a response of the user's may run a pack action).
+    // A step that names a pack action no enabled pack has stays as it is (it runs nothing until
+    // that pack is enabled, as after an import), so the response can still be edited.
     for ( const auto& step : response.response.steps ) {
         if ( !step.packAction.isEmpty() && step.actionId == UnresolvedPackAction ) {
-            setError( errorMessage, QObject::tr( "Response runs the pack action %1, which no "
-                                                 "enabled pack has." )
-                                        .arg( step.packAction ) );
-            return false;
+            continue;
         }
         if ( findActionById( step.actionId ) == nullptr ) {
             setError( errorMessage,
@@ -127,6 +126,7 @@ bool ActionsManager::validateResponseLinks( const ResponseDefinition& response,
     }
 
     if ( response.response.hasActionId && response.response.actionId >= 0
+         && response.response.steps.isEmpty()
          && findActionById( response.response.actionId ) == nullptr ) {
         setError( errorMessage,
                   QObject::tr( "Response linked action id %1 was not found." )
