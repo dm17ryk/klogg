@@ -135,3 +135,6 @@ if ($versionExitCode -ne 0) {
     exit 1
 }
 Write-Host "Wireshark tools ready in ${InstallDir}: $($versionOutput | Select-Object -First 1)"
+# A failed choco attempt leaves a non-zero $LASTEXITCODE, which a pwsh step would
+# otherwise report as the step's result.
+exit 0
