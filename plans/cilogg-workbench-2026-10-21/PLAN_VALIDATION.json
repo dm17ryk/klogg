@@ -1569,6 +1569,14 @@
           "P2 (fixed): a keyword argument at the start of a line inside a call counted as decode =; lines inside brackets and after a backslash now continue their statement"
         ],
         "result": "fixed in the commit after f7303284"
+      },
+      {
+        "head": "adca616d",
+        "reviewer": "Codex review bot",
+        "findings": [
+          "P2 (fixed): a module starting with a UTF-8 byte order mark hid its first-line decode(); the scan drops it (and takes a lone carriage return as a newline)"
+        ],
+        "result": "fixed in the commit after adca616d"
       }
     ]
   }

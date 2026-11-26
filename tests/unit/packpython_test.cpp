@@ -530,6 +530,11 @@ TEST_CASE( "Only the modules that define decode() are offered as decoders", "[pa
         // Real ones after a bracket and a backslash that continue a statement over lines.
         { "afterbrackets", "ITEMS = (\n    1,\n)\ndecode = None\n" },
         { "continued", "VALUE = 1 + \\\n    2\ndecode = None\n" },
+        // Lines that end with a lone carriage return, which Python takes as a newline too.
+        { "cr", "import struct\rdef decode(payload, context):\r    return None\r" },
+        // A UTF-8 byte order mark before the first statement, as Python reads it.
+        { "bom", "\xEF\xBB\xBF"
+                 "def decode(payload, context):\n    return None\n" },
         // A real one after a string with an escaped quote and a quote inside a comment.
         { "escaped",
           "TEXT = \"a \\\" b\" # it's\ndef decode(payload, context):\n    return None\n" },
@@ -553,8 +558,9 @@ TEST_CASE( "Only the modules that define decode() are offered as decoders", "[pa
     auto entries = pack.pythonEntries;
     entries.sort();
     CHECK( entries
-           == QStringList{ "afterbrackets", "annotated", "assigned", "asynchronous", "continued",
-                           "crlf", "escaped", "imported", "parenthesized", "plain", "rebound" } );
+           == QStringList{ "afterbrackets", "annotated", "assigned", "asynchronous", "bom",
+                           "continued", "cr", "crlf", "escaped", "imported", "parenthesized",
+                           "plain", "rebound" } );
 }
 
 TEST_CASE( "A pack lists at most 32 Python decoders", "[packpython][E16]" )

@@ -108,7 +108,13 @@ bool bindsDecode( const QString& path )
         return false;
     }
     auto text = QString::fromUtf8( file.read( cilogg::plugins::MaxPackFileBytes ) );
+    // Python reads a module that starts with a UTF-8 byte order mark; fromUtf8 keeps it as U+FEFF.
+    if ( text.startsWith( QChar( u'﻿' ) ) ) {
+        text.remove( 0, 1 );
+    }
+    // Python's newlines: \r\n, \n and a lone \r.
     text.replace( QStringLiteral( "\r\n" ), QStringLiteral( "\n" ) );
+    text.replace( QLatin1Char( '\r' ), QLatin1Char( '\n' ) );
     const auto code = pythonCode( text );
     static const QRegularExpression definition(
         QStringLiteral(
