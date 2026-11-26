@@ -80,7 +80,10 @@ whole `showname`. An item Lua adds with only a text label (PDML name
 cut a label off (`[…]` after the field name) or cut a value off (a prefix of
 the `show` value ending in `…`), Value keeps the whole raw `show` value
 instead. These rules read only the text, so a label a dissector sets itself
-(for example with `set_text`) that ends the same way is treated alike. The
+(for example with `set_text`) that ends the same way is treated alike. PDML
+does not carry a field's registered name, so Value starts after the first
+`: `; a field whose name itself contains `: ` keeps the rest of its name in
+Value. The
 Name, Value and Raw tooltips show the cell's whole text and then the item's
 PDML attributes, so a name or value the column cuts off can still be read.
 
