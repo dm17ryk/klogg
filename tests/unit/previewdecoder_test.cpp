@@ -883,7 +883,7 @@ TEST_CASE( "TShark rows carry the dissector's display text, derived from their a
     INFO( QJsonDocument::fromVariant( result ).toJson( QJsonDocument::Compact ).toStdString() );
     REQUIRE( result.value( "available" ).toBool() );
     const auto fields = result.value( "fields" ).toList();
-    REQUIRE( fields.size() == 3 );
+    REQUIRE( fields.size() == 5 );
     CHECK( fields.at( 0 ).toMap().value( "columns" ).toList()
            == QVariantList{ "Header: two bytes", "", "", "0", "2" } );
     CHECK( fields.at( 1 ).toMap().value( "columns" ).toList()
@@ -891,6 +891,11 @@ TEST_CASE( "TShark rows carry the dissector's display text, derived from their a
     // Wireshark's truncation mark in a value is the dissector's appended text, not a cut label.
     CHECK( fields.at( 2 ).toMap().value( "columns" ).toList().value( 1 )
            == QStringLiteral( "Battery OK (0) [" ) + QChar( 0x2026 ) + QLatin1Char( ']' ) );
+    // A value Wireshark cut off keeps the whole show value; bare text has no Value or Raw.
+    CHECK( fields.at( 3 ).toMap().value( "columns" ).toList()
+           == QVariantList{ "probe.long", "abcdefghij", "abcdefghij", "0", "1" } );
+    CHECK( fields.at( 4 ).toMap().value( "columns" ).toList()
+           == QVariantList{ "Bare legacy text", "", "", "0", "0" } );
     // A display text the attributes do not hold is a protocol error, as before.
     TsharkPreviewClient::instance().reset();
     qputenv( "CILOGG_PREVIEW_FIXTURE_MODE", "forged" );

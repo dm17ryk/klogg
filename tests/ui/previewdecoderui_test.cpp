@@ -486,7 +486,7 @@ TEST_CASE( "Automatic assembly route forwards the visible budget across decoder 
     CHECK( forwarded + tab.result().value( "elapsedMs" ).toLongLong() >= timeout->value() );
 }
 
-TEST_CASE( "The preview pane shows Lua display text and every cell's whole text as its tooltip",
+TEST_CASE( "The preview pane shows Lua display text and the whole Name, Value and Raw as tooltips",
            "[ui][previewdecoderui]" )
 {
     RestoreDecoder restore;
@@ -528,9 +528,9 @@ TEST_CASE( "The preview pane shows Lua display text and every cell's whole text 
     INFO( tab.result().value( "reason" ).toString().toStdString() );
     REQUIRE( tab.result().value( "available" ).toBool() );
     auto* tree = tab.findChild<QTreeWidget*>( "previewFields" );
-    REQUIRE( tree->topLevelItemCount() == 1 );
+    REQUIRE( tree->topLevelItemCount() == 2 );
     auto* header = tree->topLevelItem( 0 );
-    REQUIRE( header->childCount() == 2 );
+    REQUIRE( header->childCount() == 3 );
     auto* status = header->child( 0 );
     // Issue #181: the label of a text-only subtree, and a value string's text.
     CHECK( header->text( 0 ) == "Header: two bytes" );
@@ -543,4 +543,7 @@ TEST_CASE( "The preview pane shows Lua display text and every cell's whole text 
     CHECK( status->toolTip( 1 ).contains( "Battery OK (0)" ) );
     CHECK( status->toolTip( 1 ).contains( "showname" ) );
     CHECK( header->toolTip( 1 ).startsWith( "<pre>" ) );
+    // Pos and Size are short numbers: their tooltip is the attributes alone.
+    CHECK( status->toolTip( 3 ).startsWith( "<pre>" ) );
+    CHECK( status->toolTip( 4 ).startsWith( "<pre>" ) );
 }

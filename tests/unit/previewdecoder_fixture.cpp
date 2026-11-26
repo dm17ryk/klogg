@@ -124,6 +124,28 @@ int main( int argc, char** argv )
                                         { "positionOrigin", "engine_data_source_unresolved" },
                                         { "columns", QJsonArray{ "probe.more", appended, "00", "0", "1" } },
                                         { "attributes", more } } );
+            // A value Wireshark cut off ("…" after a prefix of show) shows the whole show value,
+            // also as Raw when there are no raw bytes; bare legacy text has neither.
+            const QJsonObject cut{ { "name", "probe.long" },
+                                   { "showname", QStringLiteral( "Long: abcde" ) + QChar( 0x2026 ) },
+                                   { "show", "abcdefghij" },
+                                   { "pos", "0" },
+                                   { "size", "1" } };
+            fields.append( QJsonObject{
+                { "id", "0/0/2" },
+                { "depth", 1 },
+                { "positionOrigin", "engine_data_source_unresolved" },
+                { "columns", QJsonArray{ "probe.long", "abcdefghij", "abcdefghij", "0", "1" } },
+                { "attributes", cut } } );
+            const QJsonObject bare{
+                { "name", "text" }, { "show", "Bare legacy text" }, { "pos", "0" }, { "size", "0" }
+            };
+            fields.append( QJsonObject{
+                { "id", "0/1" },
+                { "depth", 0 },
+                { "positionOrigin", "engine_data_source_unresolved" },
+                { "columns", QJsonArray{ "Bare legacy text", "", "", "0", "0" } },
+                { "attributes", bare } } );
         }
         QJsonObject response{
             { "version", 1 },
