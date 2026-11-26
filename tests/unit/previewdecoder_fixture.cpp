@@ -91,6 +91,29 @@ int main( int argc, char** argv )
         QJsonArray fields;
         for ( int i = 0; i < ( mode == "count" ? 513 : 1 ); ++i )
             fields.append( field );
+        // A text-only subtree and a Lua value string as the worker renders them (#181); "forged"
+        // claims a display text the attributes do not hold.
+        if ( mode == "display" || mode == "forged" ) {
+            const QJsonObject text{ { "name", "_ws.lua.text" }, { "showname", "Header: two bytes" },
+                                    { "show", "" },             { "value", "" },
+                                    { "pos", "0" },             { "size", "2" } };
+            const QJsonObject status{ { "name", "probe.status" }, { "showname", "Status: Battery OK (0)" },
+                                      { "show", "0" },            { "value", "00" },
+                                      { "pos", "0" },             { "size", "1" } };
+            const QString value = mode == "forged" ? "Forged" : "Battery OK (0)";
+            fields = QJsonArray{
+                QJsonObject{ { "id", "0/0" },
+                             { "depth", 0 },
+                             { "positionOrigin", "engine_data_source_unresolved" },
+                             { "columns", QJsonArray{ "Header: two bytes", "", "", "0", "2" } },
+                             { "attributes", text } },
+                QJsonObject{ { "id", "0/0/0" },
+                             { "depth", 1 },
+                             { "positionOrigin", "engine_data_source_unresolved" },
+                             { "columns", QJsonArray{ "probe.status", value, "00", "0", "1" } },
+                             { "attributes", status } }
+            };
+        }
         QJsonObject response{
             { "version", 1 },
             { "id", request.value( "id" ) },

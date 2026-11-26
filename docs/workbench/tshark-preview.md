@@ -62,6 +62,16 @@ does not fall back. A completed processing result does not establish protocol
 integrity. Engine offsets refer to decoded buffers and have unresolved source
 mapping, not guaranteed positions in the original log.
 
+A TShark/Lua tree shows each item as Wireshark does. **Value** is the
+dissector's display text: the PDML `showname` after its `label: `, so a Lua
+value string or appended text reads as in Wireshark. **Raw** keeps the raw
+bytes, or the raw `show` value when the item has none. A protocol keeps its
+whole `showname`. An item Lua adds with only a text label (PDML name
+`_ws.lua.text`) is named by that text. When Wireshark cut a label off (`[…]`
+after the field name), Value keeps the whole raw `show` value instead. Each
+cell's tooltip shows its whole text and then the item's PDML attributes, so a
+name or value the column cuts off can still be read.
+
 The same configuration and preview service are available through Commander CLI
 and native MCP. Supply configuration directly, not inside a wrapper:
 

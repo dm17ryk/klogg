@@ -860,6 +860,41 @@ TEST_CASE( "Only unavailable automatic dispatch falls back to supervised JSON", 
     CHECK_FALSE( result.contains( "fallbackReason" ) );
 }
 
+TEST_CASE( "TShark rows carry the dissector's display text, derived from their attributes",
+           "[previewdecoder]" )
+{
+    RestoreDecoder restore;
+    RestoreEnvironment python( "CILOGG_SCRIPT_PYTHON" ), mode( "CILOGG_PREVIEW_FIXTURE_MODE" ),
+        pid( "CILOGG_PREVIEW_FIXTURE_PID" );
+    qputenv( "CILOGG_SCRIPT_PYTHON", QByteArray( PREVIEW_DECODER_FIXTURE_PATH ) );
+    qputenv( "CILOGG_PREVIEW_FIXTURE_PID",
+             QByteArray::number( QCoreApplication::applicationPid() ) );
+    REQUIRE( PreviewDecoderSettings::instance().setConfiguration(
+        { { "enabled", true },
+          { "tshark", QCoreApplication::applicationFilePath() },
+          { "text2pcap", QCoreApplication::applicationFilePath() } } ) );
+    QObject channel;
+    auto request = directRequest( "0102", "hex" );
+    request.sessionOwner = &channel;
+    // Issue #181: a Lua value string shows its text, a text-only subtree its label.
+    TsharkPreviewClient::instance().reset();
+    qputenv( "CILOGG_PREVIEW_FIXTURE_MODE", "display" );
+    const auto result = PreviewService::evaluateAndWait( request );
+    INFO( QJsonDocument::fromVariant( result ).toJson( QJsonDocument::Compact ).toStdString() );
+    REQUIRE( result.value( "available" ).toBool() );
+    const auto fields = result.value( "fields" ).toList();
+    REQUIRE( fields.size() == 2 );
+    CHECK( fields.at( 0 ).toMap().value( "columns" ).toList()
+           == QVariantList{ "Header: two bytes", "", "", "0", "2" } );
+    CHECK( fields.at( 1 ).toMap().value( "columns" ).toList()
+           == QVariantList{ "probe.status", "Battery OK (0)", "00", "0", "1" } );
+    // A display text the attributes do not hold is a protocol error, as before.
+    TsharkPreviewClient::instance().reset();
+    qputenv( "CILOGG_PREVIEW_FIXTURE_MODE", "forged" );
+    CHECK( PreviewService::evaluateAndWait( request ).value( "reason" ) == "worker_protocol_error" );
+    TsharkPreviewClient::instance().reset();
+}
+
 TEST_CASE( "Native stop and worker timeout failures retain the same required envelope",
            "[previewdecoder]" )
 {

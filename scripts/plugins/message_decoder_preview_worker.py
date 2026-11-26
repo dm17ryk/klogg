@@ -338,6 +338,33 @@ def response_base(identity, profile):
     }
 
 
+# Items without a field of their own: a Lua TreeItem added with a text label, and legacy text.
+TEXT_ONLY_NAMES = {"", "_ws.lua.text", "text"}
+# Wireshark marks a label it cut off with this after the field's name.
+TRUNCATED_LABEL = " […]"
+
+
+def display_columns(kind, attr):
+    """A row's columns as Wireshark shows the item (#181): Name, the dissector's display text as
+    Value (its showname after "label: "), Raw (the raw bytes, or the raw show value when the item
+    has none), Pos and Size. A text-only item is named by its text; a protocol keeps its showname;
+    a label Wireshark cut off keeps the whole raw show value."""
+    name = attr.get("name", "")
+    show, showname = attr.get("show"), attr.get("showname")
+    if kind != "proto" and name in TEXT_ONLY_NAMES and (showname or show):
+        name, value = showname or show, ""
+    elif kind == "proto" or showname is None or ": " not in showname:
+        value = show if show is not None else showname or ""
+    elif TRUNCATED_LABEL in showname and show:
+        value = show
+    else:
+        value = showname.split(": ", 1)[1]
+    raw = attr.get("value")
+    if raw is None:
+        raw = show if show and show != value else ""
+    return [name, value, raw, attr.get("pos", ""), attr.get("size", "")]
+
+
 def render_fields(packets):
     result = []
     limited = False
@@ -353,13 +380,7 @@ def render_fields(packets):
             attr = node["attributes"]
             result.append(
                 {
-                    "columns": [
-                        attr.get("name", ""),
-                        attr.get("show", attr.get("showname", "")),
-                        attr.get("value", ""),
-                        attr.get("pos", ""),
-                        attr.get("size", ""),
-                    ],
+                    "columns": display_columns(node["kind"], attr),
                     "depth": depth,
                     "attributes": attr,
                     "positionOrigin": ORIGIN,

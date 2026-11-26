@@ -1817,13 +1817,25 @@ void PreviewMessageTab::presentResult( const QVariantMap& result )
         if ( parents.size() > depth )
             parents.resize( depth );
         parents.push_back( item );
+        // Each cell's tooltip starts with its whole text, so a name or value the column cuts off
+        // can be read (#181); an engine row adds the item's attributes.
         const auto attributes = field.value( "attributes" ).toMap();
-        if ( !attributes.isEmpty() ) {
-            const auto details = QString::fromUtf8(
-                QJsonDocument::fromVariant( attributes ).toJson( QJsonDocument::Indented ) );
-            const auto tooltip = "<pre>" + details.toHtmlEscaped() + "</pre>";
-            for ( int column = 0; column < 5; ++column )
-                item->setToolTip( column, tooltip );
+        const auto details
+            = attributes.isEmpty()
+                  ? QString()
+                  : "<pre>"
+                        + QString::fromUtf8( QJsonDocument::fromVariant( attributes )
+                                                 .toJson( QJsonDocument::Indented ) )
+                              .toHtmlEscaped()
+                        + "</pre>";
+        for ( int column = 0; column < 5; ++column ) {
+            const auto text = item->text( column );
+            if ( text.isEmpty() && details.isEmpty() )
+                continue;
+            item->setToolTip( column, text.isEmpty() ? details
+                                                     : "<p style='white-space:pre-wrap'>"
+                                                           + text.toHtmlEscaped() + "</p>"
+                                                           + details );
         }
     }
     const auto backend = result.value( "backend", "unavailable" ).toString();
