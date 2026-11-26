@@ -26,12 +26,16 @@ struct PreviewDecoderPacks {
     // version and modification time are part of `key`, so comparing it here restarts no session
     // that would not restart anyway.
     QVariantMap pythonNames;
+    // E16b: for each pack in `python`, the IDs of its modules that bind `decode` at their top
+    // level (pack ID -> string list); the others are helpers a pack lists so the worker copies
+    // them. Read from the same files as `key`, never sent to the worker.
+    QVariantMap pythonEntries;
 
     bool operator==( const PreviewDecoderPacks& other ) const
     {
         return lua == other.lua && python == other.python && previewRoutes == other.previewRoutes
                && protocolRoutes == other.protocolRoutes && key == other.key
-               && pythonNames == other.pythonNames;
+               && pythonNames == other.pythonNames && pythonEntries == other.pythonEntries;
     }
 };
 

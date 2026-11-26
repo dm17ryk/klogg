@@ -43,6 +43,9 @@ public:
         // (`{id, module}`, relative to it).
         QString root;
         QVariantList pythonModules;
+        // E16b: the IDs of the modules that bind `decode` at their top level; the others are
+        // helpers (see PreviewDecoderPacks::pythonEntries).
+        QStringList pythonEntries;
         // Its predefined filters in its order, with packId and packName (E16c).
         QList<ListedFilter> filters;
         // Its highlighter sets in its order, with packId and packName (E16c2).

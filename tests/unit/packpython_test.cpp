@@ -285,6 +285,9 @@ TEST_CASE( "A Python decoder pack installs from a local zip through its store an
            == QDir::cleanPath( pack.content() ) );
     // The pack's name goes with its decoders, for the places that show them.
     CHECK( PreviewDecoderSettings::instance().packs().pythonNames.value( PackId ) == PackName );
+    // Only "summary" defines decode(); "common" is a helper module the pack lists.
+    CHECK( PreviewDecoderSettings::instance().packs().pythonEntries.value( PackId ).toStringList()
+           == QStringList{ "summary" } );
     CHECK( PreviewDecoderSettings::instance().pythonDecoderPack(
                QStringLiteral( "%1/summary" ).arg( PackId ) )
            == PackName );
@@ -496,6 +499,51 @@ TEST_CASE( "Removing a Python decoder pack takes its decoders, routes and store"
     CHECK_FALSE( preview( "PY 01" ).value( "available" ).toBool() );
 }
 
+TEST_CASE( "Only the modules that define decode() are offered as decoders", "[packpython][E16]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    const QMap<QString, QByteArray> modules{
+        { "plain", "def decode(payload, context):\n    return None\n" },
+        { "crlf", "import struct\r\n\r\ndef decode(payload, context):\r\n    return None\r\n" },
+        { "asynchronous", "async def decode(payload, context):\n    return None\n" },
+        { "assigned", "def _impl(payload, context):\n    return None\ndecode = _impl\n" },
+        { "annotated", "from typing import Callable\ndecode: Callable = lambda p, c: None\n" },
+        { "imported", "from .plain import decode\n" },
+        { "parenthesized", "from .plain import (\n    decode,\n)\n" },
+        { "rebound", "from .plain import decode as _plain, _impl as decode\n" },
+        // Not decoders: a helper, a name bound otherwise, a method, a nested function and
+        // look-alike names.
+        { "helper", "MARKER = 'x'\n" },
+        { "aliased", "from .plain import decode as other\n" },
+        { "method",
+          "class Codec:\n    def decode(self, payload, context):\n        return None\n" },
+        { "nested", "def outer():\n    def decode(payload, context):\n        return None\n" },
+        { "lookalike", "def decode_all(payload):\n    return None\ndecoded = 1\n# def decode(\n" },
+    };
+    QJsonArray decoders;
+    for ( auto module = modules.cbegin(); module != modules.cend(); ++module ) {
+        writeFile( root.filePath( "python/" + module.key() + ".py" ), module.value() );
+        decoders.append(
+            QJsonObject{ { "id", module.key() }, { "module", "python/" + module.key() + ".py" } } );
+    }
+    const QJsonObject manifest{ { "id", PackId },
+                                { "name", PackName },
+                                { "version", "1.0.0" },
+                                { "protocol_version", 1 },
+                                { "kind", "config-pack" },
+                                { "pack_format", 1 },
+                                { "content", QJsonObject{ { "python_decoders", decoders } } } };
+    const auto pack = PreviewPackRegistry::read( PackId, root.path(), manifest );
+    REQUIRE( pack.error.isEmpty() );
+    CHECK( pack.pythonModules.size() == modules.size() );
+    auto entries = pack.pythonEntries;
+    entries.sort();
+    CHECK( entries
+           == QStringList{ "annotated", "assigned", "asynchronous", "crlf", "imported",
+                           "parenthesized", "plain", "rebound" } );
+}
+
 TEST_CASE( "A pack lists at most 32 Python decoders", "[packpython][E16]" )
 {
     const auto manifest = []( int count ) {
@@ -560,24 +608,30 @@ TEST_CASE( "The decoder settings dialog offers the enabled packs' Python decoder
             QVariantMap{ { "Bold", pythonRoute( "org.example.beta/summary" ) },
                          { "Demo", pythonRoute( "org.example.alpha/summary" ) },
                          { "Gone", pythonRoute( "org.example.gone/summary" ) },
+                         { "Helper", pythonRoute( "org.example.alpha/common" ) },
                          { "Shark", QVariantMap{ { "dissector", "data" } } } } } } ) );
+    const auto pack = []( const QString& id, const QVariantList& decoders ) {
+        return QVariantMap{ { "id", id }, { "root", QDir::tempPath() }, { "decoders", decoders } };
+    };
+    const auto module = []( const QString& id, const QString& path ) {
+        return QVariantMap{ { "id", id }, { "module", path } };
+    };
     PreviewDecoderPacks packs;
-    packs.python
-        = { QVariantMap{
-                { "id", "org.example.alpha" },
-                { "root", QDir::tempPath() },
-                { "decoders",
-                  QVariantList{
-                      QVariantMap{ { "id", "summary" }, { "module", "python/summary.py" } },
-                      QVariantMap{ { "id", "common" }, { "module", "python/common.py" } } } } },
-            // A second pack with a decoder of the same ID, and a name with markup and an ampersand.
-            QVariantMap{
-                { "id", "org.example.beta" },
-                { "root", QDir::tempPath() },
-                { "decoders", QVariantList{ QVariantMap{ { "id", "summary" },
-                                                         { "module", "python/<b>.py" } } } } } };
-    packs.pythonNames
-        = { { "org.example.alpha", "Alpha pack" }, { "org.example.beta", "Beta & <b>bold</b>" } };
+    packs.python = {
+        // "common" is a helper module the pack lists so the worker copies it: it has no decode().
+        pack( "org.example.alpha", { module( "summary", "python/summary.py" ),
+                                     module( "common", "python/common.py" ) } ),
+        // A second pack with a decoder of the same ID, and a name with markup and an ampersand.
+        pack( "org.example.beta", { module( "summary", "python/<b>.py" ) } ),
+        // A third pack with the first one's name.
+        pack( "org.example.gamma", { module( "summary", "python/summary.py" ) } ),
+    };
+    packs.pythonNames = { { "org.example.alpha", "Alpha pack" },
+                          { "org.example.beta", "Beta & <b>bold</b>" },
+                          { "org.example.gamma", "Alpha pack" } };
+    packs.pythonEntries = { { "org.example.alpha", QStringList{ "summary" } },
+                            { "org.example.beta", QStringList{ "summary" } },
+                            { "org.example.gamma", QStringList{ "summary" } } };
     packs.key = QStringLiteral( "dialog-%1" ).arg( QDateTime::currentMSecsSinceEpoch() );
     PreviewDecoderSettings::instance().setPacks( packs );
 
@@ -589,23 +643,28 @@ TEST_CASE( "The decoder settings dialog offers the enabled packs' Python decoder
         CHECK( add->isEnabled() );
         CHECK( !add->accessibleName().isEmpty() );
         REQUIRE( add->menu() );
+        // Only the modules with a decode(): the helper is not offered.
         const auto actions = add->menu()->actions();
         REQUIRE( actions.size() == 3 );
-        CHECK( actions[ 0 ]->text() == "Alpha pack: summary" );
+        // Two packs with the same name are told apart by their IDs.
+        CHECK( actions[ 0 ]->text() == "Alpha pack (org.example.alpha): summary" );
         CHECK( actions[ 0 ]->data() == "python:org.example.alpha/summary" );
         CHECK( actions[ 0 ]->toolTip().contains( "python/summary.py" ) );
-        CHECK( actions[ 1 ]->text() == "Alpha pack: common" );
+        CHECK( actions[ 0 ]->toolTip().contains( "python:org.example.alpha/summary" ) );
         // The same decoder ID in another pack is its own choice; an ampersand is shown, not a
         // shortcut, and the name's markup is text.
-        CHECK( actions[ 2 ]->text() == "Beta && <b>bold</b>: summary" );
-        CHECK( actions[ 2 ]->data() == "python:org.example.beta/summary" );
-        CHECK( actions[ 2 ]->toolTip().contains( "&lt;b&gt;bold&lt;/b&gt;" ) );
-        CHECK( !actions[ 2 ]->toolTip().contains( "<b>bold" ) );
+        CHECK( actions[ 1 ]->text() == "Beta && <b>bold</b>: summary" );
+        CHECK( actions[ 1 ]->data() == "python:org.example.beta/summary" );
+        CHECK( actions[ 1 ]->toolTip().contains( "&lt;b&gt;bold&lt;/b&gt;" ) );
+        CHECK( !actions[ 1 ]->toolTip().contains( "<b>bold" ) );
+        CHECK( actions[ 2 ]->text() == "Alpha pack (org.example.gamma): summary" );
+        CHECK( actions[ 2 ]->data() == "python:org.example.gamma/summary" );
+        CHECK( actions[ 2 ]->toolTip().contains( "python:org.example.gamma/summary" ) );
     }
 
-    // A route's decoder is shown with its pack, or as not loaded.
+    // A route's decoder is shown with its pack, as a helper without decode(), or as not loaded.
     auto* previewRoutes = routeTable( dialog, "decoderPreviewRoutes" );
-    REQUIRE( previewRoutes->rowCount() == 4 );
+    REQUIRE( previewRoutes->rowCount() == 5 );
     const auto tip = [ previewRoutes ]( const QString& route ) {
         const auto row = rowNamed( previewRoutes, route );
         REQUIRE( row >= 0 );
@@ -613,16 +672,18 @@ TEST_CASE( "The decoder settings dialog offers the enabled packs' Python decoder
     };
     CHECK( tip( "Demo" ).contains( "Alpha pack" ) );
     CHECK( tip( "Bold" ).contains( "Beta &amp; &lt;b&gt;bold&lt;/b&gt;" ) );
+    CHECK( tip( "Helper" ).contains( "Alpha pack" ) );
+    CHECK( tip( "Helper" ).contains( "no decode()" ) );
     CHECK( tip( "Gone" ).contains( "not enabled" ) );
     CHECK( tip( "Shark" ).isEmpty() );
 
     // Choosing a decoder adds a route to it, ready for the preview's name.
     auto* add = dialog.findChild<QPushButton*>( "decoderPreviewRoutesAddPython" );
-    add->menu()->actions()[ 1 ]->trigger();
-    REQUIRE( previewRoutes->rowCount() == 5 );
+    add->menu()->actions()[ 2 ]->trigger();
+    REQUIRE( previewRoutes->rowCount() == 6 );
     const auto added = previewRoutes->currentRow();
-    REQUIRE( added == 4 );
-    CHECK( previewRoutes->item( added, 1 )->text() == "python:org.example.alpha/common" );
+    REQUIRE( added == 5 );
+    CHECK( previewRoutes->item( added, 1 )->text() == "python:org.example.gamma/summary" );
     CHECK( previewRoutes->item( added, 1 )->toolTip().contains( "Alpha pack" ) );
     previewRoutes->setItem( added, 0, new QTableWidgetItem( "Added" ) );
     dialog.findChild<QDialogButtonBox*>()->button( QDialogButtonBox::Apply )->click();
@@ -632,7 +693,7 @@ TEST_CASE( "The decoder settings dialog offers the enabled packs' Python decoder
                .value( "previewRoutes" )
                .toMap()
                .value( "Added" )
-           == pythonRoute( "org.example.alpha/common" ) );
+           == pythonRoute( "org.example.gamma/summary" ) );
 
     // An edited target follows: a decoder the packs do not have is shown as not enabled.
     previewRoutes->item( added, 1 )->setText( "python:org.example.alpha/missing" );

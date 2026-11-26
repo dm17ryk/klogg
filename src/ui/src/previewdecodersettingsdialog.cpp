@@ -8,6 +8,7 @@
 #include <QDialogButtonBox>
 #include <QFileDialog>
 #include <QFormLayout>
+#include <QHash>
 #include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
@@ -261,6 +262,12 @@ void PreviewDecoderSettingsDialog::reload()
 void PreviewDecoderSettingsDialog::refreshPythonDecoders()
 {
     const auto packs = PreviewDecoderSettings::instance().packs();
+    // Packs' names need not be unique: one shared by two packs is followed by the pack's ID.
+    QHash<QString, int> names;
+    for ( const auto& value : packs.python ) {
+        const auto packId = value.toMap().value( "id" ).toString();
+        names[ packs.pythonNames.value( packId, packId ).toString() ] += 1;
+    }
     for ( auto* button : { previewAddPython_, protocolAddPython_ } ) {
         auto* menu = button->menu();
         menu->clear();
@@ -268,18 +275,23 @@ void PreviewDecoderSettingsDialog::refreshPythonDecoders()
             const auto pack = value.toMap();
             const auto packId = pack.value( "id" ).toString();
             const auto name = packs.pythonNames.value( packId, packId ).toString();
+            // Only the modules that bind decode(): the others are helpers the pack lists.
+            const auto entries = packs.pythonEntries.value( packId ).toStringList();
             for ( const auto& listed : pack.value( "decoders" ).toList() ) {
                 const auto decoder = listed.toMap();
                 const auto decoderId = decoder.value( "id" ).toString();
+                if ( !entries.contains( decoderId ) )
+                    continue;
                 // A pack's name is text: an ampersand is shown, not a shortcut, and markup in it
                 // is not rendered.
-                auto shown = name;
+                auto shown = names.value( name ) > 1 ? tr( "%1 (%2)" ).arg( name, packId ) : name;
                 shown.replace( QLatin1Char( '&' ), QStringLiteral( "&&" ) );
+                const auto target = PythonPrefix + packId + QLatin1Char( '/' ) + decoderId;
                 auto* action = menu->addAction( tr( "%1: %2" ).arg( shown, decoderId ) );
-                action->setData( PythonPrefix + packId + QLatin1Char( '/' ) + decoderId );
+                action->setData( target );
                 action->setToolTip(
-                    plainTip( tr( "%1 in the pack \"%2\"" )
-                                  .arg( decoder.value( "module" ).toString(), name ) ) );
+                    plainTip( tr( "%1: %2 in the pack \"%3\"" )
+                                  .arg( target, decoder.value( "module" ).toString(), name ) ) );
             }
         }
         const bool any = !menu->isEmpty();
@@ -301,13 +313,23 @@ void PreviewDecoderSettingsDialog::describeTarget( QTableWidgetItem* item ) cons
     QString tip;
     if ( target.startsWith( PythonPrefix ) ) {
         const auto decoder = target.mid( PythonPrefix.size() );
-        const auto pack = PreviewDecoderSettings::instance().pythonDecoderPack( decoder );
-        tip = pack.isEmpty()
-                  ? tr( "Python decoder %1: its pack is not enabled (or has no such decoder), "
-                        "so the route does not apply." )
-                        .arg( decoder )
-                  : tr( "Python decoder \"%1\" of the pack \"%2\"." )
-                        .arg( decoder.mid( decoder.indexOf( QLatin1Char( '/' ) ) + 1 ), pack );
+        const auto& settings = PreviewDecoderSettings::instance();
+        const auto pack = settings.pythonDecoderPack( decoder );
+        const auto slash = decoder.indexOf( QLatin1Char( '/' ) );
+        const auto decoderId = decoder.mid( slash + 1 );
+        if ( pack.isEmpty() )
+            tip = tr( "Python decoder %1: its pack is not enabled (or has no such decoder), so "
+                      "the route does not apply." )
+                      .arg( decoder );
+        else if ( !settings.packs()
+                       .pythonEntries.value( decoder.left( slash ) )
+                       .toStringList()
+                       .contains( decoderId ) )
+            tip = tr( "Python module \"%1\" of the pack \"%2\" has no decode() at its top level, "
+                      "so the route fails to load it." )
+                      .arg( decoderId, pack );
+        else
+            tip = tr( "Python decoder \"%1\" of the pack \"%2\"." ).arg( decoderId, pack );
     }
     // The pack's name and the typed decoder are text, never markup.
     tip = plainTip( tip );

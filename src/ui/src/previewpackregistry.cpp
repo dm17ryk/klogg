@@ -6,6 +6,7 @@
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QRegularExpression>
 #include <QSet>
 #include <QSettings>
 #include <QTemporaryDir>
@@ -28,6 +29,49 @@ using cilogg::plugins::validatePackManifest;
 
 // What makes a pack's contribution current: its version and the time its manifest was written,
 // so an update (or a reinstall of the same version) is read again.
+// Whether a pack's Python module binds `decode` at its top level (E16b): `def` or `async def
+// decode(`, `decode =` (annotated too) or an import that binds the name. Preview Decoder Settings
+// offers these modules as decoders and leaves out the helpers a pack lists so the worker copies
+// them; a module that binds the name otherwise can still be routed by typing its target.
+bool bindsDecode( const QString& path )
+{
+    QFile file( path );
+    if ( !file.open( QIODevice::ReadOnly ) ) {
+        return false;
+    }
+    auto text = QString::fromUtf8( file.read( cilogg::plugins::MaxPackFileBytes ) );
+    text.replace( QStringLiteral( "\r\n" ), QStringLiteral( "\n" ) );
+    static const QRegularExpression definition(
+        QStringLiteral(
+            R"(^(?:async[ \t]+)?def[ \t]+decode[ \t]*\(|^decode[ \t]*(?::[^=\n]*)?=(?!=))" ),
+        QRegularExpression::MultilineOption );
+    if ( definition.match( text ).hasMatch() ) {
+        return true;
+    }
+    // `import a as decode` or `from m import x, y as decode`, also in parentheses over lines.
+    static const QRegularExpression imports(
+        QStringLiteral( R"(^(?:from[ \t]+[\w.]+[ \t]+)?import[ \t]+(\([^)]*\)|[^\n]*))" ),
+        QRegularExpression::MultilineOption );
+    static const QRegularExpression comment( QStringLiteral( "#[^\n]*" ) );
+    auto match = imports.globalMatch( text );
+    while ( match.hasNext() ) {
+        auto names = match.next().captured( 1 );
+        names.remove( comment );
+        names.remove( QLatin1Char( '(' ) );
+        names.remove( QLatin1Char( ')' ) );
+        for ( const auto& item : names.split( QLatin1Char( ',' ) ) ) {
+            // "name" or "name as alias": the module binds the last word.
+            const auto words = item.simplified().split( QLatin1Char( ' ' ) );
+            const bool binding
+                = words.size() == 1 || ( words.size() == 3 && words[ 1 ] == QLatin1String( "as" ) );
+            if ( binding && words.last() == QLatin1String( "decode" ) ) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 QString contributionKey( const QString& directory, const QJsonObject& manifest )
 {
     const QFileInfo file( QDir( directory ).filePath( "plugin.json" ) );
@@ -283,6 +327,9 @@ PreviewPackRegistry::Contribution PreviewPackRegistry::read( const QString& id,
     pack.root = QDir::cleanPath( QDir( directory ).absolutePath() );
     for ( const auto& decoder : content.pythonDecoders ) {
         pack.pythonModules.append( QVariantMap{ { "id", decoder.id }, { "module", decoder.module } } );
+        if ( bindsDecode( QDir( directory ).filePath( decoder.module ) ) ) {
+            pack.pythonEntries.append( decoder.id );
+        }
     }
     return pack;
 }
@@ -369,6 +416,7 @@ void PreviewPackRegistry::refresh()
                 { "id", pack.id }, { "root", pack.root }, { "decoders", pack.pythonModules } } );
             // E16b: shown with each of its decoders (Preview Decoder Settings, previews).
             decoder.pythonNames.insert( pack.id, packLabel( pack ) );
+            decoder.pythonEntries.insert( pack.id, pack.pythonEntries );
         }
         // Between packs there is no precedence; the pack check refuses a shared route key, so
         // this keeps the first pack's route only if a check was bypassed.

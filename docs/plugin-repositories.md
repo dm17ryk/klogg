@@ -743,9 +743,13 @@ again, and removing a pack takes its decoders and routes with it. Pack modules a
 enter the user's decoder settings, so exports and projects never carry them.
 `PreviewDecoderPacks::pythonNames` keeps each enabled pack's name beside its decoders (never sent
 to the worker). With it, Preview Decoder Settings has an **Add Python decoder** menu on both route
-tabs ("<pack name>: <decoder id>", the module in its tooltip), each route's decoder says whose it is
-or that its pack is not enabled, and a preview's tooltip and status name the decoder with its pack
-(`PreviewService::pythonDecoderLabel`). The CLI, native MCP and Python report the same pack fields
+tabs ("<pack name>: <decoder id>", the pack's ID added when two packs share a name, the route target
+and the module in its tooltip), each route's decoder says whose it is, that it has no `decode()`, or
+that its pack is not enabled, and a preview's tooltip and status name the decoder with its pack
+(`PreviewService::pythonDecoderLabel`). The menu offers the modules that bind `decode` at their top
+level (`def` or `async def decode(`, `decode =`, or an import that binds the name), kept in
+`PreviewDecoderPacks::pythonEntries`; the helper modules a pack lists so the worker copies them are
+left out, and a module that binds the name some other way can still be routed by typing its target. The CLI, native MCP and Python report the same pack fields
 (`pythonDecoders`, `pythonDecodersActive`) and `hostFeatures`.
 
 ### 4.5 Actions, responses, highlighters and filters
