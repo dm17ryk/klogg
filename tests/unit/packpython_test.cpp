@@ -534,6 +534,10 @@ TEST_CASE( "Only the modules that define decode() are offered as decoders", "[pa
         { "semicolon", "VERSION = 1; from .plain import decode\n" },
         { "semicolonassign", "VERSION = 1; decode = None\n" },
         { "onelinebody", "def helper(): value = 1; decode = value\n" },
+        // `match` and `case` are soft keywords: here a name being assigned.
+        { "softkeyword", "match = 1; decode = None\n" },
+        // A semicolon in an indented block separates statements of that block.
+        { "indented", "def helper():\n    value = 1; decode = value\n    return decode\n" },
         // Lines that end with a lone carriage return, which Python takes as a newline too.
         { "cr", "import struct\rdef decode(payload, context):\r    return None\r" },
         // A UTF-8 byte order mark before the first statement, as Python reads it.
@@ -564,7 +568,7 @@ TEST_CASE( "Only the modules that define decode() are offered as decoders", "[pa
     CHECK( entries
            == QStringList{ "afterbrackets", "annotated", "assigned", "asynchronous", "bom",
                            "continued", "cr", "crlf", "escaped", "imported", "parenthesized",
-                           "plain", "rebound", "semicolon", "semicolonassign" } );
+                           "plain", "rebound", "semicolon", "semicolonassign", "softkeyword" } );
 }
 
 TEST_CASE( "A pack lists at most 32 Python decoders", "[packpython][E16]" )

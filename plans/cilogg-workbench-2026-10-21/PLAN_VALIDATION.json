@@ -1585,6 +1585,14 @@
           "P2 (fixed): a binding after a top-level semicolon was not found; a top-level semicolon now starts a statement (not in a one-line compound body)"
         ],
         "result": "fixed in the commit after c431ce23"
+      },
+      {
+        "head": "cf4547fd",
+        "reviewer": "Codex review bot",
+        "findings": [
+          "P2 (fixed): match/case used as names before a semicolon hid the binding; only hard keywords open a compound statement, and an indented semicolon no longer yields a top-level statement"
+        ],
+        "result": "fixed in the commit after cf4547fd"
       }
     ]
   }

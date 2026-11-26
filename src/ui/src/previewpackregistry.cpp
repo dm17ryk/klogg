@@ -66,13 +66,17 @@ QString pythonCode( const QString& text )
                       && depth > 0 ) {
                 --depth;
             }
-            // A semicolon at the top level starts a new statement, except in the one-line body of
-            // a compound statement (`def f(): x = 1; decode = x` binds nothing at the top).
+            // A semicolon on a top-level line starts a new statement, except in the one-line body
+            // of a compound statement (`def f(): x = 1; decode = x` binds nothing at the top). On
+            // an indented line it separates statements of that block. Only hard keywords open a
+            // compound statement here: `match` and `case` are soft keywords (`match = 1` is an
+            // assignment), a top-level match statement never shares its line with a semicolon, and
+            // `case` lines are indented.
             if ( c == QLatin1Char( ';' ) && depth == 0 ) {
-                static const QRegularExpression compound( QStringLiteral(
-                    R"(^(?:async[ \t]+)?(?:def|class|if|elif|else|for|while|with|try|except|finally|match|case)\b)" ) );
-                if ( !compound.match( code.mid( code.lastIndexOf( QLatin1Char( '\n' ) ) + 1 ) )
-                          .hasMatch() ) {
+                static const QRegularExpression statement( QStringLiteral(
+                    R"(^(?![ \t])(?!(?:async[ \t]+)?(?:def|class|if|elif|else|for|while|with|try|except|finally)\b))" ) );
+                if ( statement.match( code.mid( code.lastIndexOf( QLatin1Char( '\n' ) ) + 1 ) )
+                         .hasMatch() ) {
                     code += QLatin1Char( '\n' );
                     ++at;
                     // The next statement starts here: no indentation before it.
