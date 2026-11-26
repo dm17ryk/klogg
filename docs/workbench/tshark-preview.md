@@ -61,10 +61,10 @@ finds the dissector the same way, among TShark routes only: the assembly
 protocol's route, then the route of a matching preview, then the default
 dissector on the input. Unlike Automatic, a matching preview without a TShark
 route does not lend its carrier: the default dissector then decodes the whole
-input. When a mapped preview's carrier cannot be taken from the line, that
-failure is the result; explicit mode no longer decodes the whole input
-instead. A named dissector decodes the input directly, as UTF-8,
-hex or base64. JSON explicitly selects the legacy renderer. The request budget
+input. When a TShark-mapped preview's carrier cannot be taken from the line,
+that failure is the result; explicit mode no longer decodes the whole input
+instead. A named dissector decodes the input directly, as UTF-8, hex or
+base64. JSON explicitly selects the legacy renderer. The request budget
 is available in every mode, defaults to 3000 ms and is bounded to 100-10000 ms.
 Its displayed value covers selection, startup and delivery, including Automatic
 routes; a JSON fallback after a TShark/Lua failure may add up to 3 s (see
@@ -77,12 +77,13 @@ decodes nothing, a protocol it does not produce, input the route cannot carry,
 or an engine failure, busy engines (`preview_busy`) included. The fallback
 shows the JSON preview of the carrier the route was for, also after a Python
 decoder returns `None`. A user's cancel or a settings change during the run is
-not a failure. Neither is a failure of the selection itself (the step that
-finds the carrier before any decoder runs): the JSON preview needs it as well,
-so its timeout or error is the result. Results expose the actual backend,
-`preferredBackend`, `decoderAttempts` and `fallbackReason` (the TShark/Lua
-failure), and the preview pane's status names it. The engine keeps the whole budget; the JSON
-fallback gets what is left of it, and at least 3 s, so after a TShark/Lua
+not a failure. Neither is a failure of the selector process itself (the
+worker that finds the carrier before any decoder runs: its timeout, crash or
+protocol error), as opposed to a route's input it could not prepare: the JSON
+preview needs that process as well, so its failure is the result. Results
+expose the actual backend, `preferredBackend`, `decoderAttempts` and
+`fallbackReason` (the TShark/Lua failure), and the preview pane's status names
+it. The engine keeps the whole budget; the JSON fallback gets what is left of it, and at least 3 s, so after a TShark/Lua
 timeout the JSON result arrives up to 3 s after the budget. Explicit TShark
 does not fall back: its failure is the result; definitions it cannot use leave
 it the default dissector on the input. A completed processing
