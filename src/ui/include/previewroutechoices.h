@@ -6,6 +6,8 @@
 #include <QVariantMap>
 #include <QVector>
 
+#include <optional>
+
 // What the TShark / Lua preview decoder settings offer in their route fields, and the checks Apply
 // runs on the routes (issue #180). Nothing here starts a process: the dialog reads TShark's
 // protocol list itself and hands it in.
@@ -21,6 +23,19 @@ QStringList luaProtoNamesInFile( const QString& path );
 // The protocol filter names in `tshark -G protocols` output (its third column), which are also the
 // names TShark's own dissectors are found by, sorted. Names a route could not take are left out.
 QStringList tsharkProtocolNames( const QByteArray& output );
+// Whether `tshark -G folders` output shows TShark taking its personal configuration and its
+// personal and global plugins, Lua ones included, only from under `root`: the proof the preview
+// worker requires before it runs TShark with anything that loads plugins.
+bool tsharkFoldersIsolated( const QByteArray& output, const QString& root );
+
+// A file's identity for the lists read from it: its path, size and times (a replaced file has new
+// creation or change times even with the old size and modification time).
+QString fileKey( const QString& path );
+// TShark protocol lists already read, by TShark file (fileKey), so each file is listed once.
+std::optional<QStringList> knownTsharkProtocols( const QString& key );
+void rememberTsharkProtocols( const QString& key, const QStringList& names );
+// Lists every TShark again.
+void forgetTsharkProtocols();
 
 struct LuaFile {
     QString path;

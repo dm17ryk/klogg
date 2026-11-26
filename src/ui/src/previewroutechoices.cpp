@@ -8,6 +8,7 @@
 
 #include <QCoreApplication>
 #include <QDateTime>
+#include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QHash>
@@ -326,24 +327,93 @@ QStringList Choices::routeTargets() const
     return names.names();
 }
 
+QString fileKey( const QString& path )
+{
+    const QFileInfo info( path );
+    // Joined, not formatted: a path may hold `%1`.
+    return QStringList{ info.absoluteFilePath(), QString::number( info.size() ),
+                        QString::number( info.lastModified().toMSecsSinceEpoch() ),
+                        QString::number( info.birthTime().toMSecsSinceEpoch() ),
+                        QString::number( info.metadataChangeTime().toMSecsSinceEpoch() ) }
+        .join( QLatin1Char( '|' ) );
+}
+
+bool tsharkFoldersIsolated( const QByteArray& output, const QString& root )
+{
+    // The folders the preview worker checks (message_decoder_preview_worker.py).
+    static const QStringList Isolated{ QStringLiteral( "Personal configuration" ),
+                                       QStringLiteral( "Personal Plugins" ),
+                                       QStringLiteral( "Global Plugins" ),
+                                       QStringLiteral( "Personal Lua Plugins" ),
+                                       QStringLiteral( "Global Lua Plugins" ) };
+#ifdef Q_OS_WIN
+    constexpr auto Case = Qt::CaseInsensitive;
+#else
+    constexpr auto Case = Qt::CaseSensitive;
+#endif
+    QHash<QString, QString> reported;
+    for ( const auto& line : QString::fromUtf8( output ).split( QLatin1Char( '\n' ) ) ) {
+        const auto tab = line.indexOf( QLatin1Char( '\t' ) );
+        if ( tab > 0 )
+            reported.insert( line.left( tab ).section( QLatin1Char( ':' ), 0, 0 ).trimmed(),
+                             line.mid( tab + 1 ).trimmed() );
+    }
+    // The root as given to TShark, and as the file system names it (a short 8.3 name expanded).
+    QStringList roots{ QDir::cleanPath( QDir::fromNativeSeparators( root ) ) };
+    const auto canonical = QFileInfo( root ).canonicalFilePath();
+    if ( !canonical.isEmpty() )
+        roots << QDir::cleanPath( canonical );
+    for ( const auto& name : Isolated ) {
+        const auto path = QDir::cleanPath( QDir::fromNativeSeparators( reported.value( name ) ) );
+        const bool under = std::any_of( roots.cbegin(), roots.cend(), [ & ]( const QString& base ) {
+            return path.startsWith( base + QLatin1Char( '/' ), Case );
+        } );
+        if ( reported.value( name ).isEmpty() || !QDir::isAbsolutePath( path ) || !under ) {
+            LOG_INFO << "Preview route choices: TShark plugin isolation unverified folder="
+                     << name;
+            return false;
+        }
+    }
+    return true;
+}
+
+namespace {
+QHash<QString, QStringList>& tsharkProtocolCache()
+{
+    static QHash<QString, QStringList> cache;
+    return cache;
+}
+} // namespace
+
+std::optional<QStringList> knownTsharkProtocols( const QString& key )
+{
+    const auto& cache = tsharkProtocolCache();
+    const auto found = cache.constFind( key );
+    return found == cache.cend() ? std::nullopt : std::optional<QStringList>( *found );
+}
+void rememberTsharkProtocols( const QString& key, const QStringList& names )
+{
+    tsharkProtocolCache().insert( key, names );
+}
+void forgetTsharkProtocols()
+{
+    tsharkProtocolCache().clear();
+}
+
 namespace {
 QHash<QString, QStringList>& luaNameCache()
 {
     static QHash<QString, QStringList> cache;
     return cache;
 }
-// The names a Lua file declares, read once per version of it (path, size and time): the dialog
-// collects its choices on opening, on Apply and when the packs change, and the selected and pack
-// files together may be 32 files of up to 1 MiB.
+// The names a Lua file declares, read once per version of it (fileKey): the dialog collects its
+// choices on opening, on Apply and when the packs change, and the selected and pack files
+// together may be 32 files of up to 1 MiB.
 QStringList cachedLuaNames( const QString& path )
 {
     constexpr int CacheLimit = 256;
     auto& cache = luaNameCache();
-    const QFileInfo info( path );
-    const auto key = QStringLiteral( "%1|%2|%3" )
-                         .arg( info.absoluteFilePath() )
-                         .arg( info.size() )
-                         .arg( info.lastModified().toMSecsSinceEpoch() );
+    const auto key = fileKey( path );
     if ( const auto found = cache.constFind( key ); found != cache.cend() )
         return *found;
     if ( cache.size() >= CacheLimit )

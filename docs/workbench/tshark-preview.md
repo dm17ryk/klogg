@@ -62,13 +62,15 @@ name. CILogg reads it from each `Proto("<name>", ...)` or
 `Proto.new("<name>", ...)` declaration and lowercases it, as Wireshark does.
 Declarations in comments and strings don't count. A name built at run time
 (`Proto(NAME, ...)`) can't be read; type it. TShark's protocols come from
-`tshark -G protocols`. It runs in the background, at most 5 seconds, and only
-for the saved TShark executable while TShark is enabled: like a preview, only
-applied settings run anything. It runs once per executable, again after the
-settings change (the saved executable may have been replaced), and again when
-the dialog is shown after a failure. It uses no personal or global Wireshark
-plugins or settings, like a preview session. The line under the routes counts
-what each source offers.
+`tshark -G protocols`. It runs in the background, at most 5 seconds per step,
+and only for the saved TShark executable while TShark is enabled: like a
+preview, only applied settings run anything. Like a preview session, it first
+runs `tshark -G folders` and lists nothing unless TShark takes its
+configuration and its personal and global plugins (Lua ones included) only from
+a temporary folder. It lists each executable once (a replaced executable has new
+file times and is listed again), and again when the dialog is opened after a
+failure. The line under the routes counts what each source offers, or says why
+there is no TShark list.
 
 When you choose a dissector that a selected Lua file declares, an empty PDML
 protocol takes its name, because that is also the protocol the Lua dissector
@@ -92,7 +94,9 @@ only names that don't need its list are reported.
 When the value looks like a Lua file name (`my_proto.lua`), or differs from a
 known name only in case, the warning names the dissector to use. **Use the
 declared names** puts those names into the routes and applies again. When OK
-shows new warnings, the dialog stays open; press OK again to close it.
+shows new warnings, the dialog stays open; press OK again to close it. When OK
+is pressed while TShark is still listing its protocols, the dialog waits for
+the list, then closes, or stays open if the list brings new warnings.
 
 Example: a synthetic Lua file `C:\lua\my_proto.lua` declares one dissector.
 

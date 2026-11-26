@@ -219,6 +219,36 @@ TEST_CASE( "Collected Lua names follow the file's changes", "[previewroutes]" )
     CHECK( names() == QStringList{ "fourth", "fifth_one" } );
 }
 
+TEST_CASE( "TShark's folders prove the plugin isolation", "[previewroutes]" )
+{
+    const auto root = QDir::cleanPath( QDir::tempPath() + QStringLiteral( "/isolation-root" ) );
+    const auto native = QDir::toNativeSeparators( root );
+    const auto folders = [ & ]( const QString& globalLua ) {
+        return QStringLiteral( "Temp:\t/tmp\n"
+                               "Personal configuration:\t%1/config\n"
+                               "Personal Plugins:\t%1/config/plugins/4.6\n"
+                               "Global Plugins:\t%1/plugins/4.6\n"
+                               "Personal Lua Plugins:\t%1/config/plugins\n"
+                               "Global Lua Plugins:\t%2\n" )
+            .arg( native, globalLua )
+            .toUtf8();
+    };
+    CHECK( previewroutes::tsharkFoldersIsolated( folders( native + QStringLiteral( "\\plugins" ) ),
+                                                 root ) );
+    CHECK( previewroutes::tsharkFoldersIsolated( folders( root + QStringLiteral( "/plugins" ) ),
+                                                 root ) );
+    // Outside the root, through `..`, or a sibling that only shares the root's name.
+    CHECK_FALSE( previewroutes::tsharkFoldersIsolated(
+        folders( QStringLiteral( "/usr/lib/wireshark/plugins" ) ), root ) );
+    CHECK_FALSE( previewroutes::tsharkFoldersIsolated(
+        folders( root + QStringLiteral( "/../plugins" ) ), root ) );
+    CHECK_FALSE( previewroutes::tsharkFoldersIsolated(
+        folders( root + QStringLiteral( "-other/plugins" ) ), root ) );
+    // A folder TShark does not report.
+    CHECK_FALSE( previewroutes::tsharkFoldersIsolated(
+        QStringLiteral( "Personal configuration:\t%1/config\n" ).arg( native ).toUtf8(), root ) );
+}
+
 TEST_CASE( "TShark's protocol list gives its filter names", "[previewroutes]" )
 {
     const QByteArray output = "Data\tData\tdata\tT\tT\tF\r\n"
@@ -505,6 +535,13 @@ TEST_CASE( "Decoder settings offer the known route values", "[previewroutes]" )
         protocols->itemDelegate()->setModelData( encoding, protocols->model(), index );
         CHECK( protocols->item( 0, 3 )->text() == "base64" );
     }
+    SECTION( "moving the current cell opens no drop-down" )
+    {
+        // A drop-down would take the arrow keys and change the cell instead of moving.
+        dialog.show();
+        previews->setCurrentCell( 0, 1 );
+        CHECK_FALSE( previews->indexWidget( previews->model()->index( 0, 1 ) ) );
+    }
     SECTION( "a preview added while the dialog is open is offered" )
     {
         QTemporaryFile file;
@@ -667,4 +704,117 @@ TEST_CASE( "Decoder settings route drop-downs screenshots", "[.][previewroutessc
     combo->showPopup();
     shoot( "route-dissector-dropdown.png" );
     combo->hidePopup();
+}
+
+// A fake TShark (the preview decoder fixture, see previewdecoder_fixture.cpp) answers `-G folders`
+// and `-G protocols`; each call is logged.
+TEST_CASE( "The dialog lists the saved TShark's protocols once it proves its isolation",
+           "[previewroutes]" )
+{
+    QTemporaryDir dir;
+    REQUIRE( dir.isValid() );
+    RestoreState restore;
+    struct RestoreFakeTshark {
+        ~RestoreFakeTshark()
+        {
+            qunsetenv( "CILOGG_FAKE_TSHARK_MODE" );
+            qunsetenv( "CILOGG_FAKE_TSHARK_LOG" );
+            previewroutes::forgetTsharkProtocols();
+        }
+    } fakeTshark;
+    const auto fake = QString::fromUtf8( PREVIEW_DECODER_FIXTURE_PATH );
+    REQUIRE( QFileInfo( fake ).isExecutable() );
+    const auto log = dir.filePath( "tshark.log" );
+    qputenv( "CILOGG_FAKE_TSHARK_LOG", log.toUtf8() );
+    qunsetenv( "CILOGG_FAKE_TSHARK_MODE" );
+    previewroutes::forgetTsharkProtocols();
+    PreviewManager::instance().clearAll();
+    PreviewDecoderSettings::instance().setPacks( {} );
+    REQUIRE( PreviewDecoderSettings::instance().setConfiguration(
+        { { "enabled", true },
+          { "tshark", fake },
+          { "text2pcap", fake },
+          { "previewRoutes",
+            QVariantMap{ { "Carrier", QVariantMap{ { "dissector", "fake_tshark_proto" } } } } } } ) );
+    const auto calls = [ & ] {
+        QFile file( log );
+        return file.open( QIODevice::ReadOnly )
+                   ? QString::fromUtf8( file.readAll() ).split( '\n', Qt::SkipEmptyParts )
+                   : QStringList{};
+    };
+
+    PreviewDecoderSettingsDialog dialog;
+    auto* previews = dialog.findChild<QTableWidget*>( "decoderPreviewRoutes" );
+    auto* status = dialog.findChild<QLabel*>( "decoderChoicesStatus" );
+    auto* warnings = dialog.findChild<QLabel*>( "decoderRouteWarnings" );
+    auto* note = dialog.findChild<QLabel*>( "decoderValidationError" );
+    auto* buttons = dialog.findChild<QDialogButtonBox*>();
+    REQUIRE( previews );
+    REQUIRE( status );
+    REQUIRE( warnings );
+    REQUIRE( note );
+    REQUIRE( buttons );
+    const auto listed = [ & ] { return status->text().contains( "2 TShark protocols" ); };
+
+    SECTION( "listed once per file, and an Apply does not list it again" )
+    {
+        dialog.show();
+        REQUIRE( QTest::qWaitFor( listed, 10000 ) );
+        CHECK( calls() == QStringList{ "folders", "protocols" } );
+        CHECK( items( editor( previews, 0, 1 ) ).contains( "fake_tshark_proto" ) );
+        CHECK( warnings->text().isEmpty() );
+        previews->item( 0, 1 )->setText( "nowhere_at_all" );
+        buttons->button( QDialogButtonBox::Apply )->click();
+        // The unchanged TShark keeps its list: the unknown name is reported at once.
+        CHECK( warnings->text().contains( "TShark does not list it" ) );
+        dialog.hide();
+        dialog.reload();
+        dialog.show();
+        QTest::qWait( 200 );
+        CHECK( listed() );
+        CHECK( calls().size() == 2 );
+    }
+    SECTION( "OK waits for a list being read, and stays open for a new warning" )
+    {
+        qputenv( "CILOGG_FAKE_TSHARK_MODE", "slow" );
+        dialog.show();
+        previews->item( 0, 1 )->setText( "nowhere_at_all" );
+        buttons->button( QDialogButtonBox::Ok )->click();
+        CHECK( dialog.isVisible() );
+        CHECK( note->text().contains( "Checking the routes" ) );
+        REQUIRE( QTest::qWaitFor( listed, 10000 ) );
+        CHECK( dialog.isVisible() );
+        CHECK( warnings->text().contains( "`nowhere_at_all`" ) );
+        // The same warnings again: OK closes.
+        buttons->button( QDialogButtonBox::Ok )->click();
+        CHECK_FALSE( dialog.isVisible() );
+    }
+    SECTION( "OK waits for a list being read, and closes when nothing is new" )
+    {
+        qputenv( "CILOGG_FAKE_TSHARK_MODE", "slow" );
+        dialog.show();
+        buttons->button( QDialogButtonBox::Ok )->click();
+        CHECK( dialog.isVisible() );
+        REQUIRE( QTest::qWaitFor( [ & ] { return !dialog.isVisible(); }, 10000 ) );
+        CHECK( warnings->text().isEmpty() );
+    }
+    SECTION( "nothing is listed unless the isolation is proven" )
+    {
+        qputenv( "CILOGG_FAKE_TSHARK_MODE", "unisolated" );
+        dialog.show();
+        REQUIRE( QTest::qWaitFor(
+            [ & ] { return status->text().contains( "plugin isolation unverified" ); }, 10000 ) );
+        CHECK( calls() == QStringList{ "folders" } );
+        previews->item( 0, 1 )->setText( "nowhere_at_all" );
+        buttons->button( QDialogButtonBox::Apply )->click();
+        CHECK( warnings->text().contains( "(plugin isolation unverified)" ) );
+    }
+    SECTION( "a failed listing is reported" )
+    {
+        qputenv( "CILOGG_FAKE_TSHARK_MODE", "fail" );
+        dialog.show();
+        REQUIRE( QTest::qWaitFor( [ & ] { return status->text().contains( "exit code 3" ); },
+                                  10000 ) );
+        CHECK( calls() == QStringList{ "folders", "protocols" } );
+    }
 }

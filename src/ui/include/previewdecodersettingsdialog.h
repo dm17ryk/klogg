@@ -3,7 +3,9 @@
 #include "previewroutechoices.h"
 #include <QDialog>
 #include <QPointer>
+#include <memory>
 class QCheckBox;
+class QTemporaryDir;
 class QLineEdit;
 class QComboBox;
 class QListWidget;
@@ -37,13 +39,18 @@ private:
     // Rereads the selected Lua files and the enabled packs, and refills the drop-downs.
     void refreshChoices();
     void showChoicesStatus();
-    // Reads `tshark -G protocols` of the saved TShark once, in the background, while the saved
-    // decoder is enabled. `retry` reads it again after a failure.
+    // Lists the protocols of the saved TShark once per file, in the background, while the saved
+    // decoder is enabled: `-G folders` first proves the plugin isolation, then `-G protocols`.
+    // `retry` lists again after a failure.
     void loadTsharkProtocols( bool retry = false );
-    // Drops the saved TShark's list (and a reading of it): after a settings change it may be
-    // another file at the same path, size and time.
-    void forgetTsharkProtocols();
-    void tsharkProtocolsLoaded( QProcess* process, const QString& key, const QString& failure );
+    void stopTsharkListing();
+    void runTshark( const QString& path, const QString& key,
+                    const std::shared_ptr<QTemporaryDir>& folder, const QString& report );
+    void tsharkReported( QProcess* process, const QString& path, const QString& key,
+                         const std::shared_ptr<QTemporaryDir>& folder, const QString& report,
+                         QString failure );
+    // OK closes, or stays open once when the warnings are new since `shown`.
+    void closeUnlessNewWarnings( const QString& shown );
     // An empty PDML protocol, or one that was the previous dissector, follows the dissector.
     void followDissector( QTableWidget* table, QTableWidgetItem* item );
     // The warnings for the saved routes and Lua files; while TShark is listing, only those its
@@ -81,4 +88,8 @@ private:
     // The shown warnings: always those of the saved settings (checked on opening, on Apply, when
     // a TShark list arrives and when the packs or their Python check change).
     QVector<previewroutes::Warning> warnings_;
+    // OK pressed while TShark was listing: it closes (or not) once the list is there, comparing
+    // with the warnings shown before it.
+    bool okWaitsForList_ = false;
+    QString okShownWarnings_;
 };

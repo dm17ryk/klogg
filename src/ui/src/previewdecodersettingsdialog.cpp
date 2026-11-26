@@ -24,6 +24,7 @@
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QPushButton>
+#include <QShowEvent>
 #include <QSignalBlocker>
 #include <QStandardPaths>
 #include <QStyledItemDelegate>
@@ -218,21 +219,13 @@ void populate( QTableWidget* table, const QVariantMap& values, bool protocol )
     }
 }
 
-QHash<QString, QStringList>& tsharkProtocolCache()
-{
-    static QHash<QString, QStringList> cache;
-    return cache;
-}
-// The saved TShark as the protocol list's key (path, size and time), or empty for none.
+// The saved TShark as the protocol list's key (path, size and times), or empty for none.
 QString tsharkKey( const QString& path )
 {
     const QFileInfo info( path );
     if ( path.isEmpty() || !info.isAbsolute() || !info.isFile() || !info.isExecutable() )
         return {};
-    return QStringLiteral( "%1|%2|%3" )
-        .arg( info.absoluteFilePath() )
-        .arg( info.size() )
-        .arg( info.lastModified().toMSecsSinceEpoch() );
+    return previewroutes::fileKey( path );
 }
 // Like the preview worker's TShark, this one reads no personal or global plugins or settings, so it
 // lists the protocols a preview session knows before its Lua is added.
@@ -246,9 +239,10 @@ QProcessEnvironment isolatedEnvironment( const QString& root )
     }
     static const std::pair<const char*, const char*> folders[]
         = { { "WIRESHARK_CONFIG_DIR", "config" }, { "WIRESHARK_PLUGIN_DIR", "plugins" },
-            { "APPDATA", "appdata" },             { "HOME", "home" },
-            { "USERPROFILE", "home" },            { "XDG_CONFIG_HOME", "xdg-config" },
-            { "XDG_DATA_HOME", "xdg-data" },      { "XDG_CACHE_HOME", "xdg-cache" } };
+            { "APPDATA", "appdata" },             { "LOCALAPPDATA", "localappdata" },
+            { "HOME", "home" },                   { "USERPROFILE", "home" },
+            { "XDG_CONFIG_HOME", "xdg-config" },  { "XDG_DATA_HOME", "xdg-data" },
+            { "XDG_CACHE_HOME", "xdg-cache" } };
     const QDir folder( root );
     for ( const auto& [ name, relative ] : folders ) {
         folder.mkpath( relative );
@@ -353,16 +347,16 @@ PreviewDecoderSettingsDialog::PreviewDecoderSettingsDialog( QWidget* parent )
                                   true, &protocolAddPython_ );
     // The settings and the packs can change while the dialog is open: its menus, descriptions,
     // drop-downs and warnings follow them, also when Python's check of the packs' modules ends
-    // (E16b). A change of the settings (another TShark saved elsewhere, or the watched TShark
-    // replaced) also reads the TShark list again; an unchanged TShark keeps its list.
+    // (E16b). A change of the settings may save another TShark, or follow the watched TShark's
+    // replacement (a new file has new times): that file is listed; an unchanged TShark keeps its
+    // list, so an Apply does not wait for TShark again.
     connect( &PreviewDecoderSettings::instance(), &PreviewDecoderSettings::changed, this,
              [ this ] {
                  refreshPythonDecoders();
-                 // The watched TShark, Lua files and packs may have changed within the file
-                 // system's time granularity (same size and time): their lists are read again.
-                 forgetTsharkProtocols();
                  if ( isVisible() )
                      loadTsharkProtocols();
+                 // A watched Lua file or a pack may have changed within the file system's time
+                 // granularity: their names are read again.
                  previewroutes::forgetLuaNames();
                  refreshChoices();
                  showWarnings( savedWarnings() );
@@ -407,14 +401,19 @@ PreviewDecoderSettingsDialog::PreviewDecoderSettingsDialog( QWidget* parent )
     connect( buttons->button( QDialogButtonBox::Apply ), &QPushButton::clicked, this,
              [ this ] { apply(); } );
     connect( buttons, &QDialogButtonBox::accepted, this, [ this ] {
-        // Warnings do not block the save. OK keeps the dialog open once to show new ones.
+        // Warnings do not block the save. OK keeps the dialog open once to show new ones; while
+        // TShark is still listing, it waits for the list to check the names only it can settle.
         const auto shown = warningsLabel_->text();
         if ( !apply() )
             return;
-        if ( warnings_.isEmpty() || warningsLabel_->text() == shown )
-            accept();
-        else
-            error_->setText( heldOpenNote() );
+        if ( tsharkProcess_ ) {
+            okWaitsForList_ = true;
+            okShownWarnings_ = shown;
+            error_->setText(
+                tr( "Settings applied. Checking the routes with TShark's protocol list…" ) );
+            return;
+        }
+        closeUnlessNewWarnings( shown );
     } );
     connect( buttons, &QDialogButtonBox::rejected, this, &QDialog::reject );
     reload();
@@ -461,8 +460,9 @@ QTableWidget* PreviewDecoderSettingsDialog::routeTable( QTabWidget* tabs, const 
             return cellChoices( table, index.row(), index.column() );
         },
         table ) );
-    table->setEditTriggers( QAbstractItemView::CurrentChanged | QAbstractItemView::DoubleClicked
-                            | QAbstractItemView::SelectedClicked
+    // No editor on a mere move of the current cell: a drop-down takes the arrow keys and would
+    // change the cell instead of moving.
+    table->setEditTriggers( QAbstractItemView::DoubleClicked | QAbstractItemView::SelectedClicked
                             | QAbstractItemView::EditKeyPressed
                             | QAbstractItemView::AnyKeyPressed );
     connect( table, &QTableWidget::itemChanged, this, [ this, table ]( QTableWidgetItem* item ) {
@@ -493,7 +493,7 @@ QTableWidget* PreviewDecoderSettingsDialog::routeTable( QTabWidget* tabs, const 
     box->addLayout( row );
     connect( addRoute, &QPushButton::clicked, this, [ this, table, protocol ] {
         const int added = addRouteRow( table, protocol );
-        // The new route opens on its drop-down (a visible table already did on the move).
+        // The new route opens on its drop-down.
         table->setCurrentCell( added, 0 );
         if ( !table->indexWidget( table->model()->index( added, 0 ) ) )
             table->editItem( table->item( added, 0 ) );
@@ -656,8 +656,9 @@ void PreviewDecoderSettingsDialog::showChoicesStatus()
 void PreviewDecoderSettingsDialog::showEvent( QShowEvent* event )
 {
     QDialog::showEvent( event );
-    // A list that failed (a cold start past the timeout) is read again on the next show.
-    loadTsharkProtocols( true );
+    // A list that failed (a cold start past the timeout) is read again when the dialog is opened,
+    // not each time the window system shows it again (restored from minimized).
+    loadTsharkProtocols( !event->spontaneous() );
     // While it loads, the names only its list could settle wait for it.
     showWarnings( savedWarnings() );
 }
@@ -667,49 +668,47 @@ QString PreviewDecoderSettingsDialog::heldOpenNote() const
     return tr( "Settings applied, with the warnings below. OK again closes the dialog." );
 }
 
-void PreviewDecoderSettingsDialog::forgetTsharkProtocols()
+void PreviewDecoderSettingsDialog::closeUnlessNewWarnings( const QString& shown )
 {
-    tsharkProtocolCache().remove( tsharkKey_ );
-    if ( tsharkProcess_ ) {
-        tsharkProcess_->disconnect( this );
-        tsharkProcess_->kill();
-        tsharkProcess_->deleteLater();
-        tsharkProcess_ = nullptr;
-    }
-    // The next load (on showing, or now when shown) reads the list again.
-    tsharkKey_.clear();
-    tsharkFailure_.clear();
-    choices_.tshark.clear();
-    choices_.tsharkLoaded = false;
+    if ( warnings_.isEmpty() || warningsLabel_->text() == shown )
+        accept();
+    else
+        error_->setText( heldOpenNote() );
+}
+
+void PreviewDecoderSettingsDialog::stopTsharkListing()
+{
+    if ( !tsharkProcess_ )
+        return;
+    tsharkProcess_->disconnect( this );
+    tsharkProcess_->kill();
+    tsharkProcess_->deleteLater();
+    tsharkProcess_ = nullptr;
 }
 
 void PreviewDecoderSettingsDialog::loadTsharkProtocols( bool retry )
 {
     // Only the saved TShark of an enabled decoder runs, as for a preview: applying the settings
-    // approves their executables.
+    // approves their executables. Each file is listed once (a replaced one has new times).
     const auto config = PreviewDecoderSettings::instance().configuration();
-    const auto key = config.value( "enabled" ).toBool()
-                         ? tsharkKey( config.value( "tshark" ).toString() )
-                         : QString{};
+    const auto path = config.value( "tshark" ).toString();
+    const auto key = config.value( "enabled" ).toBool() ? tsharkKey( path ) : QString{};
     if ( key == tsharkKey_
          && ( choices_.tsharkLoaded || tsharkProcess_
               || ( !tsharkFailure_.isEmpty() && !retry ) ) )
         return;
-    if ( tsharkProcess_ ) {
-        tsharkProcess_->disconnect( this );
-        tsharkProcess_->kill();
-        tsharkProcess_->deleteLater();
-        tsharkProcess_ = nullptr;
-    }
+    stopTsharkListing();
     tsharkKey_ = key;
     tsharkFailure_.clear();
     choices_.tshark.clear();
     choices_.tsharkLoaded = false;
-    const auto cached = tsharkProtocolCache().constFind( key );
-    if ( key.isEmpty() || cached != tsharkProtocolCache().cend() ) {
-        choices_.tsharkLoaded = !key.isEmpty();
-        if ( choices_.tsharkLoaded )
-            choices_.tshark = *cached;
+    if ( key.isEmpty() ) {
+        refreshChoices();
+        return;
+    }
+    if ( const auto known = previewroutes::knownTsharkProtocols( key ) ) {
+        choices_.tshark = *known;
+        choices_.tsharkLoaded = true;
         refreshChoices();
         return;
     }
@@ -719,6 +718,15 @@ void PreviewDecoderSettingsDialog::loadTsharkProtocols( bool retry )
         showChoicesStatus();
         return;
     }
+    LOG_INFO << "Preview decoder settings list the TShark protocols";
+    runTshark( path, key, folder, QStringLiteral( "folders" ) );
+    showChoicesStatus();
+}
+
+void PreviewDecoderSettingsDialog::runTshark( const QString& path, const QString& key,
+                                              const std::shared_ptr<QTemporaryDir>& folder,
+                                              const QString& report )
+{
     auto* process = new QProcess( this );
     tsharkProcess_ = process;
     // The folder stays until the process is gone.
@@ -734,40 +742,50 @@ void PreviewDecoderSettingsDialog::loadTsharkProtocols( bool retry )
         }
     } );
     connect( process, &QProcess::finished, this,
-             [ this, process, key ]( int code, QProcess::ExitStatus status ) {
+             [ this, process, path, key, folder, report ]( int code,
+                                                           QProcess::ExitStatus status ) {
                  auto failure = process->property( "failure" ).toString();
                  if ( failure.isEmpty() && ( status != QProcess::NormalExit || code != 0 ) )
                      failure = tr( "exit code %1" ).arg( code );
-                 tsharkProtocolsLoaded( process, key, failure );
+                 tsharkReported( process, path, key, folder, report, failure );
              } );
     connect( process, &QProcess::errorOccurred, this,
-             [ this, process, key ]( QProcess::ProcessError error ) {
+             [ this, process, path, key, folder, report ]( QProcess::ProcessError error ) {
                  if ( error == QProcess::FailedToStart )
-                     tsharkProtocolsLoaded( process, key, tr( "TShark did not start" ) );
+                     tsharkReported( process, path, key, folder, report,
+                                     tr( "TShark did not start" ) );
              } );
     QTimer::singleShot( TsharkListTimeoutMs, process, [ process ] {
         process->setProperty( "failure", tr( "timed out" ) );
         process->kill();
     } );
-    LOG_INFO << "Preview decoder settings read the TShark protocol list";
-    process->start( config.value( "tshark" ).toString(), { "-G", "protocols" },
-                    QIODevice::ReadOnly );
-    showChoicesStatus();
+    process->start( path, { QStringLiteral( "-G" ), report }, QIODevice::ReadOnly );
 }
 
-void PreviewDecoderSettingsDialog::tsharkProtocolsLoaded( QProcess* process, const QString& key,
-                                                          const QString& failure )
+void PreviewDecoderSettingsDialog::tsharkReported( QProcess* process, const QString& path,
+                                                   const QString& key,
+                                                   const std::shared_ptr<QTemporaryDir>& folder,
+                                                   const QString& report, QString failure )
 {
     process->deleteLater();
     if ( process != tsharkProcess_ )
         return;
     tsharkProcess_ = nullptr;
-    const auto names = failure.isEmpty()
-                           ? previewroutes::tsharkProtocolNames( process->readAllStandardOutput() )
-                           : QStringList{};
+    const auto output = failure.isEmpty() ? process->readAllStandardOutput() : QByteArray{};
+    if ( report == QLatin1String( "folders" ) && failure.isEmpty() ) {
+        // Like the preview worker, nothing that loads plugins runs before TShark shows it takes
+        // its configuration and plugins only from the temporary folder.
+        if ( previewroutes::tsharkFoldersIsolated( output, folder->path() ) ) {
+            runTshark( path, key, folder, QStringLiteral( "protocols" ) );
+            return;
+        }
+        failure = tr( "plugin isolation unverified" );
+    }
+    const auto names = failure.isEmpty() ? previewroutes::tsharkProtocolNames( output )
+                                         : QStringList{};
     tsharkFailure_ = failure.isEmpty() && names.isEmpty() ? tr( "none listed" ) : failure;
     if ( tsharkFailure_.isEmpty() ) {
-        tsharkProtocolCache().insert( key, names );
+        previewroutes::rememberTsharkProtocols( key, names );
         choices_.tshark = names;
         choices_.tsharkLoaded = true;
     }
@@ -775,14 +793,18 @@ void PreviewDecoderSettingsDialog::tsharkProtocolsLoaded( QProcess* process, con
              << " failure=" << tsharkFailure_;
     refreshChoices();
     // The saved routes are checked again with the list (also in a closed dialog: it shows them
-    // when it opens); when none remain, OK's note goes too.
+    // when it opens). OK pressed while TShark was listing closes now, unless there are new
+    // warnings; when none remain, OK's note goes.
     showWarnings( savedWarnings() );
-    if ( warnings_.isEmpty() && error_->text() == heldOpenNote() )
+    if ( std::exchange( okWaitsForList_, false ) && isVisible() )
+        closeUnlessNewWarnings( okShownWarnings_ );
+    else if ( warnings_.isEmpty() && error_->text() == heldOpenNote() )
         error_->setText( tr( "Settings applied." ) );
 }
 
 void PreviewDecoderSettingsDialog::reload()
 {
+    okWaitsForList_ = false;
     const auto config = PreviewDecoderSettings::instance().configuration();
     enabled_->setChecked( config.value( "enabled" ).toBool() );
     approval_->setChecked( config.value( "allowExternalLua" ).toBool() );
@@ -921,6 +943,8 @@ void PreviewDecoderSettingsDialog::describeTarget( QTableWidgetItem* item ) cons
 
 bool PreviewDecoderSettingsDialog::apply()
 {
+    // An Apply (or another OK) after an OK that waits for TShark is the one that counts.
+    okWaitsForList_ = false;
     // An open route editor holds a value its cell does not have yet.
     for ( auto* table : { previewRoutes_, protocolRoutes_ } ) {
         const auto index = table->currentIndex();
