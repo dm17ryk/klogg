@@ -537,6 +537,26 @@ TEST_CASE( "Only the modules that define decode() are offered as decoders", "[pa
                                "= lambda p, c: []\n" },
         // A generic function (Python 3.12).
         { "generic", "def decode[T](payload: T, context):\n    return None\n" },
+        // Generic bounds may hold brackets of their own.
+        { "nestedgeneric", "def decode[T: tuple[int, str]](payload: T, context):\n"
+                           "    return None\n" },
+        // A lambda in an annotation: its default is no assignment.
+        { "lambdaannotation", "decode: lambda x=1: x\n" },
+        // The last binding decides: an async one afterwards takes it away, a later def gives it.
+        { "asyncredefined", "def decode(payload, context):\n    return None\n"
+                            "async def decode(payload, context):\n    return None\n" },
+        { "syncredefined", "async def decode(payload, context):\n    return None\n"
+                           "def decode(payload, context):\n    return None\n" },
+        { "classdecode", "class decode:\n    pass\n" },
+        // Deleting something else that holds the name keeps the decoder.
+        { "delattribute", "def decode(payload, context):\n    return None\nclass Holder:\n"
+                          "    decode = 1\ndel Holder.decode\n" },
+        // Form feeds are whitespace; one at the start of a line does not indent it.
+        { "formfeed", "\x0c"
+                      "def decode\x0c"
+                      "(payload, context):\n    return None\n" },
+        // A string over lines stays in its logical line: the decode is the one-line def's own.
+        { "multilinesuite", "def helper(): text = \"\"\"a\nb\"\"\"; decode = helper\n" },
         // A name deleted again, and a plain import, which binds a module, are not decoders.
         { "deleted", "def decode(payload, context):\n    return None\ndel decode\n" },
         { "moduleimport", "import decode\n" },
@@ -579,10 +599,27 @@ TEST_CASE( "Only the modules that define decode() are offered as decoders", "[pa
     }
     entries.sort();
     CHECK( entries
-           == QStringList{ "afterbrackets", "annotated", "annotatedbrackets", "assigned", "bom",
-                           "continued", "cr", "crlf", "escaped", "generic", "imported",
-                           "parenthesized", "plain", "rebound", "semicolon", "semicolonassign",
-                           "softkeyword" } );
+           == QStringList{ "afterbrackets",
+                           "annotated",
+                           "annotatedbrackets",
+                           "assigned",
+                           "bom",
+                           "continued",
+                           "cr",
+                           "crlf",
+                           "delattribute",
+                           "escaped",
+                           "formfeed",
+                           "generic",
+                           "imported",
+                           "nestedgeneric",
+                           "parenthesized",
+                           "plain",
+                           "rebound",
+                           "semicolon",
+                           "semicolonassign",
+                           "softkeyword",
+                           "syncredefined" } );
 }
 
 TEST_CASE( "The decode() check reads a module near the size limit in linear time",

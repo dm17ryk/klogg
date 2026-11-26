@@ -749,9 +749,11 @@ that its pack is not enabled, and a preview's tooltip and status name the decode
 (`PreviewService::pythonDecoderLabel`). The menu offers the modules that bind `decode` at their top
 level (`def decode(`, generic `def decode[T](` too, `decode = value` with or without an
 annotation, or a `from ... import` that binds the name), kept in
-`PreviewDecoderPacks::pythonEntries`. Not listed: helper modules a pack lists so the worker copies
-them, `async def decode` (the worker calls `decode()` without awaiting it), an annotation without a
-value, a plain `import` (it binds a module), and a module with a top-level `del decode`. The check
+`PreviewDecoderPacks::pythonEntries`. The last top-level binding decides, as when Python runs the
+module. Not listed: helper modules a pack lists so the worker copies them, `async def decode` (the
+worker calls `decode()` without awaiting it), `class decode`, an annotation without a value, a
+plain `import` (it binds a module), and a module whose last word on the name is `del decode`. The
+check
 reads the module's statements (not its strings, comments, bracketed continuation lines or one-line
 compound bodies) and never runs it, so a module that binds the name some other way (a star import,
 a tuple assignment, a binding inside `if` or `try`) is not listed either; such a decoder can still

@@ -1611,6 +1611,19 @@
           "P2 (fixed): a generic def decode[T](...) was missed; an optional type-parameter list is read"
         ],
         "result": "fixed in the commit after 01383f47"
+      },
+      {
+        "head": "bb2a1056",
+        "reviewer": "Codex review bot",
+        "findings": [
+          "P2 (fixed): del of an attribute counted as deleting decode",
+          "P2 (fixed): generic bounds with nested brackets were missed",
+          "P2 (fixed): a lambda default in an annotation counted as an assignment",
+          "P2 (fixed): a later async def did not take an earlier def away",
+          "P2 (fixed): form feeds were not whitespace",
+          "P2 (fixed): a newline inside a string ended the logical line of a one-line suite"
+        ],
+        "result": "fixed in the commit after bb2a1056"
       }
     ]
   }
