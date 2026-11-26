@@ -2,6 +2,7 @@
 #include "previewdecodersettingsdialog.h"
 #include "log.h"
 #include "previewdecodersettings.h"
+#include "previewpackregistry.h"
 #include <QAction>
 #include <QCheckBox>
 #include <QComboBox>
@@ -28,6 +29,50 @@ QString plainTip( const QString& text )
 {
     return text.isEmpty() ? QString{}
                           : QStringLiteral( "<span>%1</span>" ).arg( text.toHtmlEscaped() );
+}
+// E16b: why Python's check does not offer a pack's module as a decoder (PreviewDecoderPacks::
+// pythonNotes), as the end of a sentence.
+QString notOffered( const QVariantMap& note )
+{
+    const auto reason = note.value( "reason" ).toString();
+    if ( reason == QLatin1String( "syntax_error" ) ) {
+        const auto line = note.value( "line" ).toInt();
+        const auto detail = note.value( "detail" ).toString();
+        return line > 0 ? QObject::tr( "Python cannot compile it (line %1: %2), so a route to it "
+                                       "fails to decode" )
+                              .arg( line )
+                              .arg( detail )
+                        : QObject::tr( "Python cannot compile it (%1), so a route to it fails to "
+                                       "decode" )
+                              .arg( detail );
+    }
+    if ( reason == QLatin1String( "async_decode" ) )
+        return QObject::tr( "its decode() is an async def, which the preview calls without "
+                            "awaiting" );
+    if ( reason == QLatin1String( "not_callable" ) )
+        return QObject::tr( "its decode is a class, a module or a value, not a function" );
+    if ( reason == QLatin1String( "too_large" ) )
+        return QObject::tr( "it is larger than 1 MiB" );
+    if ( reason == QLatin1String( "too_complex" ) )
+        return QObject::tr( "it is nested too deeply for Python to compile" );
+    if ( reason == QLatin1String( "unreadable" ) )
+        return QObject::tr( "it cannot be read" );
+    if ( reason == QLatin1String( "timeout" ) )
+        return QObject::tr( "the check of the packs' modules ran out of time" );
+    return QObject::tr( "Python finds no decode() function at its top level" );
+}
+// Why the packs' modules are not checked (PreviewDecoderPacks::pythonCheck), as a sentence.
+QString checkState( const QString& state )
+{
+    if ( state == QLatin1String( "checking" ) )
+        return QObject::tr( "CILogg is checking the enabled packs' Python modules." );
+    if ( state == QLatin1String( "python_unavailable" ) )
+        return QObject::tr( "CILogg found no Python interpreter, so it cannot tell which of the "
+                            "packs' Python modules are decoders. Install Python 3 on PATH or set "
+                            "CILOGG_SCRIPT_PYTHON, then open this window again." );
+    return QObject::tr( "CILogg could not check the packs' Python modules (%1); open this window "
+                        "again to retry." )
+        .arg( state );
 }
 void identity( QWidget* widget, const QString& name, const QString& label )
 {
@@ -223,6 +268,9 @@ PreviewDecoderSettingsDialog::PreviewDecoderSettingsDialog( QWidget* parent )
     // The packs can change while the dialog is open: its menus and descriptions follow them.
     connect( &PreviewDecoderSettings::instance(), &PreviewDecoderSettings::changed, this,
              [ this ] { refreshPythonDecoders(); } );
+    // E16b: so do they when Python's check of the packs' modules ends.
+    connect( &PreviewDecoderSettings::instance(), &PreviewDecoderSettings::pythonChecked, this,
+             [ this ] { refreshPythonDecoders(); } );
     layout->addWidget( tabs, 1 );
     error_ = new QLabel( this );
     identity( error_, "decoderValidationError", tr( "Configuration validation" ) );
@@ -240,6 +288,8 @@ PreviewDecoderSettingsDialog::PreviewDecoderSettingsDialog( QWidget* parent )
     } );
     connect( buttons, &QDialogButtonBox::rejected, this, &QDialog::reject );
     reload();
+    // A check that found no interpreter is tried again (one may have been installed since).
+    PreviewPackRegistry::instance().checkPythonDecoders();
 }
 
 void PreviewDecoderSettingsDialog::reload()
@@ -268,6 +318,24 @@ void PreviewDecoderSettingsDialog::refreshPythonDecoders()
         const auto packId = value.toMap().value( "id" ).toString();
         names[ packs.pythonNames.value( packId, packId ).toString() ] += 1;
     }
+    // The modules Python's check does not offer for a reason a pack's author would want to see
+    // (a helper without decode() is no news).
+    QStringList refused;
+    for ( const auto& value : packs.python ) {
+        const auto packId = value.toMap().value( "id" ).toString();
+        const auto notes = packs.pythonNotes.value( packId ).toMap();
+        for ( auto note = notes.cbegin(); note != notes.cend(); ++note ) {
+            if ( note.value().toMap().value( "reason" ) != QLatin1String( "no_decode" ) )
+                refused << tr( "%1/%2: %3" )
+                               .arg( packId, note.key(), notOffered( note.value().toMap() ) );
+        }
+    }
+    constexpr int RefusedShown = 8;
+    if ( refused.size() > RefusedShown ) {
+        const auto more = refused.size() - RefusedShown;
+        refused = refused.mid( 0, RefusedShown );
+        refused << tr( "… and %n more", nullptr, static_cast<int>( more ) );
+    }
     for ( auto* button : { previewAddPython_, protocolAddPython_ } ) {
         auto* menu = button->menu();
         menu->clear();
@@ -275,7 +343,8 @@ void PreviewDecoderSettingsDialog::refreshPythonDecoders()
             const auto pack = value.toMap();
             const auto packId = pack.value( "id" ).toString();
             const auto name = packs.pythonNames.value( packId, packId ).toString();
-            // Only the modules that bind decode(): the others are helpers the pack lists.
+            // Only the modules where decode() may be a function: the others are helpers the pack
+            // lists, or modules Python refuses.
             const auto entries = packs.pythonEntries.value( packId ).toStringList();
             for ( const auto& listed : pack.value( "decoders" ).toList() ) {
                 const auto decoder = listed.toMap();
@@ -296,9 +365,18 @@ void PreviewDecoderSettingsDialog::refreshPythonDecoders()
         }
         const bool any = !menu->isEmpty();
         button->setEnabled( any );
-        button->setToolTip( any ? tr( "Route a preview or protocol to a Python decoder of an "
-                                      "enabled configuration pack." )
-                                : tr( "No enabled configuration pack has Python decoders." ) );
+        QStringList tip{ any ? tr( "Route a preview or protocol to a Python decoder of an enabled "
+                                   "configuration pack." )
+                         : packs.python.isEmpty()
+                             ? tr( "No enabled configuration pack has Python decoders." )
+                             : tr( "No module of the enabled configuration packs is a Python "
+                                   "decoder." ) };
+        if ( packs.pythonCheck != QLatin1String( "done" ) )
+            tip << checkState( packs.pythonCheck );
+        if ( !refused.isEmpty() )
+            tip << tr( "Not offered:" ) << refused;
+        button->setToolTip( plainTip( tip.join( QLatin1Char( '\n' ) ) )
+                                .replace( QLatin1String( "\n" ), QLatin1String( "<br>" ) ) );
     }
     for ( auto* table : { previewRoutes_, protocolRoutes_ } ) {
         for ( int row = 0; row < table->rowCount(); ++row )
@@ -317,22 +395,23 @@ void PreviewDecoderSettingsDialog::describeTarget( QTableWidgetItem* item ) cons
         const auto pack = settings.pythonDecoderPack( decoder );
         const auto slash = decoder.indexOf( QLatin1Char( '/' ) );
         const auto decoderId = decoder.mid( slash + 1 );
+        const auto packs = settings.packs();
+        const auto packId = decoder.left( slash );
+        const auto note = packs.pythonNotes.value( packId ).toMap().value( decoderId ).toMap();
         if ( pack.isEmpty() )
             tip = tr( "Python decoder %1: its pack is not enabled (or has no such decoder), so "
                       "the route does not apply." )
                       .arg( decoder );
-        else if ( !settings.packs()
-                       .pythonEntries.value( decoder.left( slash ) )
-                       .toStringList()
-                       .contains( decoderId ) )
-            // The check is static and conservative: a module that binds decode() in a way it does
-            // not read still decodes.
-            tip = tr( "Python module \"%1\" of the pack \"%2\": CILogg found no decode() at its "
-                      "top level, so the module is not offered as a decoder; the route still works "
-                      "if the module binds decode() in another way." )
-                      .arg( decoderId, pack );
-        else
+        else if ( packs.pythonEntries.value( packId ).toStringList().contains( decoderId ) )
             tip = tr( "Python decoder \"%1\" of the pack \"%2\"." ).arg( decoderId, pack );
+        else if ( !note.isEmpty() || packs.pythonCheck == QLatin1String( "done" ) )
+            // Python's parser read the module; a decode() bound by running code (a star import,
+            // exec) is beyond what it reads.
+            tip = tr( "Python module \"%1\" of the pack \"%2\" is not offered as a decoder: %3." )
+                      .arg( decoderId, pack, notOffered( note ) );
+        else
+            tip = tr( "Python module \"%1\" of the pack \"%2\": %3" )
+                      .arg( decoderId, pack, checkState( packs.pythonCheck ) );
     }
     // The pack's name and the typed decoder are text, never markup.
     tip = plainTip( tip );

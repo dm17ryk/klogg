@@ -303,7 +303,14 @@ void PreviewDecoderSettings::setPacks( const PreviewDecoderPacks& packs )
 {
     if ( packs == packs_ )
         return;
+    const bool sessions = !packs.sameSessions( packs_ );
     packs_ = packs;
+    if ( !sessions ) {
+        LOG_DEBUG << "Preview decoder Python check changed state="
+                  << packs_.pythonCheck.toStdString();
+        Q_EMIT pythonChecked();
+        return;
+    }
     LOG_INFO << "Preview decoder pack contributions changed packs=" << packs_.lua.size()
              << " python_packs=" << packs_.python.size()
              << " preview_routes=" << packs_.previewRoutes.size()

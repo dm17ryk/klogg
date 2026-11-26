@@ -23,6 +23,7 @@
 #include <QTableWidget>
 #include <QTemporaryDir>
 #include <kzip.h>
+#include <memory>
 
 #include "configpack.h"
 #include "configurationexport.h"
@@ -36,6 +37,7 @@
 #include "previewpackregistry.h"
 #include "previewservice.h"
 #include "pythondecoderclient.h"
+#include "pythonentriesclient.h"
 #include "pythonruntime.h"
 
 using namespace cilogg::plugins;
@@ -258,6 +260,104 @@ int rowNamed( QTableWidget* table, const QString& name )
     }
     return -1;
 }
+// Waits for Python's check of the enabled packs' modules (E16b) to end; returns its state.
+QString pythonCheckEnded()
+{
+    QElapsedTimer timer;
+    timer.start();
+    while ( PreviewDecoderSettings::instance().packs().pythonCheck == "checking"
+            && timer.elapsed() < 30000 ) {
+        QCoreApplication::processEvents( QEventLoop::AllEvents, 50 );
+    }
+    return PreviewDecoderSettings::instance().packs().pythonCheck;
+}
+
+// Python's check of `packs`' modules, through its worker.
+QVariantMap checkModules( const QVariantList& packs )
+{
+    static int requests = 0;
+    QVariantMap answer;
+    bool done = false;
+    // Ended before `answer` and `done`: a check that outlives this call answers into them.
+    QObject owner;
+    PythonEntriesClient::instance().check( &owner, packs,
+                                           QStringLiteral( "test-%1" ).arg( ++requests ),
+                                           [ &answer, &done ]( QVariantMap result ) {
+                                               answer = std::move( result );
+                                               done = true;
+                                           } );
+    QElapsedTimer timer;
+    timer.start();
+    while ( !done && timer.elapsed() < 30000 ) {
+        QCoreApplication::processEvents( QEventLoop::AllEvents, 50 );
+    }
+    REQUIRE( done );
+    return answer;
+}
+
+// A pack folder with `modules` (decoder ID -> source), each in python/<id>.py, as the decoder
+// settings list a pack's modules.
+QVariantMap modulesPack( const QString& folder, const QString& packId,
+                         const QMap<QString, QByteArray>& modules )
+{
+    QVariantList decoders;
+    for ( auto module = modules.cbegin(); module != modules.cend(); ++module ) {
+        writeFile( folder + "/python/" + module.key() + ".py", module.value() );
+        decoders.append(
+            QVariantMap{ { "id", module.key() }, { "module", "python/" + module.key() + ".py" } } );
+    }
+    return { { "id", packId },
+             { "root", QDir( folder ).absolutePath() },
+             { "decoders", decoders } };
+}
+
+// Each module's answer by its ID: `entry` and `reason`, `line` and `detail`.
+QMap<QString, QVariantMap> modulesById( const QVariantMap& answer )
+{
+    QMap<QString, QVariantMap> modules;
+    for ( const auto& value : answer.value( "modules" ).toList() ) {
+        const auto module = value.toMap();
+        modules.insert( module.value( "decoder" ).toString().section( '/', 1 ), module );
+    }
+    return modules;
+}
+
+// No Python interpreter: neither CILOGG_SCRIPT_PYTHON nor one on PATH (an empty folder).
+struct NoPython {
+    QTemporaryDir empty;
+    QByteArray path = qgetenv( "PATH" );
+    bool hadOverride = qEnvironmentVariableIsSet( "CILOGG_SCRIPT_PYTHON" );
+    QByteArray override = qgetenv( "CILOGG_SCRIPT_PYTHON" );
+    NoPython()
+    {
+        REQUIRE( empty.isValid() );
+        qputenv( "PATH", QDir::toNativeSeparators( empty.path() ).toLocal8Bit() );
+        qunsetenv( "CILOGG_SCRIPT_PYTHON" );
+    }
+    ~NoPython()
+    {
+        restore();
+    }
+    void restore()
+    {
+        qputenv( "PATH", path );
+        if ( hadOverride ) {
+            qputenv( "CILOGG_SCRIPT_PYTHON", override );
+        }
+    }
+    // An interpreter next to the tests (a bundled runtime) cannot be hidden.
+    static bool bundled()
+    {
+        for ( const auto& candidate : cilogg::pythonruntime::bundledInterpreterCandidates(
+                  QCoreApplication::applicationDirPath() ) ) {
+            if ( QFileInfo( candidate ).isFile() ) {
+                return true;
+            }
+        }
+        return false;
+    }
+};
+
 } // namespace
 
 TEST_CASE( "A Python decoder pack installs from a local zip through its store and decodes once "
@@ -285,9 +385,22 @@ TEST_CASE( "A Python decoder pack installs from a local zip through its store an
            == QDir::cleanPath( pack.content() ) );
     // The pack's name goes with its decoders, for the places that show them.
     CHECK( PreviewDecoderSettings::instance().packs().pythonNames.value( PackId ) == PackName );
-    // Only "summary" defines decode(); "common" is a helper module the pack lists.
-    CHECK( PreviewDecoderSettings::instance().packs().pythonEntries.value( PackId ).toStringList()
-           == QStringList{ "summary" } );
+    // Python's parser reads the modules once the pack is applied: only "summary" defines
+    // decode(); "common" is a helper module the pack lists.
+    if ( pythonAvailable() ) {
+        REQUIRE( pythonCheckEnded() == "done" );
+        CHECK(
+            PreviewDecoderSettings::instance().packs().pythonEntries.value( PackId ).toStringList()
+            == QStringList{ "summary" } );
+        CHECK( PreviewDecoderSettings::instance()
+                   .packs()
+                   .pythonNotes.value( PackId )
+                   .toMap()
+                   .value( "common" )
+                   .toMap()
+                   .value( "reason" )
+               == "no_decode" );
+    }
     CHECK( PreviewDecoderSettings::instance().pythonDecoderPack(
                QStringLiteral( "%1/summary" ).arg( PackId ) )
            == PackName );
@@ -499,171 +612,151 @@ TEST_CASE( "Removing a Python decoder pack takes its decoders, routes and store"
     CHECK_FALSE( preview( "PY 01" ).value( "available" ).toBool() );
 }
 
-TEST_CASE( "Only the modules that define decode() are offered as decoders", "[packpython][E16]" )
+TEST_CASE( "Python's parser decides which pack modules are decoders", "[packpython][E16]" )
 {
+    if ( !pythonAvailable() ) {
+        WARN( "No Python interpreter: the modules are not checked" );
+        return;
+    }
     QTemporaryDir root;
     REQUIRE( root.isValid() );
     const QMap<QString, QByteArray> modules{
         { "plain", "def decode(payload, context):\n    return None\n" },
-        { "crlf", "import struct\r\n\r\ndef decode(payload, context):\r\n    return None\r\n" },
-        // The worker calls decode() and never awaits it: an async one is not offered.
-        { "asynchronous", "async def decode(payload, context):\n    return None\n" },
-        { "assigned", "def _impl(payload, context):\n    return None\ndecode = _impl\n" },
-        { "annotated", "from typing import Callable\ndecode: Callable = lambda p, c: None\n" },
-        { "imported", "from .plain import decode\n" },
-        { "parenthesized", "from .plain import (\n    decode,\n)\n" },
-        { "rebound", "from .plain import decode as _plain, _impl as decode\n" },
-        // Not decoders: a helper, a name bound otherwise, a method, a nested function and
-        // look-alike names.
-        { "helper", "MARKER = 'x'\n" },
-        { "aliased", "from .plain import decode as other\n" },
-        { "method",
-          "class Codec:\n    def decode(self, payload, context):\n        return None\n" },
-        { "nested", "def outer():\n    def decode(payload, context):\n        return None\n" },
-        { "lookalike", "def decode_all(payload):\n    return None\ndecoded = 1\n# def decode(\n" },
-        // Text in strings and comments binds nothing.
-        { "docstring", "\"\"\"Example:\n\ndef decode(payload, context):\n    return None\n\"\"\"\n"
-                       "MARKER = 1\n" },
-        { "quoted", "EXAMPLE = '''\ndecode = None\nfrom .plain import decode\n'''\n" },
-        { "commented", "from .plain import other  # not decode\n" },
-        // A keyword argument at the start of a line inside a call binds nothing either.
-        { "keyword", "def make(**kw):\n    return kw\nCODEC = make(\ndecode = make,\n)\n" },
-        // Real ones after a bracket and a backslash that continue a statement over lines.
-        { "afterbrackets", "ITEMS = (\n    1,\n)\ndecode = None\n" },
-        { "continued", "VALUE = 1 + \\\n    2\ndecode = None\n" },
-        // An annotation alone binds nothing; with a value after its brackets it does.
-        { "annotationonly", "def marker(**kw):\n    return int\ndecode: marker(enabled=True)\n" },
-        { "annotatedbrackets", "from typing import Callable\ndecode: Callable[[bytes, dict], list] "
-                               "= lambda p, c: []\n" },
-        // A generic function (Python 3.12).
-        { "generic", "def decode[T](payload: T, context):\n    return None\n" },
-        // Generic bounds may hold brackets of their own.
-        { "nestedgeneric", "def decode[T: tuple[int, str]](payload: T, context):\n"
-                           "    return None\n" },
-        // A lambda in an annotation: its default is no assignment.
-        { "lambdaannotation", "decode: lambda x=1: x\n" },
-        // The last binding decides: an async one afterwards takes it away, a later def gives it.
-        { "asyncredefined", "def decode(payload, context):\n    return None\n"
-                            "async def decode(payload, context):\n    return None\n" },
-        { "syncredefined", "async def decode(payload, context):\n    return None\n"
-                           "def decode(payload, context):\n    return None\n" },
-        { "classdecode", "class decode:\n    pass\n" },
-        // A list or tuple target deletes the name too; a subscript inside one does not.
-        { "dellist", "def decode(payload, context):\n    return None\ndel [decode]\n" },
-        { "delnested",
-          "def decode(payload, context):\n    return None\nitems = {}\ndel (items, [decode])\n" },
-        { "delsubscript", "def decode(payload, context):\n    return None\nitems = {decode: 1}\n"
-                          "del (items[decode],)\n" },
-        // A Python 3.12 f-string whose replacement field spans lines stays one logical line.
+        // A replacement field over lines in an f-string: its keyword argument binds nothing.
         { "fstring",
-          "def func(**kw):\n    return 1\nTEXT = f\"{func(\ndecode=lambda: None\n)}\"\n" },
-        // Deleting something else that holds the name keeps the decoder.
-        { "delattribute", "def decode(payload, context):\n    return None\nclass Holder:\n"
-                          "    decode = 1\ndel Holder.decode\n" },
-        // Form feeds are whitespace; one at the start of a line does not indent it.
-        { "formfeed", "\x0c"
-                      "def decode\x0c"
-                      "(payload, context):\n    return None\n" },
-        // A string over lines stays in its logical line: the decode is the one-line def's own.
-        { "multilinesuite", "def helper(): text = \"\"\"a\nb\"\"\"; decode = helper\n" },
-        // A name deleted again, and a plain import, which binds a module, are not decoders.
+          "def func(**kw):\n    return 1\nTEXT = f\"\"\"{func(\ndecode=lambda: None\n)}\"\"\"\n" },
+        // Soft keywords are names here.
+        { "softkeyword", "match = 1\ncase = 2\ntype = 3\ndef decode(payload, context):\n"
+                         "    return match\n" },
+        // The worker calls decode() and never awaits it; a decorator may make a plain function
+        // of an async one.
+        { "asynchronous", "async def decode(payload, context):\n    return None\n" },
+        { "decorated", "import functools\n@functools.lru_cache(None)\n"
+                       "def decode(payload, context):\n    return None\n" },
+        { "decoratedasync", "def to_sync(function):\n    return function\n@to_sync\n"
+                            "async def decode(payload, context):\n    return None\n" },
+        // A binding in a branch counts when some path keeps a function.
+        { "conditional", "import sys\nif sys.version_info >= (3, 10):\n"
+                         "    def decode(payload, context):\n        return None\n"
+                         "else:\n    decode = None\n" },
+        { "tryimport", "try:\n    from .fast import decode\nexcept ImportError:\n"
+                       "    def decode(payload, context):\n        return None\n" },
+        // The last binding wins.
         { "deleted", "def decode(payload, context):\n    return None\ndel decode\n" },
-        { "moduleimport", "import decode\n" },
-        { "aliasedmodule", "import json as decode\n" },
-        // Statements after a semicolon at the top level, but not the body of a one-line def.
-        { "semicolon", "VERSION = 1; from .plain import decode\n" },
-        { "semicolonassign", "VERSION = 1; decode = None\n" },
-        { "onelinebody", "def helper(): value = 1; decode = value\n" },
-        // `match` and `case` are soft keywords: here a name being assigned.
-        { "softkeyword", "match = 1; decode = None\n" },
-        // A semicolon in an indented block separates statements of that block.
-        { "indented", "def helper():\n    value = 1; decode = value\n    return decode\n" },
-        // Lines that end with a lone carriage return, which Python takes as a newline too.
-        { "cr", "import struct\rdef decode(payload, context):\r    return None\r" },
-        // A UTF-8 byte order mark before the first statement, as Python reads it.
-        { "bom", "\xEF\xBB\xBF"
-                 "def decode(payload, context):\n    return None\n" },
-        // A real one after a string with an escaped quote and a quote inside a comment.
-        { "escaped",
-          "TEXT = \"a \\\" b\" # it's\ndef decode(payload, context):\n    return None\n" },
+        { "classdecode", "class decode:\n    pass\n" },
+        // Python refuses it: not offered, with the line.
+        { "broken", "MARKER = 1\ndef decode(:\n    return None\n" },
+        { "helper", "MARKER = 'x'\n" },
     };
-    // Each module in a pack of its own: together they are more than a pack may list.
+    const auto answer
+        = modulesById( checkModules( { modulesPack( root.path(), PackId, modules ) } ) );
+    REQUIRE( answer.size() == modules.size() );
     QStringList entries;
-    for ( auto module = modules.cbegin(); module != modules.cend(); ++module ) {
-        INFO( module.key().toStdString() );
-        writeFile( root.filePath( "python/" + module.key() + ".py" ), module.value() );
-        const QJsonArray decoders{ QJsonObject{ { "id", module.key() },
-                                                { "module", "python/" + module.key() + ".py" } } };
-        const QJsonObject manifest{ { "id", PackId },
-                                    { "name", PackName },
-                                    { "version", "1.0.0" },
-                                    { "protocol_version", 1 },
-                                    { "kind", "config-pack" },
-                                    { "pack_format", 1 },
-                                    { "content", QJsonObject{ { "python_decoders", decoders } } } };
-        const auto pack = PreviewPackRegistry::read( PackId, root.path(), manifest );
-        REQUIRE( pack.error.isEmpty() );
-        REQUIRE( pack.pythonModules.size() == 1 );
-        entries.append( pack.pythonEntries );
+    for ( const auto& module : answer ) {
+        if ( module.value( "entry" ).toBool() ) {
+            entries << module.value( "decoder" ).toString().section( '/', 1 );
+        }
     }
     entries.sort();
     CHECK( entries
-           == QStringList{ "afterbrackets",
-                           "annotated",
-                           "annotatedbrackets",
-                           "assigned",
-                           "bom",
-                           "continued",
-                           "cr",
-                           "crlf",
-                           "delattribute",
-                           "delsubscript",
-                           "escaped",
-                           "formfeed",
-                           "generic",
-                           "imported",
-                           "nestedgeneric",
-                           "parenthesized",
-                           "plain",
-                           "rebound",
-                           "semicolon",
-                           "semicolonassign",
-                           "softkeyword",
-                           "syncredefined" } );
+           == QStringList{ "conditional", "decorated", "decoratedasync", "plain", "softkeyword",
+                           "tryimport" } );
+    CHECK( answer.value( "fstring" ).value( "reason" ) == "no_decode" );
+    CHECK( answer.value( "asynchronous" ).value( "reason" ) == "async_decode" );
+    CHECK( answer.value( "deleted" ).value( "reason" ) == "no_decode" );
+    CHECK( answer.value( "classdecode" ).value( "reason" ) == "not_callable" );
+    CHECK( answer.value( "helper" ).value( "reason" ) == "no_decode" );
+    CHECK( answer.value( "broken" ).value( "reason" ) == "syntax_error" );
+    CHECK( answer.value( "broken" ).value( "line" ).toInt() == 2 );
+    CHECK( !answer.value( "broken" ).value( "detail" ).toString().isEmpty() );
 }
 
-TEST_CASE( "The decode() check reads a module near the size limit in linear time",
-           "[packpython][E16]" )
+TEST_CASE( "Python checks a large module in time and refuses one over 1 MiB", "[packpython][E16]" )
 {
+    if ( !pythonAvailable() ) {
+        WARN( "No Python interpreter: the modules are not checked" );
+        return;
+    }
     QTemporaryDir root;
     REQUIRE( root.isValid() );
-    // One line of 200,000 statements after a compound header (about 1 MB), then a real decode().
+    // One line of 60,000 statements in a one-line body (about 300 KB), then a real decode():
+    // Python parses and compiles it in about a second, well within the check's deadline.
     QByteArray module = "def helper(): ";
-    for ( int index = 0; index < 200000; ++index ) {
+    for ( int index = 0; index < 60000; ++index ) {
         module += "x=1; ";
     }
     module += "\ndef decode(payload, context):\n    return None\n";
-    REQUIRE( module.size() < MaxPackFileBytes );
-    writeFile( root.filePath( "python/long.py" ), module );
-    const QJsonObject manifest{
-        { "id", PackId },
-        { "name", PackName },
-        { "version", "1.0.0" },
-        { "protocol_version", 1 },
-        { "kind", "config-pack" },
-        { "pack_format", 1 },
-        { "content", QJsonObject{ { "python_decoders",
-                                    QJsonArray{ QJsonObject{
-                                        { "id", "long" }, { "module", "python/long.py" } } } } } }
-    };
+    // Read, not parsed: refused for its size.
+    QByteArray big;
+    while ( big.size() <= 1024 * 1024 ) {
+        big += "X = 1\n";
+    }
     QElapsedTimer clock;
     clock.start();
-    const auto pack = PreviewPackRegistry::read( PackId, root.path(), manifest );
+    const auto answer = modulesById( checkModules(
+        { modulesPack( root.path(), PackId, { { "long", module }, { "big", big } } ) } ) );
     INFO( "elapsed ms " << clock.elapsed() );
-    REQUIRE( pack.error.isEmpty() );
-    CHECK( pack.pythonEntries == QStringList{ "long" } );
-    // Linear work takes milliseconds; copying the line at each semicolon took minutes.
-    CHECK( clock.elapsed() < 5000 );
+    CHECK( answer.value( "long" ).value( "entry" ).toBool() );
+    CHECK( answer.value( "big" ).value( "reason" ) == "too_large" );
+    CHECK( clock.elapsed() < PythonEntriesClient::TimeoutMs );
+}
+
+TEST_CASE( "Without a Python interpreter no pack module is offered, and the dialog says why",
+           "[packpython][E16]" )
+{
+    if ( NoPython::bundled() ) {
+        WARN( "A bundled Python interpreter cannot be hidden" );
+        return;
+    }
+    RestoreDecoder restore;
+    InstalledPack pack;
+    REQUIRE( PreviewDecoderSettings::instance().setConfiguration(
+        { { "inputEncoding", "hex" },
+          { "previewRoutes",
+            QVariantMap{
+                { "Mine", pythonRoute( QStringLiteral( "%1/summary" ).arg( PackId ) ) } } } } ) );
+    auto noPython = std::make_unique<NoPython>();
+    CHECK(
+        checkModules( { QVariantMap{ { "id", PackId },
+                                     { "root", pack.content() },
+                                     { "decoders", QVariantList{ QVariantMap{
+                                                       { "id", "summary" },
+                                                       { "module", "python/summary.py" } } } } } } )
+            .value( "reason" )
+        == "python_unavailable" );
+    REQUIRE( pack.manager.manage( "enable", PackId, {} ).ok() );
+    REQUIRE( PreviewDecoderSettings::instance().packs().python.size() == 1 );
+    REQUIRE( pythonCheckEnded() == "python_unavailable" );
+    CHECK( PreviewDecoderSettings::instance().packs().pythonEntries.isEmpty() );
+    {
+        PreviewDecoderSettingsDialog dialog;
+        // Opening the window tried again, still without an interpreter.
+        REQUIRE( pythonCheckEnded() == "python_unavailable" );
+        auto* add = dialog.findChild<QPushButton*>( "decoderPreviewRoutesAddPython" );
+        REQUIRE( add );
+        CHECK_FALSE( add->isEnabled() );
+        CHECK( add->menu()->actions().isEmpty() );
+        CHECK( add->toolTip().contains( "no Python interpreter" ) );
+        CHECK( add->toolTip().contains( "CILOGG_SCRIPT_PYTHON" ) );
+        auto* routes = routeTable( dialog, "decoderPreviewRoutes" );
+        const auto row = rowNamed( routes, "Mine" );
+        REQUIRE( row >= 0 );
+        CHECK( routes->item( row, 1 )->toolTip().contains( "no Python interpreter" ) );
+    }
+    noPython.reset();
+    if ( !pythonAvailable() ) {
+        WARN( "No Python interpreter: the check is not tried again" );
+        return;
+    }
+    // With an interpreter again, opening the window checks the modules.
+    PreviewDecoderSettingsDialog dialog;
+    REQUIRE( pythonCheckEnded() == "done" );
+    auto* add = dialog.findChild<QPushButton*>( "decoderPreviewRoutesAddPython" );
+    REQUIRE( add );
+    CHECK( add->isEnabled() );
+    REQUIRE( add->menu()->actions().size() == 1 );
+    CHECK( add->menu()->actions()[ 0 ]->data()
+           == QStringLiteral( "python:%1/summary" ).arg( PackId ) );
 }
 
 TEST_CASE( "A pack lists at most 32 Python decoders", "[packpython][E16]" )
@@ -730,6 +823,7 @@ TEST_CASE( "The decoder settings dialog offers the enabled packs' Python decoder
             QVariantMap{ { "Bold", pythonRoute( "org.example.beta/summary" ) },
                          { "Demo", pythonRoute( "org.example.alpha/summary" ) },
                          { "Gone", pythonRoute( "org.example.gone/summary" ) },
+                         { "Broken", pythonRoute( "org.example.alpha/broken" ) },
                          { "Helper", pythonRoute( "org.example.alpha/common" ) },
                          { "Shark", QVariantMap{ { "dissector", "data" } } } } } } ) );
     const auto pack = []( const QString& id, const QVariantList& decoders ) {
@@ -741,8 +835,9 @@ TEST_CASE( "The decoder settings dialog offers the enabled packs' Python decoder
     PreviewDecoderPacks packs;
     packs.python = {
         // "common" is a helper module the pack lists so the worker copies it: it has no decode().
-        pack( "org.example.alpha", { module( "summary", "python/summary.py" ),
-                                     module( "common", "python/common.py" ) } ),
+        pack( "org.example.alpha",
+              { module( "summary", "python/summary.py" ), module( "common", "python/common.py" ),
+                module( "broken", "python/broken.py" ) } ),
         // A second pack with a decoder of the same ID, and a name with markup and an ampersand.
         pack( "org.example.beta", { module( "summary", "python/<b>.py" ) } ),
         // A third pack with the first one's name.
@@ -754,6 +849,15 @@ TEST_CASE( "The decoder settings dialog offers the enabled packs' Python decoder
     packs.pythonEntries = { { "org.example.alpha", QStringList{ "summary" } },
                             { "org.example.beta", QStringList{ "summary" } },
                             { "org.example.gamma", QStringList{ "summary" } } };
+    // Why Python's check does not offer the other modules.
+    packs.pythonNotes
+        = { { "org.example.alpha",
+              QVariantMap{
+                  { "common",
+                    QVariantMap{ { "reason", "no_decode" }, { "line", 0 }, { "detail", "" } } },
+                  { "broken", QVariantMap{ { "reason", "syntax_error" },
+                                           { "line", 3 },
+                                           { "detail", "invalid syntax" } } } } } };
     packs.key = QStringLiteral( "dialog-%1" ).arg( QDateTime::currentMSecsSinceEpoch() );
     PreviewDecoderSettings::instance().setPacks( packs );
 
@@ -782,11 +886,16 @@ TEST_CASE( "The decoder settings dialog offers the enabled packs' Python decoder
         CHECK( actions[ 2 ]->text() == "Alpha pack (org.example.gamma): summary" );
         CHECK( actions[ 2 ]->data() == "python:org.example.gamma/summary" );
         CHECK( actions[ 2 ]->toolTip().contains( "python:org.example.gamma/summary" ) );
+        // A module Python refuses is named with the reason; a helper is no news.
+        CHECK( add->toolTip().contains( "Not offered:" ) );
+        CHECK( add->toolTip().contains( "org.example.alpha/broken" ) );
+        CHECK( add->toolTip().contains( "line 3: invalid syntax" ) );
+        CHECK( !add->toolTip().contains( "org.example.alpha/common" ) );
     }
 
     // A route's decoder is shown with its pack, as a helper without decode(), or as not loaded.
     auto* previewRoutes = routeTable( dialog, "decoderPreviewRoutes" );
-    REQUIRE( previewRoutes->rowCount() == 5 );
+    REQUIRE( previewRoutes->rowCount() == 6 );
     const auto tip = [ previewRoutes ]( const QString& route ) {
         const auto row = rowNamed( previewRoutes, route );
         REQUIRE( row >= 0 );
@@ -795,19 +904,20 @@ TEST_CASE( "The decoder settings dialog offers the enabled packs' Python decoder
     CHECK( tip( "Demo" ).contains( "Alpha pack" ) );
     CHECK( tip( "Bold" ).contains( "Beta &amp; &lt;b&gt;bold&lt;/b&gt;" ) );
     CHECK( tip( "Helper" ).contains( "Alpha pack" ) );
-    // The check is static and conservative: such a route is not called broken.
-    CHECK( tip( "Helper" ).contains( "found no decode()" ) );
-    CHECK( tip( "Helper" ).contains( "still works" ) );
+    CHECK( tip( "Helper" ).contains( "finds no decode()" ) );
     CHECK( !tip( "Helper" ).contains( "fails" ) );
+    // A module Python cannot compile fails to decode.
+    CHECK( tip( "Broken" ).contains( "cannot compile it (line 3: invalid syntax)" ) );
+    CHECK( tip( "Broken" ).contains( "fails" ) );
     CHECK( tip( "Gone" ).contains( "not enabled" ) );
     CHECK( tip( "Shark" ).isEmpty() );
 
     // Choosing a decoder adds a route to it, ready for the preview's name.
     auto* add = dialog.findChild<QPushButton*>( "decoderPreviewRoutesAddPython" );
     add->menu()->actions()[ 2 ]->trigger();
-    REQUIRE( previewRoutes->rowCount() == 6 );
+    REQUIRE( previewRoutes->rowCount() == 7 );
     const auto added = previewRoutes->currentRow();
-    REQUIRE( added == 5 );
+    REQUIRE( added == 6 );
     CHECK( previewRoutes->item( added, 1 )->text() == "python:org.example.gamma/summary" );
     CHECK( previewRoutes->item( added, 1 )->toolTip().contains( "Alpha pack" ) );
     previewRoutes->setItem( added, 0, new QTableWidgetItem( "Added" ) );
@@ -823,6 +933,19 @@ TEST_CASE( "The decoder settings dialog offers the enabled packs' Python decoder
     // An edited target follows: a decoder the packs do not have is shown as not enabled.
     previewRoutes->item( added, 1 )->setText( "python:org.example.alpha/missing" );
     CHECK( previewRoutes->item( added, 1 )->toolTip().contains( "not enabled" ) );
+
+    // While Python checks the modules, the open dialog says so and follows the check's end.
+    auto checking = packs;
+    checking.pythonEntries.clear();
+    checking.pythonNotes.clear();
+    checking.pythonCheck = "checking";
+    PreviewDecoderSettings::instance().setPacks( checking );
+    CHECK_FALSE( add->isEnabled() );
+    CHECK( add->toolTip().contains( "checking" ) );
+    CHECK( tip( "Demo" ).contains( "checking" ) );
+    PreviewDecoderSettings::instance().setPacks( packs );
+    CHECK( add->isEnabled() );
+    CHECK( add->menu()->actions().size() == 3 );
 
     // Without packs' decoders there is nothing to choose; the open dialog follows the packs.
     PreviewDecoderSettings::instance().setPacks( {} );

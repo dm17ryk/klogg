@@ -20,6 +20,7 @@ Install it from **Plugins > Plugins and Packs > Installed > Install Folder…** 
 Python code runs on your computer with your permissions while the pack is enabled, so CILogg asks
 first. The Installed tab then lists "Python decoders: record, common". To route a preview of your
 own to the decoder, use **Add Python decoder** in Preview Decoder Settings ("Example Python decoder
-pack: record"). **Pack Files…** on the Installed tab edits the modules in place, and an update
+pack: record"). Python's own parser picks what that menu offers: `record` defines `decode()`,
+`common` does not, and nothing in either module runs for the check. **Pack Files…** on the Installed tab edits the modules in place, and an update
 merges your edits with the new version. See `docs/plugin-repositories.md` section 4.4 and
 `docs/plugin-sdk.md`.

@@ -744,21 +744,43 @@ enter the user's decoder settings, so exports and projects never carry them.
 `PreviewDecoderPacks::pythonNames` keeps each enabled pack's name beside its decoders (never sent
 to the worker). With it, Preview Decoder Settings has an **Add Python decoder** menu on both route
 tabs ("<pack name>: <decoder id>", the pack's ID added when two packs share a name, the route target
-and the module in its tooltip), each route's decoder says whose it is, that it has no `decode()`, or
-that its pack is not enabled, and a preview's tooltip and status name the decoder with its pack
-(`PreviewService::pythonDecoderLabel`). The menu offers the modules that bind `decode` at their top
-level (`def decode(`, generic `def decode[T](` too, `decode = value` with or without an
-annotation, or a `from ... import` that binds the name), kept in
-`PreviewDecoderPacks::pythonEntries`. The last top-level binding decides, as when Python runs the
-module. Not listed: helper modules a pack lists so the worker copies them, `async def decode` (the
-worker calls `decode()` without awaiting it), `class decode`, an annotation without a value, a
-plain `import` (it binds a module), and a module whose last word on the name is `del decode`. The
-check
-reads the module's statements (not its strings, comments, bracketed continuation lines or one-line
-compound bodies) and never runs it, so a module that binds the name some other way (a star import,
-a tuple assignment, a binding inside `if` or `try`) is not listed either; such a decoder can still
-be routed by typing its target. The CLI, native MCP and Python report the same pack fields
-(`pythonDecoders`, `pythonDecodersActive`) and `hostFeatures`.
+and the module in its tooltip), each route's decoder says whose it is, why its module is not
+offered, or that its pack is not enabled, and a preview's tooltip and status name the decoder with
+its pack (`PreviewService::pythonDecoderLabel`).
+
+Python's own parser decides which modules the menu offers. When the enabled packs change,
+`PreviewPackRegistry` starts one supervised worker (`message_decoder_python_entries.py`, through
+`PythonEntriesClient`) for the modules of packs it has not checked in that version and edit. The
+worker uses the preview's interpreter (`CILOGG_SCRIPT_PYTHON`, a bundled one, then PATH, as in
+MD03b) in a process group or job object, within 10 seconds, a 64 KiB request and a 128 KiB answer.
+It reads each module (at most 1 MiB) and gives it to `ast.parse` and `compile`, so nothing in the
+module runs and nothing is imported. It then answers once and exits.
+
+A module is a decoder when `decode` may be bound to something callable after its top level:
+
+- **Offered:** a `def` (generic or decorated), a decorated `async def` (its decorator may return a
+  plain function), a lambda, or a name, attribute, call or `from ... import` whose value only
+  running the module would show.
+- **Taken away:** an undecorated `async def` (the worker calls `decode()` without awaiting it), a
+  `class`, a plain `import` (a module), a literal, display or comprehension, `del decode`, and
+  `except ... as decode` (the name is deleted when the handler ends).
+- **Last binding wins:** the last binding on a path through the module decides. A path goes through
+  each branch of `if`, `try`, `for`, `while`, `with` and `match`; the module is offered when any path
+  ends with a callable `decode`. Tuple assignments and `:=` bind element by element. Strings,
+  comments, function and class bodies, and keyword arguments bind nothing at the top level.
+- **Not offered, with the reason:** a module Python cannot parse or compile (its line and the
+  parser's message), one over 1 MiB or nested too deeply, and one that cannot be read. Without an
+  interpreter no module is offered, and the menu and routes say why. Preview Decoder Settings checks
+  again when it opens.
+
+The results reach `PreviewDecoderPacks::pythonEntries` (the decoders of each pack), `pythonNotes`
+(why each other module is not one) and `pythonCheck` (`done`, `checking` or why the check failed).
+Changes to them alone emit `PreviewDecoderSettings::pythonChecked`, and no preview session restarts.
+What only running the module would show stays unseen: a name bound by `from module import *`, `exec`
+or `globals()`. Such a decoder can still be routed by typing its target.
+
+The CLI, native MCP and Python report the same pack fields (`pythonDecoders`,
+`pythonDecodersActive`) and `hostFeatures`.
 
 ### 4.5 Actions, responses, highlighters and filters
 

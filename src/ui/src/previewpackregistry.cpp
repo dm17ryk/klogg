@@ -6,10 +6,10 @@
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
-#include <QRegularExpression>
 #include <QSet>
 #include <QSettings>
 #include <QTemporaryDir>
+#include <QTimer>
 #include <algorithm>
 #include <utility>
 
@@ -22,408 +22,12 @@
 #include "previewconfigparser.h"
 #include "previewdecodersettings.h"
 #include "previewservice.h"
+#include "pythonentriesclient.h"
 
 namespace {
 using cilogg::plugins::PackContent;
 using cilogg::plugins::validatePackFiles;
 using cilogg::plugins::validatePackManifest;
-
-// A Python module's source without its comments and with each string literal's contents left out
-// (the literal becomes `""`), so a docstring or a comment that shows code binds nothing. Only a
-// new logical line starts a line: inside brackets and after a backslash a line continues its
-// statement (its newline becomes a space), so a keyword argument at the start of a line is not
-// taken for an assignment; a top-level semicolon starts a line of its own.
-QString pythonCode( const QString& text )
-{
-    QString code;
-    code.reserve( text.size() );
-    const auto size = text.size();
-    int depth = 0;
-    // Where the current line starts in `code`: each semicolon looks at that line's first
-    // characters only, so a long line costs linear time.
-    qsizetype lineStart = 0;
-    const auto append = [ &code, &lineStart ]( QChar character ) {
-        code += character;
-        if ( character == QLatin1Char( '\n' ) ) {
-            lineStart = code.size();
-        }
-    };
-    const auto closes = [ &text, size ]( qsizetype at, QChar quote, bool triple ) {
-        return text[ at ] == quote
-               && ( !triple
-                    || ( at + 2 < size && text[ at + 1 ] == quote && text[ at + 2 ] == quote ) );
-    };
-    for ( qsizetype at = 0; at < size; ) {
-        const auto c = text[ at ];
-        if ( c == QLatin1Char( '#' ) ) {
-            while ( at < size && text[ at ] != QLatin1Char( '\n' ) ) {
-                ++at;
-            }
-            continue;
-        }
-        if ( c != QLatin1Char( '\'' ) && c != QLatin1Char( '"' ) ) {
-            if ( c == QLatin1Char( '\\' ) && at + 1 < size
-                 && text[ at + 1 ] == QLatin1Char( '\n' ) ) {
-                append( QLatin1Char( ' ' ) );
-                at += 2;
-                continue;
-            }
-            if ( c == QLatin1Char( '(' ) || c == QLatin1Char( '[' ) || c == QLatin1Char( '{' ) ) {
-                ++depth;
-            }
-            else if ( ( c == QLatin1Char( ')' ) || c == QLatin1Char( ']' )
-                        || c == QLatin1Char( '}' ) )
-                      && depth > 0 ) {
-                --depth;
-            }
-            // A semicolon on a top-level line starts a new statement, except in the one-line body
-            // of a compound statement (`def f(): x = 1; decode = x` binds nothing at the top). On
-            // an indented line it separates statements of that block. Only hard keywords open a
-            // compound statement here: `match` and `case` are soft keywords (`match = 1` is an
-            // assignment), a top-level match statement never shares its line with a semicolon, and
-            // `case` lines are indented.
-            if ( c == QLatin1Char( ';' ) && depth == 0 ) {
-                static const QRegularExpression statement( QStringLiteral(
-                    R"(^(?![ \t])(?!(?:async[ \t]+)?(?:def|class|if|elif|else|for|while|with|try|except|finally)\b))" ) );
-                // The keywords fit in the line's first characters.
-                if ( statement.match( code.mid( lineStart, 48 ) ).hasMatch() ) {
-                    append( QLatin1Char( '\n' ) );
-                    ++at;
-                    // The next statement starts here: no indentation before it.
-                    while ( at < size
-                            && ( text[ at ] == QLatin1Char( ' ' )
-                                 || text[ at ] == QLatin1Char( '\t' ) ) ) {
-                        ++at;
-                    }
-                    continue;
-                }
-            }
-            append( c == QLatin1Char( '\n' ) && depth > 0 ? QChar( QLatin1Char( ' ' ) ) : c );
-            ++at;
-            continue;
-        }
-        // An f-string (prefix f, F, rf, fR, ...): its replacement fields may span lines and hold
-        // strings of their own (Python 3.12).
-        bool formatted = false;
-        qsizetype back = at - 1;
-        for ( ; back >= 0 && back >= at - 2; --back ) {
-            const auto prefix = text[ back ].toLower();
-            if ( prefix != QLatin1Char( 'f' ) && prefix != QLatin1Char( 'r' )
-                 && prefix != QLatin1Char( 'b' ) && prefix != QLatin1Char( 'u' ) ) {
-                break;
-            }
-            formatted = formatted || prefix == QLatin1Char( 'f' );
-        }
-        // Letters that end a name (`if"x"`) are no prefix.
-        if ( back >= 0
-             && ( text[ back ].isLetterOrNumber() || text[ back ] == QLatin1Char( '_' ) ) ) {
-            formatted = false;
-        }
-        const bool triple = at + 2 < size && text[ at + 1 ] == c && text[ at + 2 ] == c;
-        const qsizetype length = triple ? 3 : 1;
-        int fields = 0;
-        at += length;
-        while ( at < size ) {
-            const auto inner = text[ at ];
-            if ( formatted && inner == QLatin1Char( '{' ) ) {
-                // `{{` is a brace of the text.
-                if ( fields == 0 && at + 1 < size && text[ at + 1 ] == QLatin1Char( '{' ) ) {
-                    at += 2;
-                    continue;
-                }
-                ++fields;
-                ++at;
-                continue;
-            }
-            if ( formatted && inner == QLatin1Char( '}' ) ) {
-                at += fields == 0 && at + 1 < size && text[ at + 1 ] == QLatin1Char( '}' ) ? 2 : 1;
-                fields = fields > 0 ? fields - 1 : 0;
-                continue;
-            }
-            if ( fields > 0 ) {
-                // Inside a replacement field: a string of its own is skipped whole, and a new
-                // line continues the logical line.
-                if ( inner == QLatin1Char( '\'' ) || inner == QLatin1Char( '"' ) ) {
-                    for ( ++at;
-                          at < size && text[ at ] != inner && text[ at ] != QLatin1Char( '\n' );
-                          ++at ) {
-                        if ( text[ at ] == QLatin1Char( '\\' ) ) {
-                            ++at;
-                        }
-                    }
-                }
-                else if ( inner == QLatin1Char( '\n' ) ) {
-                    append( QLatin1Char( ' ' ) );
-                }
-                ++at;
-                continue;
-            }
-            if ( inner == QLatin1Char( '\\' ) ) {
-                at += 2;
-                continue;
-            }
-            if ( closes( at, c, triple ) ) {
-                at += length;
-                break;
-            }
-            if ( inner == QLatin1Char( '\n' ) ) {
-                // A string on one line that does not close ends there; one over lines stays in
-                // its logical line.
-                if ( !triple ) {
-                    break;
-                }
-                append( QLatin1Char( ' ' ) );
-            }
-            ++at;
-        }
-        code += QStringLiteral( "\"\"" );
-    }
-    return code;
-}
-
-bool isOpening( QChar c )
-{
-    return c == QLatin1Char( '(' ) || c == QLatin1Char( '[' ) || c == QLatin1Char( '{' );
-}
-
-bool isClosing( QChar c )
-{
-    return c == QLatin1Char( ')' ) || c == QLatin1Char( ']' ) || c == QLatin1Char( '}' );
-}
-
-// Whether `line` holds the whole word `word` at `at`.
-bool wordAt( const QString& line, qsizetype at, QLatin1String word )
-{
-    const auto isName = []( QChar c ) { return c.isLetterOrNumber() || c == QLatin1Char( '_' ); };
-    const auto end = at + word.size();
-    return line.mid( at, word.size() ) == word && ( at == 0 || !isName( line[ at - 1 ] ) )
-           && ( end >= line.size() || !isName( line[ end ] ) );
-}
-
-// Whether the statement whose `:` or `=` follows the name at the start of `line`, at `at`, assigns
-// the name: `=` (not `==`), or an annotation and then `=` outside its brackets and its lambdas'
-// parameters. An annotation alone (`decode: marker(enabled=True)`, `decode: lambda x=1: x`) binds
-// nothing.
-bool assignsName( const QString& line, qsizetype at )
-{
-    const auto equals = [ &line ]( qsizetype position ) {
-        return position < line.size() && line[ position ] == QLatin1Char( '=' );
-    };
-    if ( line[ at ] == QLatin1Char( '=' ) ) {
-        return !equals( at + 1 );
-    }
-    int depth = 0;
-    for ( auto position = at + 1; position < line.size(); ++position ) {
-        const auto c = line[ position ];
-        if ( isOpening( c ) ) {
-            ++depth;
-        }
-        else if ( isClosing( c ) && depth > 0 ) {
-            --depth;
-        }
-        else if ( depth == 0 && wordAt( line, position, QLatin1String( "lambda" ) ) ) {
-            // A lambda's parameters, their defaults included, end at its `:`.
-            int inner = 0;
-            for ( position += 6; position < line.size(); ++position ) {
-                const auto p = line[ position ];
-                if ( isOpening( p ) ) {
-                    ++inner;
-                }
-                else if ( isClosing( p ) && inner > 0 ) {
-                    --inner;
-                }
-                else if ( p == QLatin1Char( ':' ) && inner == 0 ) {
-                    break;
-                }
-            }
-        }
-        else if ( c == QLatin1Char( '=' ) && depth == 0 ) {
-            const auto before = line[ position - 1 ];
-            const bool comparison = equals( position + 1 ) || before == QLatin1Char( '<' )
-                                    || before == QLatin1Char( '>' ) || before == QLatin1Char( '!' );
-            if ( !comparison ) {
-                return true;
-            }
-            ++position; // the second `=` of `==`
-        }
-    }
-    return false;
-}
-
-// Whether the names an import binds (`a, b as c`, also in parentheses) include `decode`; with
-// `dotted`, `import a.b` binds `a`.
-bool importBindsDecode( QString names, bool dotted )
-{
-    names.remove( QLatin1Char( '(' ) );
-    names.remove( QLatin1Char( ')' ) );
-    for ( const auto& item : names.split( QLatin1Char( ',' ) ) ) {
-        const auto words = item.simplified().split( QLatin1Char( ' ' ) );
-        const auto name = words.size() == 3 && words[ 1 ] == QLatin1String( "as" ) ? words[ 2 ]
-                          : words.size() == 1 && dotted
-                              ? words[ 0 ].section( QLatin1Char( '.' ), 0, 0 )
-                          : words.size() == 1 ? words[ 0 ]
-                                              : QString{};
-        if ( name == QLatin1String( "decode" ) ) {
-            return true;
-        }
-    }
-    return false;
-}
-
-// Whether a `del` statement's targets delete the name `decode`: the name itself, also inside list
-// or tuple targets (`del [decode]`, `del (a, [decode])`), not an attribute (`Holder.decode`) or a
-// name inside a subscript or call (`items[decode]`).
-bool deletesDecode( const QString& targets )
-{
-    // A bracket after the start, `,`, `(` or `[` groups targets; one after a name or a closing
-    // bracket is a subscript or call, and nothing inside it is a target.
-    QVector<bool> grouping;
-    QChar previous = QLatin1Char( ',' );
-    for ( qsizetype at = 0; at < targets.size(); ++at ) {
-        const auto c = targets[ at ];
-        if ( c.isSpace() ) {
-            continue;
-        }
-        if ( isOpening( c ) ) {
-            grouping.append( previous == QLatin1Char( ',' ) || previous == QLatin1Char( '(' )
-                             || previous == QLatin1Char( '[' ) );
-        }
-        else if ( isClosing( c ) ) {
-            if ( !grouping.isEmpty() ) {
-                grouping.removeLast();
-            }
-        }
-        else if ( previous != QLatin1Char( '.' ) && !grouping.contains( false )
-                  && wordAt( targets, at, QLatin1String( "decode" ) ) ) {
-            auto next = at + 6;
-            while ( next < targets.size() && targets[ next ].isSpace() ) {
-                ++next;
-            }
-            if ( next >= targets.size() || targets[ next ] == QLatin1Char( ',' )
-                 || targets[ next ] == QLatin1Char( ')' )
-                 || targets[ next ] == QLatin1Char( ']' ) ) {
-                return true;
-            }
-        }
-        previous = c;
-    }
-    return false;
-}
-
-// What a module's top-level logical line (pythonCode) does to `decode`: binds a function the worker
-// can call (true), takes the name away or binds something it cannot call (false: `async def`, a
-// class, a plain `import` of a module, `del decode`), or leaves it alone (nothing). Indented lines
-// are not top-level.
-std::optional<bool> decodeBinding( const QString& line )
-{
-    static const QRegularExpression function(
-        QStringLiteral( R"(^(async[ \t]+)?def[ \t]+decode\b[ \t]*)" ) );
-    static const QRegularExpression type( QStringLiteral( R"(^class[ \t]+decode\b)" ) );
-    static const QRegularExpression named( QStringLiteral( R"(^decode[ \t]*([:=]))" ) );
-    static const QRegularExpression from(
-        QStringLiteral( R"(^from[ \t]+[\w.]+[ \t]+import[ \t]+(.*)$)" ) );
-    static const QRegularExpression plain( QStringLiteral( R"(^import[ \t]+(.*)$)" ) );
-    static const QRegularExpression removal( QStringLiteral( R"(^del[ \t]+(.*)$)" ) );
-    if ( const auto match = function.match( line ); match.hasMatch() ) {
-        // The worker calls decode() and never awaits it: an async one cannot decode.
-        if ( !match.captured( 1 ).isEmpty() ) {
-            return false;
-        }
-        // `def decode(`, or generic `def decode[T: tuple[int, str]](`.
-        auto at = match.capturedEnd();
-        if ( at < line.size() && line[ at ] == QLatin1Char( '[' ) ) {
-            int depth = 0;
-            for ( ; at < line.size(); ++at ) {
-                if ( isOpening( line[ at ] ) ) {
-                    ++depth;
-                }
-                else if ( isClosing( line[ at ] ) && --depth == 0 ) {
-                    ++at;
-                    break;
-                }
-            }
-            while ( at < line.size()
-                    && ( line[ at ] == QLatin1Char( ' ' ) || line[ at ] == QLatin1Char( '\t' ) ) ) {
-                ++at;
-            }
-        }
-        if ( at < line.size() && line[ at ] == QLatin1Char( '(' ) ) {
-            return true;
-        }
-        return std::nullopt;
-    }
-    if ( type.match( line ).hasMatch() ) {
-        return false;
-    }
-    if ( const auto match = named.match( line ); match.hasMatch() ) {
-        if ( assignsName( line, match.capturedStart( 1 ) ) ) {
-            return true;
-        }
-        return std::nullopt;
-    }
-    if ( const auto match = from.match( line ); match.hasMatch() ) {
-        if ( importBindsDecode( match.captured( 1 ), false ) ) {
-            return true;
-        }
-        return std::nullopt;
-    }
-    if ( const auto match = plain.match( line ); match.hasMatch() ) {
-        if ( importBindsDecode( match.captured( 1 ), true ) ) {
-            return false;
-        }
-        return std::nullopt;
-    }
-    if ( const auto match = removal.match( line );
-         match.hasMatch() && deletesDecode( match.captured( 1 ) ) ) {
-        return false;
-    }
-    return std::nullopt;
-}
-
-// Whether a pack's Python module binds `decode` at its top level to a function the worker can call
-// (E16b): `def decode(` (generic `def decode[T](` too), `decode = value` (annotated too) or a
-// `from ... import` that binds the name, outside strings and comments. The last top-level binding
-// decides, as when Python runs the module: a later `async def` (the worker never awaits it),
-// `class`, plain `import` (a module) or `del decode` takes it away. Preview Decoder Settings offers
-// these modules as decoders and leaves out the helpers a pack lists so the worker copies them; a
-// module that binds the name otherwise can still be routed by typing its target.
-bool bindsDecode( const QString& path )
-{
-    QFile file( path );
-    if ( !file.open( QIODevice::ReadOnly ) ) {
-        return false;
-    }
-    auto text = QString::fromUtf8( file.read( cilogg::plugins::MaxPackFileBytes ) );
-    // Python reads a module that starts with a UTF-8 byte order mark; fromUtf8 keeps it as U+FEFF.
-    if ( text.startsWith( QChar( char16_t( 0xFEFF ) ) ) ) {
-        text.remove( 0, 1 );
-    }
-    // Python's newlines: \r\n, \n and a lone \r.
-    text.replace( QStringLiteral( "\r\n" ), QStringLiteral( "\n" ) );
-    text.replace( QLatin1Char( '\r' ), QLatin1Char( '\n' ) );
-    // Form feeds are whitespace; one at the start of a line does not indent it.
-    QString spaced;
-    spaced.reserve( text.size() );
-    bool lineStart = true;
-    for ( const auto c : std::as_const( text ) ) {
-        if ( c == QChar( char16_t( 0x0C ) ) ) {
-            if ( !lineStart ) {
-                spaced += QLatin1Char( ' ' );
-            }
-            continue;
-        }
-        spaced += c;
-        lineStart = c == QLatin1Char( '\n' );
-    }
-    // The last top-level binding decides, as when Python runs the module.
-    bool bound = false;
-    for ( const auto& line : pythonCode( spaced ).split( QLatin1Char( '\n' ) ) ) {
-        if ( const auto binding = decodeBinding( line ) ) {
-            bound = *binding;
-        }
-    }
-    return bound;
-}
 
 // What makes a pack's contribution current: its version and the time its manifest was written,
 // so an update (or a reinstall of the same version) is read again.
@@ -682,9 +286,6 @@ PreviewPackRegistry::Contribution PreviewPackRegistry::read( const QString& id,
     pack.root = QDir::cleanPath( QDir( directory ).absolutePath() );
     for ( const auto& decoder : content.pythonDecoders ) {
         pack.pythonModules.append( QVariantMap{ { "id", decoder.id }, { "module", decoder.module } } );
-        if ( bindsDecode( QDir( directory ).filePath( decoder.module ) ) ) {
-            pack.pythonEntries.append( decoder.id );
-        }
     }
     return pack;
 }
@@ -731,6 +332,7 @@ void PreviewPackRegistry::refresh()
     QList<ListedHighlighterSet> highlighterSets;
     QSet<QString> setIds;
     QVector<PackActionItems> actionItems;
+    QHash<QString, QString> pythonKeys;
     for ( const auto& pack : packs ) {
         cache_.insert( pack.id, pack );
         if ( !pack.error.isEmpty() ) {
@@ -771,7 +373,8 @@ void PreviewPackRegistry::refresh()
                 { "id", pack.id }, { "root", pack.root }, { "decoders", pack.pythonModules } } );
             // E16b: shown with each of its decoders (Preview Decoder Settings, previews).
             decoder.pythonNames.insert( pack.id, packLabel( pack ) );
-            decoder.pythonEntries.insert( pack.id, pack.pythonEntries );
+            // Checked once for each version and edit of the pack (startPythonCheck).
+            pythonKeys.insert( pack.id, pack.id + QLatin1Char( '@' ) + pack.key );
         }
         // Between packs there is no precedence; the pack check refuses a shared route key, so
         // this keeps the first pack's route only if a check was bypassed.
@@ -795,12 +398,130 @@ void PreviewPackRegistry::refresh()
     decoder.key = keys.join( '\n' );
     LOG_INFO << "Configuration packs applied packs=" << packs.size()
              << " lua_packs=" << decoder.lua.size() << " python_packs=" << decoder.python.size();
+    decoder_ = decoder;
+    pythonKeys_ = pythonKeys;
+    // E16b: the checks of packs no longer applied are forgotten; the packs not checked yet are
+    // checked again below, whatever an earlier check found.
+    const auto current = pythonKeys.values();
+    for ( auto check = pythonChecks_.begin(); check != pythonChecks_.end(); ) {
+        check = current.contains( check.key() ) ? std::next( check ) : pythonChecks_.erase( check );
+    }
+    pythonFailure_.clear();
     // The decoder first, so the preview definitions rebuilt next carry its new revision.
-    PreviewDecoderSettings::instance().setPacks( decoder );
+    PreviewDecoderSettings::instance().setPacks( withPythonCheck() );
     PreviewManager::instance().setPackPreviews( previews );
     PackFilters::instance().setFilters( filters );
     PackHighlighters::instance().setSets( highlighterSets );
     ActionsManager::instance().setPackItems( actionItems );
+    // After the packs are set: a change of the preview settings ends a running check.
+    startPythonCheck();
+}
+
+void PreviewPackRegistry::checkPythonDecoders()
+{
+    if ( !pythonRequest_.isEmpty() ) {
+        return;
+    }
+    pythonFailure_.clear();
+    startPythonCheck();
+}
+
+PreviewDecoderPacks PreviewPackRegistry::withPythonCheck() const
+{
+    auto packs = decoder_;
+    bool pending = false;
+    for ( const auto& value : std::as_const( packs.python ) ) {
+        const auto id = value.toMap().value( "id" ).toString();
+        const auto found = pythonChecks_.constFind( pythonKeys_.value( id ) );
+        if ( found == pythonChecks_.cend() ) {
+            pending = true;
+            continue;
+        }
+        packs.pythonEntries.insert( id, found->entries );
+        if ( !found->notes.isEmpty() ) {
+            packs.pythonNotes.insert( id, found->notes );
+        }
+    }
+    packs.pythonCheck = !pending                    ? QStringLiteral( "done" )
+                        : !pythonFailure_.isEmpty() ? pythonFailure_
+                                                    : QStringLiteral( "checking" );
+    return packs;
+}
+
+void PreviewPackRegistry::startPythonCheck()
+{
+    QVariantList pending;
+    QHash<QString, QString> keys;
+    for ( const auto& value : std::as_const( decoder_.python ) ) {
+        const auto id = value.toMap().value( "id" ).toString();
+        if ( !pythonChecks_.contains( pythonKeys_.value( id ) ) ) {
+            pending.append( value );
+            keys.insert( id, pythonKeys_.value( id ) );
+        }
+    }
+    // A running check of the same packs goes on; one of other packs (or other versions) stops.
+    if ( !pythonRequest_.isEmpty() && keys == pythonPending_ ) {
+        return;
+    }
+    const auto previous = std::exchange( pythonRequest_, QString{} );
+    if ( !previous.isEmpty() ) {
+        PythonEntriesClient::instance().cancel( previous, QStringLiteral( "superseded" ) );
+    }
+    pythonPending_ = keys;
+    if ( pending.isEmpty() ) {
+        return;
+    }
+    pythonRequest_ = QStringLiteral( "python-entries-%1" ).arg( ++pythonRequests_ );
+    LOG_INFO << "Python decoder check started packs=" << pending.size()
+             << " request=" << pythonRequest_.toStdString();
+    // The check may end at once (no interpreter): the state it publishes then is the last one.
+    PreviewDecoderSettings::instance().setPacks( withPythonCheck() );
+    PythonEntriesClient::instance().check(
+        this, pending, pythonRequest_, [ this, request = pythonRequest_ ]( QVariantMap result ) {
+            finishPythonCheck( request, result );
+        } );
+}
+
+void PreviewPackRegistry::finishPythonCheck( const QString& request, const QVariantMap& result )
+{
+    if ( request != pythonRequest_ ) {
+        return; // a check of packs that changed since
+    }
+    pythonRequest_.clear();
+    const auto reason = result.value( "reason" ).toString();
+    if ( result.value( "state" ).toString() != QLatin1String( "completed" ) ) {
+        if ( reason == QLatin1String( "configuration_changed" ) ) {
+            // The preview settings changed during the check, which ends the worker: again.
+            LOG_DEBUG << "Python decoder check restarts after a settings change";
+            QTimer::singleShot( 0, this, [ this ] { checkPythonDecoders(); } );
+            return;
+        }
+        LOG_WARNING << "Python decoder check failed reason=" << reason.toStdString();
+        pythonFailure_ = reason;
+        PreviewDecoderSettings::instance().setPacks( withPythonCheck() );
+        return;
+    }
+    QHash<QString, PythonCheck> found;
+    for ( const auto& value : result.value( "modules" ).toList() ) {
+        const auto module = value.toMap();
+        const auto decoder = module.value( "decoder" ).toString();
+        const auto slash = decoder.indexOf( QLatin1Char( '/' ) );
+        auto& check = found[ decoder.left( slash ) ];
+        if ( module.value( "entry" ).toBool() ) {
+            check.entries.append( decoder.mid( slash + 1 ) );
+        }
+        else {
+            check.notes.insert( decoder.mid( slash + 1 ),
+                                QVariantMap{ { "reason", module.value( "reason" ) },
+                                             { "line", module.value( "line" ) },
+                                             { "detail", module.value( "detail" ) } } );
+        }
+    }
+    for ( auto pack = pythonPending_.cbegin(); pack != pythonPending_.cend(); ++pack ) {
+        pythonChecks_.insert( pack.value(), found.value( pack.key() ) );
+    }
+    LOG_INFO << "Python decoder check done packs=" << pythonPending_.size();
+    PreviewDecoderSettings::instance().setPacks( withPythonCheck() );
 }
 
 QString PreviewPackRegistry::copyPreview( const QString& name, const QString& copyName )

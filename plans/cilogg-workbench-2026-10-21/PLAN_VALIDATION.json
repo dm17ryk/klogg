@@ -1539,7 +1539,8 @@
     "testsWrittenFirst": "tests/unit/packpython_test.cpp was written before the product change and failed to compile on the missing PreviewDecoderPacks::pythonNames and PreviewDecoderSettings::pythonDecoderPack; its life-cycle cases cover behaviour MD03b and E16a2 already had and passed at once; the review round's plain-text cases were written with their fix",
     "highRiskSymbols": [
       "PreviewService::tooltipHtml (GitNexus: MEDIUM, 6 direct users): signature unchanged; the Python decoder's label gains its pack's name",
-      "detect_changes rates the diff critical because its hunks are in PreviewDecoderSettings, PreviewService and the decoder settings dialog; the changes are additive (a field, two functions, the dialog's menu and tooltips) and the flows it lists reach logging"
+      "detect_changes rates the diff critical because its hunks are in PreviewDecoderSettings, PreviewService and the decoder settings dialog; the changes are additive (a field, two functions, the dialog's menu and tooltips) and the flows it lists reach logging",
+      "D19 commit: detect_changes rates the diff critical (34 symbols, 159 flows) because the index is stale and its hunks are in previewdecodersettings.h, which most of the UI includes; the listed flows reach logging. The change to shared code: PreviewDecoderPacks gains pythonNotes, pythonCheck and sameSessions(), and setPacks() emits pythonChecked instead of changed when only the check differs. GitNexus impact on PreviewPackRegistry::refresh and PreviewDecoderSettings::setPacks: LOW."
     ],
     "localClangCheck": "clang-cl -fsyntax-only with the Unix warning set, -Wshadow-all and -Werror on every changed C++ file; clean except a lambda init-capture in previewservice.cpp that is already on master",
     "qualification": "local_gates_passed_hosted_pending",
@@ -1624,7 +1625,19 @@
           "P2 (fixed): a newline inside a string ended the logical line of a one-line suite"
         ],
         "result": "fixed in the commit after bb2a1056"
+      },
+      {
+        "head": "5886ef7e",
+        "reviewer": "Codex review bot",
+        "findings": [
+          "P2: del of decode in a target list",
+          "P2: multi-line f-string replacement fields",
+          "P2: the helper tooltip claimed the route fails"
+        ],
+        "result": "fixed in the commit after 5886ef7e"
       }
-    ]
+    ],
+    "decoderCheck": "D19 (2026-11-26): Python's parser (ast.parse and compile in message_decoder_python_entries.py) replaces the C++ text scan; the scan's documented limits (tuple assignments, if and try) are gone, and only what running a module would show (a star import, exec) stays unseen",
+    "pythonTests": "python -m unittest discover -s tests/plugins -p test_message_decoder_python_entries.py: 14 cases pass on Python 3.9.25, 3.10.2, 3.12.14 and 3.14.10 (3.9 and 3.10 skip the 3.10 and 3.12 syntax)"
   }
 }
