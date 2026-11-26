@@ -1,0 +1,29 @@
+name: "Probe macOS runners (#193)"
+
+# Temporary probe for https://github.com/dm17ryk/klogg/issues/193: measures how
+# long each GitHub-hosted macOS image waits for a runner. Lives only on the
+# ci/probe-193-macos-runners branch; it is never merged.
+on:
+  push:
+    branches: [ ci/probe-193-macos-runners ]
+
+jobs:
+  probe:
+    name: probe (${{ matrix.image }})
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [ macos-15, macos-26, macos-latest, macos-15-intel ]
+    runs-on: ${{ matrix.image }}
+    timeout-minutes: 10
+    steps:
+      - name: Runner facts
+        run: |
+          echo "image label : ${{ matrix.image }}"
+          echo "ImageOS     : ${ImageOS:-?}  ImageVersion: ${ImageVersion:-?}"
+          echo "arch        : $(uname -m)"
+          sw_vers
+          sysctl -n machdep.cpu.brand_string || true
+          xcode-select -p
+          xcodebuild -version
+          ls -d /Applications/Xcode*.app
