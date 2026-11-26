@@ -7,6 +7,7 @@
 #include <fstream>
 #include <iterator>
 #include <map>
+#include <optional>
 #include <set>
 #include <sstream>
 #include <system_error>
@@ -90,13 +91,36 @@ std::size_t movedAsideSuffixLength( const std::string& name )
     return name.size() - ( body - suffix.size() );
 }
 
-std::string toUtf8( const fs::path& path )
+// Exact: throws for a name UTF-8 cannot hold (an unpaired surrogate on Windows). The manifest
+// must name every file exactly.
+std::string exactUtf8( const fs::path& path )
 {
 #ifdef __cpp_char8_t
     const auto text = path.u8string();
     return std::string( text.begin(), text.end() );
 #else
     return path.u8string();
+#endif
+}
+
+// For names, logs and reports: never throws. A name UTF-8 cannot hold gets replacement
+// characters; listDirectory() leaves such files out, so no manifest entry needs one.
+std::string toUtf8( const fs::path& path )
+{
+#ifdef _WIN32
+    const auto& wide = path.native();
+    if ( wide.empty() )
+        return {};
+    const auto length = static_cast<int>( wide.size() );
+    const auto size
+        = WideCharToMultiByte( CP_UTF8, 0, wide.data(), length, nullptr, 0, nullptr, nullptr );
+    if ( size <= 0 )
+        return {};
+    std::string text( static_cast<std::size_t>( size ), '\0' );
+    WideCharToMultiByte( CP_UTF8, 0, wide.data(), length, text.data(), size, nullptr, nullptr );
+    return text;
+#else
+    return exactUtf8( path );
 #endif
 }
 
@@ -107,6 +131,19 @@ fs::path fromUtf8( const std::string& text )
 #else
     return fs::u8path( text );
 #endif
+}
+
+// A manifest line cut inside a character (a write torn by a power loss) names no file: it is
+// skipped, so one damaged line cannot stop every later update. The file it would have named is
+// a moved-aside copy without a record, which removeMovedAside() handles.
+std::optional<fs::path> pathFromManifest( const std::string& text )
+{
+    try {
+        return fromUtf8( text );
+    }
+    catch ( const std::system_error& ) {
+        return std::nullopt;
+    }
 }
 
 // Tabs and line breaks separate the fields and lines of the report and the manifest.
@@ -283,8 +320,17 @@ ProcessInfo queryProcess( DWORD pid, const std::map<DWORD, ProcessEntry>& proces
     return info;
 }
 
+// Whether UTF-8 holds `name` exactly: NTFS allows unpaired surrogates, which no installer file has.
+bool holdsInUtf8( const std::wstring& name )
+{
+    return WideCharToMultiByte( CP_UTF8, WC_ERR_INVALID_CHARS, name.data(),
+                                static_cast<int>( name.size() ), nullptr, 0, nullptr, nullptr )
+           > 0;
+}
+
 // The files and folders directly in `directory`. Reparse points (links, junctions) are left out:
-// they are neither followed nor touched, so the elevated installer stays in the folder.
+// they are neither followed nor touched, so the elevated installer stays in the folder. So are
+// names UTF-8 cannot hold: the installer never writes one, and the manifest could not record it.
 struct Listing {
     std::vector<fs::path> files;
     std::vector<fs::path> folders;
@@ -307,7 +353,7 @@ Listing listDirectory( const fs::path& directory )
     do {
         const std::wstring name = data.cFileName;
         if ( name == L"." || name == L".."
-             || ( data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT ) )
+             || ( data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT ) || !holdsInUtf8( name ) )
             continue;
         if ( data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY )
             listing.folders.push_back( directory / name );
@@ -595,8 +641,10 @@ std::vector<fs::path> readLeftInPlace( const fs::path& manifestPath )
     while ( std::getline( file, line ) ) {
         if ( !line.empty() && line.back() == '\r' )
             line.pop_back();
-        if ( line.compare( 0, prefix.size(), prefix ) == 0 )
-            left.push_back( fromUtf8( line.substr( prefix.size() ) ) );
+        if ( line.compare( 0, prefix.size(), prefix ) != 0 )
+            continue;
+        if ( auto path = pathFromManifest( line.substr( prefix.size() ) ) )
+            left.push_back( std::move( *path ) );
     }
     return left;
 }
@@ -665,8 +713,8 @@ std::string describeProcess( const ProcessInfo& process )
 
 std::string formatManifestLine( const MovedFile& moved )
 {
-    return withoutSeparators( toUtf8( moved.original ) ) + "\t"
-           + withoutSeparators( toUtf8( moved.movedTo ) );
+    return withoutSeparators( exactUtf8( moved.original ) ) + "\t"
+           + withoutSeparators( exactUtf8( moved.movedTo ) );
 }
 
 std::vector<MovedFile> parseManifest( const std::string& text )
@@ -681,10 +729,10 @@ std::vector<MovedFile> parseManifest( const std::string& text )
         if ( separator == std::string::npos
              || line.find( '\t', separator + 1 ) != std::string::npos )
             continue;
-        MovedFile moved{ fromUtf8( line.substr( 0, separator ) ),
-                         fromUtf8( line.substr( separator + 1 ) ) };
-        if ( moved.original.is_absolute() && moved.movedTo.is_absolute() )
-            entries.push_back( std::move( moved ) );
+        auto original = pathFromManifest( line.substr( 0, separator ) );
+        auto movedTo = pathFromManifest( line.substr( separator + 1 ) );
+        if ( original && movedTo && original->is_absolute() && movedTo->is_absolute() )
+            entries.push_back( { std::move( *original ), std::move( *movedTo ) } );
     }
     return entries;
 }
@@ -995,22 +1043,23 @@ std::vector<MovedFile> finish( const fs::path& directory, const std::vector<Move
                 ++restored;
                 log( "Not replaced, kept the previous file: " + toUtf8( file.original ) );
             }
+            else if ( renameError == OutsideError ) {
+                // It can never be acted on: logged now, and dropped from the record.
+                log( "Cannot put back " + toUtf8( file.original ) + ": " + renameError );
+            }
             else {
                 notPutBack.emplace_back( file, renameError );
             }
         }
         notReplaced.clear();
-        for ( const auto& entry : notPutBack ) {
-            if ( entry.second != OutsideError )
-                notReplaced.push_back( entry.first );
-        }
+        for ( const auto& entry : notPutBack )
+            notReplaced.push_back( entry.first );
     }
     std::vector<MovedFile> left;
     for ( const auto& [ file, error ] : notPutBack ) {
         log( "Cannot put back " + toUtf8( file.original ) + ": " + error );
-        // Retried by the next update; an entry that can never be acted on is dropped.
-        if ( error != OutsideError )
-            left.push_back( file );
+        // Retried by the next update.
+        left.push_back( file );
     }
     log( "Replaced files: " + std::to_string( deleted ) + " old copies deleted, "
          + std::to_string( kept ) + " still in use, " + std::to_string( restored )
@@ -1185,7 +1234,7 @@ int runPrepare( const fs::path& directory, const fs::path& report, const Log& lo
         recorded = recorded && static_cast<bool>( manifest );
     } );
     for ( const auto& file : result.leftInPlace )
-        manifest << LeftInPlacePrefix << withoutSeparators( toUtf8( file ) ) << "\n";
+        manifest << LeftInPlacePrefix << withoutSeparators( exactUtf8( file ) ) << "\n";
     // Only a complete listing makes the manifest a complete record of the previous version.
     if ( result.blocked.empty() && result.listedAll )
         manifest << PreparedMarker << "\n";

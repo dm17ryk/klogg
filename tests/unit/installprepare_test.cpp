@@ -442,7 +442,7 @@ TEST_CASE( "A record from a run that named the folder differently is recovered s
     writeText( root / "plugins" / "kept.json", "old plugin" );
     std::vector<std::string> lines;
     // The earlier run spelled the folder with "." and ".." parts (or an 8.3 name).
-    const auto otherSpelling = root / "plugins" / ".." / "." ;
+    const auto otherSpelling = root / "plugins" / ".." / ".";
     REQUIRE( prepare::runPrepare( otherSpelling, {}, recorder( lines ) )
              == prepare::PreparedExitCode );
     writeText( root / "cilogg.exe", "new executable" );
@@ -457,7 +457,65 @@ TEST_CASE( "A record from a run that named the folder differently is recovered s
     REQUIRE( movedAsideFiles( root ).empty() );
 }
 
+TEST_CASE( "A manifest line torn inside a character does not stop later updates",
+           "[installprepare]" )
+{
+    QTemporaryDir temporary;
+    REQUIRE( temporary.isValid() );
+    const auto root = nativePath( temporary.path() );
+    writeText( root / "cilogg.exe", "old executable" );
+    // U+00E9 is two bytes in UTF-8, C3 A9.
+    const auto plugin = root / "plugins" / nativePath( QString::fromUtf8( "\xC3\xA9.json" ) );
+    writeText( plugin, "old plugin" );
+    std::vector<std::string> lines;
+    REQUIRE( prepare::runPrepare( root, {}, recorder( lines ) ) == prepare::PreparedExitCode );
+
+    // A power loss stopped prepare while it recorded the plugin: its line ends inside "é".
+    const auto manifestPath = root / prepare::ManifestFileName;
+    const auto text = readText( manifestPath );
+    const auto cut = text.rfind( "\xC3\xA9" );
+    REQUIRE( cut != std::string::npos );
+    writeText( manifestPath, text.substr( 0, cut + 1 ) );
+    std::vector<prepare::MovedFile> entries;
+    REQUIRE_NOTHROW( entries = prepare::parseManifest( readText( manifestPath ) ) );
+    REQUIRE_FALSE( entries.empty() );
+    REQUIRE( entries.front().original == root / "cilogg.exe" );
+
+    // The next update restores the recorded file and puts back the unrecorded copy.
+    REQUIRE( prepare::runPrepare( root, {}, recorder( lines ) ) == prepare::PreparedExitCode );
+    REQUIRE( prepare::runRollback( root, recorder( lines ) ) == prepare::PreparedExitCode );
+    REQUIRE( readText( root / "cilogg.exe" ) == "old executable" );
+    REQUIRE( readText( plugin ) == "old plugin" );
+    REQUIRE( movedAsideFiles( root ).empty() );
+}
+
 #ifdef Q_OS_WIN
+TEST_CASE( "A file whose name UTF-8 cannot hold is left alone", "[installprepare]" )
+{
+    QTemporaryDir temporary;
+    REQUIRE( temporary.isValid() );
+    const auto root = nativePath( temporary.path() );
+    writeText( root / "cilogg.exe", "old executable" );
+    // NTFS allows an unpaired surrogate in a name; no file of the installer has one.
+    std::wstring name = L"odd";
+    name += static_cast<wchar_t>( 0xD800 );
+    name += L".json";
+    const auto odd = root / "plugins" / name;
+    writeText( odd, "another program's file" );
+    std::vector<std::string> lines;
+
+    REQUIRE( prepare::runPrepare( root, {}, recorder( lines ) ) == prepare::PreparedExitCode );
+    REQUIRE( readText( odd ) == "another program's file" );
+    writeText( root / "cilogg.exe", "new executable" );
+    // A failed installation removes the files it added, but not this one.
+    REQUIRE( prepare::runRollback( root, recorder( lines ) ) == prepare::PreparedExitCode );
+    REQUIRE( readText( root / "cilogg.exe" ) == "old executable" );
+    REQUIRE( readText( odd ) == "another program's file" );
+
+    std::error_code ignored;
+    fs::remove( odd, ignored );
+}
+
 TEST_CASE( "Another program's DLL in use in the same folder does not block the installation",
            "[installprepare]" )
 {
