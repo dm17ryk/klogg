@@ -548,6 +548,15 @@ TEST_CASE( "Only the modules that define decode() are offered as decoders", "[pa
         { "syncredefined", "async def decode(payload, context):\n    return None\n"
                            "def decode(payload, context):\n    return None\n" },
         { "classdecode", "class decode:\n    pass\n" },
+        // A list or tuple target deletes the name too; a subscript inside one does not.
+        { "dellist", "def decode(payload, context):\n    return None\ndel [decode]\n" },
+        { "delnested",
+          "def decode(payload, context):\n    return None\nitems = {}\ndel (items, [decode])\n" },
+        { "delsubscript", "def decode(payload, context):\n    return None\nitems = {decode: 1}\n"
+                          "del (items[decode],)\n" },
+        // A Python 3.12 f-string whose replacement field spans lines stays one logical line.
+        { "fstring",
+          "def func(**kw):\n    return 1\nTEXT = f\"{func(\ndecode=lambda: None\n)}\"\n" },
         // Deleting something else that holds the name keeps the decoder.
         { "delattribute", "def decode(payload, context):\n    return None\nclass Holder:\n"
                           "    decode = 1\ndel Holder.decode\n" },
@@ -608,6 +617,7 @@ TEST_CASE( "Only the modules that define decode() are offered as decoders", "[pa
                            "cr",
                            "crlf",
                            "delattribute",
+                           "delsubscript",
                            "escaped",
                            "formfeed",
                            "generic",
@@ -785,7 +795,10 @@ TEST_CASE( "The decoder settings dialog offers the enabled packs' Python decoder
     CHECK( tip( "Demo" ).contains( "Alpha pack" ) );
     CHECK( tip( "Bold" ).contains( "Beta &amp; &lt;b&gt;bold&lt;/b&gt;" ) );
     CHECK( tip( "Helper" ).contains( "Alpha pack" ) );
-    CHECK( tip( "Helper" ).contains( "no decode()" ) );
+    // The check is static and conservative: such a route is not called broken.
+    CHECK( tip( "Helper" ).contains( "found no decode()" ) );
+    CHECK( tip( "Helper" ).contains( "still works" ) );
+    CHECK( !tip( "Helper" ).contains( "fails" ) );
     CHECK( tip( "Gone" ).contains( "not enabled" ) );
     CHECK( tip( "Shark" ).isEmpty() );
 

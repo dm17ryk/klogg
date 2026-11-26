@@ -102,11 +102,63 @@ QString pythonCode( const QString& text )
             ++at;
             continue;
         }
+        // An f-string (prefix f, F, rf, fR, ...): its replacement fields may span lines and hold
+        // strings of their own (Python 3.12).
+        bool formatted = false;
+        qsizetype back = at - 1;
+        for ( ; back >= 0 && back >= at - 2; --back ) {
+            const auto prefix = text[ back ].toLower();
+            if ( prefix != QLatin1Char( 'f' ) && prefix != QLatin1Char( 'r' )
+                 && prefix != QLatin1Char( 'b' ) && prefix != QLatin1Char( 'u' ) ) {
+                break;
+            }
+            formatted = formatted || prefix == QLatin1Char( 'f' );
+        }
+        // Letters that end a name (`if"x"`) are no prefix.
+        if ( back >= 0
+             && ( text[ back ].isLetterOrNumber() || text[ back ] == QLatin1Char( '_' ) ) ) {
+            formatted = false;
+        }
         const bool triple = at + 2 < size && text[ at + 1 ] == c && text[ at + 2 ] == c;
         const qsizetype length = triple ? 3 : 1;
+        int fields = 0;
         at += length;
         while ( at < size ) {
-            if ( text[ at ] == QLatin1Char( '\\' ) ) {
+            const auto inner = text[ at ];
+            if ( formatted && inner == QLatin1Char( '{' ) ) {
+                // `{{` is a brace of the text.
+                if ( fields == 0 && at + 1 < size && text[ at + 1 ] == QLatin1Char( '{' ) ) {
+                    at += 2;
+                    continue;
+                }
+                ++fields;
+                ++at;
+                continue;
+            }
+            if ( formatted && inner == QLatin1Char( '}' ) ) {
+                at += fields == 0 && at + 1 < size && text[ at + 1 ] == QLatin1Char( '}' ) ? 2 : 1;
+                fields = fields > 0 ? fields - 1 : 0;
+                continue;
+            }
+            if ( fields > 0 ) {
+                // Inside a replacement field: a string of its own is skipped whole, and a new
+                // line continues the logical line.
+                if ( inner == QLatin1Char( '\'' ) || inner == QLatin1Char( '"' ) ) {
+                    for ( ++at;
+                          at < size && text[ at ] != inner && text[ at ] != QLatin1Char( '\n' );
+                          ++at ) {
+                        if ( text[ at ] == QLatin1Char( '\\' ) ) {
+                            ++at;
+                        }
+                    }
+                }
+                else if ( inner == QLatin1Char( '\n' ) ) {
+                    append( QLatin1Char( ' ' ) );
+                }
+                ++at;
+                continue;
+            }
+            if ( inner == QLatin1Char( '\\' ) ) {
                 at += 2;
                 continue;
             }
@@ -114,7 +166,7 @@ QString pythonCode( const QString& text )
                 at += length;
                 break;
             }
-            if ( text[ at ] == QLatin1Char( '\n' ) ) {
+            if ( inner == QLatin1Char( '\n' ) ) {
                 // A string on one line that does not close ends there; one over lines stays in
                 // its logical line.
                 if ( !triple ) {
@@ -218,6 +270,46 @@ bool importBindsDecode( QString names, bool dotted )
     return false;
 }
 
+// Whether a `del` statement's targets delete the name `decode`: the name itself, also inside list
+// or tuple targets (`del [decode]`, `del (a, [decode])`), not an attribute (`Holder.decode`) or a
+// name inside a subscript or call (`items[decode]`).
+bool deletesDecode( const QString& targets )
+{
+    // A bracket after the start, `,`, `(` or `[` groups targets; one after a name or a closing
+    // bracket is a subscript or call, and nothing inside it is a target.
+    QVector<bool> grouping;
+    QChar previous = QLatin1Char( ',' );
+    for ( qsizetype at = 0; at < targets.size(); ++at ) {
+        const auto c = targets[ at ];
+        if ( c.isSpace() ) {
+            continue;
+        }
+        if ( isOpening( c ) ) {
+            grouping.append( previous == QLatin1Char( ',' ) || previous == QLatin1Char( '(' )
+                             || previous == QLatin1Char( '[' ) );
+        }
+        else if ( isClosing( c ) ) {
+            if ( !grouping.isEmpty() ) {
+                grouping.removeLast();
+            }
+        }
+        else if ( previous != QLatin1Char( '.' ) && !grouping.contains( false )
+                  && wordAt( targets, at, QLatin1String( "decode" ) ) ) {
+            auto next = at + 6;
+            while ( next < targets.size() && targets[ next ].isSpace() ) {
+                ++next;
+            }
+            if ( next >= targets.size() || targets[ next ] == QLatin1Char( ',' )
+                 || targets[ next ] == QLatin1Char( ')' )
+                 || targets[ next ] == QLatin1Char( ']' ) ) {
+                return true;
+            }
+        }
+        previous = c;
+    }
+    return false;
+}
+
 // What a module's top-level logical line (pythonCode) does to `decode`: binds a function the worker
 // can call (true), takes the name away or binds something it cannot call (false: `async def`, a
 // class, a plain `import` of a module, `del decode`), or leaves it alone (nothing). Indented lines
@@ -281,15 +373,9 @@ std::optional<bool> decodeBinding( const QString& line )
         }
         return std::nullopt;
     }
-    if ( const auto match = removal.match( line ); match.hasMatch() ) {
-        // `del decode` itself, not `del Holder.decode` or `del items[decode]`.
-        for ( auto target : match.captured( 1 ).split( QLatin1Char( ',' ) ) ) {
-            target.remove( QLatin1Char( '(' ) );
-            target.remove( QLatin1Char( ')' ) );
-            if ( target.trimmed() == QLatin1String( "decode" ) ) {
-                return false;
-            }
-        }
+    if ( const auto match = removal.match( line );
+         match.hasMatch() && deletesDecode( match.captured( 1 ) ) ) {
+        return false;
     }
     return std::nullopt;
 }

@@ -325,8 +325,11 @@ void PreviewDecoderSettingsDialog::describeTarget( QTableWidgetItem* item ) cons
                        .pythonEntries.value( decoder.left( slash ) )
                        .toStringList()
                        .contains( decoderId ) )
-            tip = tr( "Python module \"%1\" of the pack \"%2\" has no decode() at its top level, "
-                      "so the route fails to load it." )
+            // The check is static and conservative: a module that binds decode() in a way it does
+            // not read still decodes.
+            tip = tr( "Python module \"%1\" of the pack \"%2\": CILogg found no decode() at its "
+                      "top level, so the module is not offered as a decoder; the route still works "
+                      "if the module binds decode() in another way." )
                       .arg( decoderId, pack );
         else
             tip = tr( "Python decoder \"%1\" of the pack \"%2\"." ).arg( decoderId, pack );
