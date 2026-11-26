@@ -60,8 +60,12 @@ struct Choices {
 };
 
 // The choices from the user's previews, the enabled packs, message assembly and `userLua` (the
-// selected Lua files). TShark's protocols are left empty.
+// selected Lua files). TShark's protocols are left empty. The names a Lua file declares are read
+// once per version of it (path, size and time) until forgetLuaNames().
 Choices collect( const QStringList& userLua );
+// Reads every Lua file again on the next collect(): an edit within the file system's time
+// granularity keeps the size and time.
+void forgetLuaNames();
 
 struct Warning {
     // What the warning is about: `Preview route "X"`, `Default named dissector`, ...

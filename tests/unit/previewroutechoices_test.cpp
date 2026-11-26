@@ -7,8 +7,10 @@
 #include <QAbstractItemView>
 #include <QComboBox>
 #include <QDialogButtonBox>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QGuiApplication>
 #include <QScreen>
 #include <QTest>
@@ -128,6 +130,21 @@ TEST_CASE( "Lua Proto declarations give the dissector names", "[previewroutes]" 
                    "local a, b = Proto(\"one\", \"1\"), Proto('two', '2') local c = \"x" )
                == QStringList{ "one", "two" } );
     }
+    SECTION( "escapes in the name, as Lua reads them" )
+    {
+        CHECK( previewroutes::luaProtoNames( "local a = Proto(\"foo\\x2ebar\", \"x\")\n"
+                                             "local b = Proto('a\\098c', 'x')\n"
+                                             "local c = Proto(\"q\\u{72}s\", 'x')\n"
+                                             "local d = Proto(\"bad\\q\", 'x')\n" )
+               == QStringList{ "foo.bar", "abc", "qrs" } );
+    }
+    SECTION( "carriage returns end lines" )
+    {
+        CHECK( previewroutes::luaProtoNames(
+                   "-- a comment\rlocal p = Proto('cr_only', 'x')\r"
+                   "local s = 'unterminated\rlocal q = Proto(\"after_cr\", 'y')\r" )
+               == QStringList{ "cr_only", "after_cr" } );
+    }
     SECTION( "comments between the declaration's tokens" )
     {
         CHECK( previewroutes::luaProtoNames(
@@ -174,6 +191,20 @@ TEST_CASE( "Collected Lua names follow the file's changes", "[previewroutes]" )
     writeFile( dir, "changing.lua",
                "local a = Proto('second', 'x')\nlocal b = Proto('third_one', 'y')\n" );
     CHECK( names() == QStringList{ "second", "third_one" } );
+
+    // An edit that keeps the size and, within the file system's time granularity, the time:
+    // forgetting the read names (the dialog does on opening and on a settings change) reads it.
+    const auto modified = QFileInfo( path ).lastModified();
+    writeFile( dir, "changing.lua",
+               "local a = Proto('fourth', 'x')\nlocal b = Proto('fifth_one', 'y')\n" );
+    {
+        QFile file( path );
+        REQUIRE( file.open( QIODevice::ReadWrite ) );
+        REQUIRE( file.setFileTime( modified, QFileDevice::FileModificationTime ) );
+    }
+    REQUIRE( QFileInfo( path ).lastModified() == modified );
+    previewroutes::forgetLuaNames();
+    CHECK( names() == QStringList{ "fourth", "fifth_one" } );
 }
 
 TEST_CASE( "TShark's protocol list gives its filter names", "[previewroutes]" )

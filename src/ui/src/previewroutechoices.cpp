@@ -14,6 +14,7 @@
 #include <QSet>
 
 #include <algorithm>
+#include <optional>
 
 namespace previewroutes {
 namespace {
@@ -65,7 +66,9 @@ qsizetype skipQuoted( const QString& source, qsizetype i, QString* value = nullp
 {
     const QChar quote = source[ i ];
     qsizetype j = i + 1;
-    while ( j < source.size() && source[ j ] != quote && source[ j ] != '\n' ) {
+    // A line end (LF or CR, as Lua reads them) ends an unterminated string.
+    while ( j < source.size() && source[ j ] != quote && source[ j ] != '\n'
+            && source[ j ] != '\r' ) {
         if ( source[ j ] != '\\' || j + 1 >= source.size() ) {
             ++j;
             continue;
@@ -95,8 +98,73 @@ qsizetype skipComment( const QString& source, qsizetype i )
     const auto level = longBracket( source, i + 2 );
     if ( level >= 0 )
         return skipLong( source, i + 2, level );
-    const auto end = source.indexOf( '\n', i );
-    return end < 0 ? source.size() : end + 1;
+    // A line comment ends at a line end: LF or CR, as Lua reads them.
+    auto end = i;
+    while ( end < source.size() && source[ end ] != '\n' && source[ end ] != '\r' )
+        ++end;
+    return end < source.size() ? end + 1 : source.size();
+}
+// The value of a Lua short string's body with its escapes resolved, or nothing for an escape a
+// dissector name cannot hold (a line end, `\z`) or a malformed one.
+std::optional<QString> unescaped( const QString& raw )
+{
+    QString value;
+    for ( qsizetype i = 0; i < raw.size(); ++i ) {
+        if ( raw[ i ] != '\\' ) {
+            value += raw[ i ];
+            continue;
+        }
+        if ( ++i >= raw.size() )
+            return std::nullopt;
+        const auto escape = raw[ i ].unicode();
+        if ( escape == 'x' ) {
+            bool ok = false;
+            const auto code = raw.mid( i + 1, 2 ).toUInt( &ok, 16 );
+            if ( !ok || i + 2 >= raw.size() )
+                return std::nullopt;
+            value += QChar( code );
+            i += 2;
+        }
+        else if ( escape >= '0' && escape <= '9' ) {
+            qsizetype digits = 0;
+            while ( digits < 3 && i + digits < raw.size() && raw[ i + digits ] >= '0'
+                    && raw[ i + digits ] <= '9' )
+                ++digits;
+            const auto code = raw.mid( i, digits ).toUInt();
+            if ( code > 255 )
+                return std::nullopt;
+            value += QChar( code );
+            i += digits - 1;
+        }
+        else if ( escape == 'u' ) {
+            const auto close = raw.indexOf( '}', i );
+            bool ok = false;
+            const auto code = i + 1 < raw.size() && raw[ i + 1 ] == '{' && close > i + 2
+                                  ? raw.mid( i + 2, close - i - 2 ).toUInt( &ok, 16 )
+                                  : 0u;
+            if ( !ok || code > 0x10FFFF )
+                return std::nullopt;
+            const auto character = static_cast<char32_t>( code );
+            value += QString::fromUcs4( &character, 1 );
+            i = close;
+        }
+        else {
+            switch ( escape ) {
+            case 'a': value += QChar( 0x07 ); break;
+            case 'b': value += QChar( 0x08 ); break;
+            case 'f': value += QChar( 0x0C ); break;
+            case 'n': value += QChar( 0x0A ); break;
+            case 'r': value += QChar( 0x0D ); break;
+            case 't': value += QChar( 0x09 ); break;
+            case 'v': value += QChar( 0x0B ); break;
+            case '\\':
+            case '"':
+            case '\'': value += raw[ i ]; break;
+            default: return std::nullopt;
+            }
+        }
+    }
+    return value;
 }
 // The index after the white space and comments from `i`: Lua allows comments between tokens.
 qsizetype skipBlank( const QString& source, qsizetype i )
@@ -127,8 +195,10 @@ QString declaredName( const QString& source, qsizetype i )
     QString name;
     bool closed = false;
     skipQuoted( source, j, &name, &closed );
-    // Wireshark registers the lower-case name (Proto.new: g_ascii_strdown).
-    return closed ? name.toLower() : QString{};
+    // Lua resolves the string's escapes; Wireshark registers the lower-case name (Proto.new:
+    // g_ascii_strdown).
+    const auto value = closed ? unescaped( name ) : std::optional<QString>{};
+    return value ? value->toLower() : QString{};
 }
 void appendUnique( QStringList* list, const QStringList& values )
 {
@@ -230,13 +300,18 @@ QStringList Choices::routeTargets() const
 }
 
 namespace {
+QHash<QString, QStringList>& luaNameCache()
+{
+    static QHash<QString, QStringList> cache;
+    return cache;
+}
 // The names a Lua file declares, read once per version of it (path, size and time): the dialog
 // collects its choices on opening, on Apply and when the packs change, and the selected and pack
 // files together may be 32 files of up to 1 MiB.
 QStringList cachedLuaNames( const QString& path )
 {
     constexpr int CacheLimit = 256;
-    static QHash<QString, QStringList> cache;
+    auto& cache = luaNameCache();
     const QFileInfo info( path );
     const auto key = QStringLiteral( "%1|%2|%3" )
                          .arg( info.absoluteFilePath() )
@@ -251,6 +326,11 @@ QStringList cachedLuaNames( const QString& path )
     return names;
 }
 } // namespace
+
+void forgetLuaNames()
+{
+    luaNameCache().clear();
+}
 
 Choices collect( const QStringList& userLua )
 {

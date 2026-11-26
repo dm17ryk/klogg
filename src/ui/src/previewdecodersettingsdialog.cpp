@@ -359,6 +359,9 @@ PreviewDecoderSettingsDialog::PreviewDecoderSettingsDialog( QWidget* parent )
                  refreshPythonDecoders();
                  if ( isVisible() )
                      loadTsharkProtocols();
+                 // A watched Lua file or a pack may have changed within the file system's time
+                 // granularity: their names are read again.
+                 previewroutes::forgetLuaNames();
                  refreshChoices();
                  showWarnings( savedWarnings() );
              } );
@@ -771,6 +774,9 @@ void PreviewDecoderSettingsDialog::reload()
     scripts_->clear();
     for ( const auto& value : config.value( "lua" ).toList() )
         scripts_->addItem( value.toString() );
+    // Opening reads the Lua files again: one may have changed within the file system's time
+    // granularity since they were last read.
+    previewroutes::forgetLuaNames();
     refreshChoices();
     dissector_->setEditText( config.value( "defaultDissector" ).toString() );
     populate( previewRoutes_, config.value( "previewRoutes" ).toMap(), false );
