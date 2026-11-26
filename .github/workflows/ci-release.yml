@@ -241,9 +241,15 @@ jobs:
       shell: bash
       # master can move while this job runs; the script rebases and retries the push (#178).
       run: |
+        # latest.json is read from master. A release dispatched from another branch or
+        # a tag leaves it alone: pushing that checkout could carry its commits to master.
+        if [ "$GITHUB_REF" != "refs/heads/master" ]; then
+          echo "::warning::Released from $GITHUB_REF, not master; latest.json on master is unchanged."
+          exit 0
+        fi
         git config user.name github-actions
         git config user.email github-actions@github.com
-        bash ./scripts/publish_legacy_latest_json.sh "$RELEASE_CHANNEL" "$CILOGG_VERSION" "$GITHUB_REF_NAME"
+        bash ./scripts/publish_legacy_latest_json.sh "$RELEASE_CHANNEL" "$CILOGG_VERSION" master
 
     - name: Discord notification
       if: ${{ env.DISCORD_NEW_VERSIONS_WEBHOOK != '' }}
