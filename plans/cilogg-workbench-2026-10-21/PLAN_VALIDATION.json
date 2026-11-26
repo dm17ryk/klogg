@@ -1635,6 +1635,20 @@
           "P2: the helper tooltip claimed the route fails"
         ],
         "result": "fixed in the commit after 5886ef7e"
+      },
+      {
+        "head": "54cdc7d0",
+        "reviewer": "Codex review bot",
+        "findings": [
+          "P2: match guards before case bodies",
+          "P2: statements after break or continue",
+          "P2: retry modules that time out",
+          "P2: nested := in evaluation order",
+          "P2: lambda defaults run in the module scope",
+          "P2: generator bodies do not run at import",
+          "P2: known values around a starred target"
+        ],
+        "result": "fixed in the commit after 54cdc7d0"
       }
     ],
     "decoderCheck": "D19 (2026-11-26): Python's parser (ast.parse and compile in message_decoder_python_entries.py) replaces the C++ text scan; the scan's documented limits (tuple assignments, if and try) are gone, and only what running a module would show (a star import, exec) stays unseen",

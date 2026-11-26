@@ -103,6 +103,17 @@ DECODERS = {
     "bom": b"\xef\xbb\xbfdef decode(payload, context):\n    return None\n",
     "formfeed": b"\x0cdef decode\x0c(payload, context):\n    return None\n",
     "semicolon": "VERSION = 1; from .plain import decode\n",
+    # `:=` in Python's evaluation order: the outer one binds last; a lambda's default runs now.
+    "nestedwalrus": "marker = (decode := ((decode := None) or print))\n",
+    "lambdadefault": "helper = lambda value=(decode := print): value\n",
+    # A loop left by `break` after the binding; a branch that raises does not end the module.
+    "whilebreak": "while True:\n    decode = print\n    break\n",
+    "raisebranch": "import sys\nif sys.version_info < (3, 0):\n    raise ImportError('old')\n"
+    "def decode(payload, context):\n    return None\n",
+    # An imported module is not `__main__`.
+    "notmain": "if __name__ == '__main__':\n    pass\nelse:\n"
+    "    def decode(payload, context):\n        return None\n",
+    "starredsuffix": "*rest, decode = (None, print)\n",
 }
 
 # Modules that are not, with the reason given.
@@ -156,6 +167,21 @@ NOT_DECODERS = {
     ),
     # A star import binds names only running the module would show.
     "starimport": ("from .plain import *\n", "no_decode"),
+    # Statements after `break` or `continue` never run.
+    "afterbreak": ("for item in (1,):\n    break\n    decode = print\n", "no_decode"),
+    "aftercontinue": ("for item in (1,):\n    continue\n    decode = print\n", "no_decode"),
+    # A generator's body and a lambda's body run later, if ever.
+    "generatorbody": ("items = ((decode := print) for _ in (1,))\n", "no_decode"),
+    "lambdabody": ("helper = lambda: (decode := print)\n", "no_decode"),
+    # Starred unpacking keeps the known values before and after the star.
+    "starredprefix": ("decode, *rest = (None, 1)\n", "not_callable"),
+    "starredbetween": ("first, *middle, decode = (print, 1, 2, None)\n", "not_callable"),
+    # Only when run as a script; a module whose top level raises does not import.
+    "mainonly": (
+        "if __name__ == '__main__':\n    def decode(payload, context):\n        return None\n",
+        "no_decode",
+    ),
+    "raises": ("def decode(payload, context):\n    return None\nraise ImportError('no')\n", "no_decode"),
 }
 
 
@@ -187,6 +213,10 @@ class AnalysisTests(unittest.TestCase):
         self.assertEqual(
             verdict("match (print,):\n    case [*decode]:\n        pass\n"),
             (False, "not_callable"),
+        )
+        # A guard runs before the case's body, in the module's scope.
+        self.assertEqual(
+            verdict("match 1:\n    case _ if (decode := print):\n        pass\n"), (True, "")
         )
 
     @unittest.skipIf(sys.version_info < (3, 12), "generic functions and f-strings are Python 3.12")

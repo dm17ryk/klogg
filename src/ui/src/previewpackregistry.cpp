@@ -432,10 +432,14 @@ PreviewDecoderPacks PreviewPackRegistry::withPythonCheck() const
     bool pending = false;
     for ( const auto& value : std::as_const( packs.python ) ) {
         const auto id = value.toMap().value( "id" ).toString();
-        const auto found = pythonChecks_.constFind( pythonKeys_.value( id ) );
+        auto found = pythonChecks_.constFind( pythonKeys_.value( id ) );
         if ( found == pythonChecks_.cend() ) {
             pending = true;
-            continue;
+            // What a check that ran out of time found, until the next one ends.
+            found = pythonPartial_.constFind( pythonKeys_.value( id ) );
+            if ( found == pythonPartial_.cend() ) {
+                continue;
+            }
         }
         packs.pythonEntries.insert( id, found->entries );
         if ( !found->notes.isEmpty() ) {
@@ -502,6 +506,7 @@ void PreviewPackRegistry::finishPythonCheck( const QString& request, const QVari
         return;
     }
     QHash<QString, PythonCheck> found;
+    QSet<QString> late;
     for ( const auto& value : result.value( "modules" ).toList() ) {
         const auto module = value.toMap();
         const auto decoder = module.value( "decoder" ).toString();
@@ -516,11 +521,22 @@ void PreviewPackRegistry::finishPythonCheck( const QString& request, const QVari
                                              { "line", module.value( "line" ) },
                                              { "detail", module.value( "detail" ) } } );
         }
+        if ( module.value( "reason" ).toString() == QLatin1String( "timeout" ) ) {
+            late.insert( decoder.left( slash ) );
+        }
     }
+    // A pack with modules the check had no time for shows what it found and is checked again
+    // (checkPythonDecoders); the others are done for this version and edit.
+    pythonPartial_.clear();
     for ( auto pack = pythonPending_.cbegin(); pack != pythonPending_.cend(); ++pack ) {
-        pythonChecks_.insert( pack.value(), found.value( pack.key() ) );
+        ( late.contains( pack.key() ) ? pythonPartial_ : pythonChecks_ )
+            .insert( pack.value(), found.value( pack.key() ) );
     }
-    LOG_INFO << "Python decoder check done packs=" << pythonPending_.size();
+    if ( !late.isEmpty() ) {
+        pythonFailure_ = QStringLiteral( "timeout" );
+    }
+    LOG_INFO << "Python decoder check done packs=" << pythonPending_.size()
+             << " late_packs=" << late.size();
     PreviewDecoderSettings::instance().setPacks( withPythonCheck() );
 }
 

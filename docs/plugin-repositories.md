@@ -765,13 +765,18 @@ A module is a decoder when `decode` may be bound to something callable after its
   `class`, a plain `import` (a module), a literal, display or comprehension, `del decode`, and
   `except ... as decode` (the name is deleted when the handler ends).
 - **Last binding wins:** the last binding on a path through the module decides. A path goes through
-  each branch of `if`, `try`, `for`, `while`, `with` and `match`; the module is offered when any path
-  ends with a callable `decode`. Tuple assignments and `:=` bind element by element. Strings,
-  comments, function and class bodies, and keyword arguments bind nothing at the top level.
+  each branch of `if`, `try`, `for`, `while`, `with` and `match` (a `case` guard before its body);
+  the module is offered when any path ends with a callable `decode`. Statements after `break`,
+  `continue` or `raise` are on no path, a path that raises without a handler does not import, and
+  `if __name__ == "__main__":` never runs on import. Unpacking binds element by element (around a
+  starred target too), and `:=` binds in Python's evaluation order: in a lambda's defaults, but not
+  in a lambda's or a generator's body, which run later. Strings, comments, function and class
+  bodies, and keyword arguments bind nothing at the top level.
 - **Not offered, with the reason:** a module Python cannot parse or compile (its line and the
   parser's message), one over 1 MiB or nested too deeply, and one that cannot be read. Without an
-  interpreter no module is offered, and the menu and routes say why. Preview Decoder Settings checks
-  again when it opens.
+  interpreter no module is offered, and the menu and routes say why. A pack with modules the check
+  had no time for shows what it found and stays unchecked. Preview Decoder Settings checks the
+  packs not yet checked again when it opens.
 
 The results reach `PreviewDecoderPacks::pythonEntries` (the decoders of each pack), `pythonNotes`
 (why each other module is not one) and `pythonCheck` (`done`, `checking` or why the check failed).

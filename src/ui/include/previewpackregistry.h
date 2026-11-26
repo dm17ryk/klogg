@@ -127,8 +127,10 @@ private:
     PreviewDecoderPacks decoder_;
     // Pack ID -> "<pack ID>@<contribution key>" of each applied pack with Python modules.
     QHash<QString, QString> pythonKeys_;
-    // What the checks found, by "<pack ID>@<contribution key>".
+    // What the checks found, by "<pack ID>@<contribution key>"; packs whose modules the last check
+    // had no time for are in pythonPartial_, and still to be checked.
     QHash<QString, PythonCheck> pythonChecks_;
+    QHash<QString, PythonCheck> pythonPartial_;
     // The running check (its request ID, empty when none runs) and the packs it reads (as
     // pythonKeys_); why the last one failed.
     QString pythonRequest_;
