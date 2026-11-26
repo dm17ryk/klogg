@@ -135,8 +135,20 @@ TEST_CASE( "Lua Proto declarations give the dissector names", "[previewroutes]" 
         CHECK( previewroutes::luaProtoNames( "local a = Proto(\"foo\\x2ebar\", \"x\")\n"
                                              "local b = Proto('a\\098c', 'x')\n"
                                              "local c = Proto(\"q\\u{72}s\", 'x')\n"
-                                             "local d = Proto(\"bad\\q\", 'x')\n" )
-               == QStringList{ "foo.bar", "abc", "qrs" } );
+                                             "local d = Proto(\"bad\\q\", 'x')\n"
+                                             "local e = Proto(\"z\\z   .name\", 'x')\n" )
+               == QStringList{ "foo.bar", "abc", "qrs", "z.name" } );
+    }
+    SECTION( "thousands of declarations, in order and once each" )
+    {
+        QString source;
+        QStringList expected;
+        for ( int i = 0; i < 5000; ++i ) {
+            source += QStringLiteral( "local p%1 = Proto('proto_%1', 'x')\n" ).arg( i );
+            expected << QStringLiteral( "proto_%1" ).arg( i );
+        }
+        source += QStringLiteral( "local again = Proto('proto_7', 'x')\n" );
+        CHECK( previewroutes::luaProtoNames( source ) == expected );
     }
     SECTION( "carriage returns end lines" )
     {
@@ -492,6 +504,16 @@ TEST_CASE( "Decoder settings offer the known route values", "[previewroutes]" )
         encoding->setCurrentIndex( encoding->findText( "base64" ) );
         protocols->itemDelegate()->setModelData( encoding, protocols->model(), index );
         CHECK( protocols->item( 0, 3 )->text() == "base64" );
+    }
+    SECTION( "a preview added while the dialog is open is offered" )
+    {
+        QTemporaryFile file;
+        REQUIRE( file.open() );
+        const auto json = previewsJson( "Added later" );
+        REQUIRE( file.write( json ) == json.size() );
+        REQUIRE( file.flush() );
+        REQUIRE( manager.importFromFile( file.fileName() ).ok );
+        CHECK( items( editor( previews, 0, 0 ) ).contains( "Added later" ) );
     }
     SECTION( "a new route row is filled through the same drop-downs" )
     {

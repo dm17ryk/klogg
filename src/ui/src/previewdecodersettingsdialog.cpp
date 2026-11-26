@@ -2,6 +2,7 @@
 #include "previewdecodersettingsdialog.h"
 #include "log.h"
 #include "previewdecodersettings.h"
+#include "previewmanager.h"
 #include "previewpackregistry.h"
 #include <QAbstractItemView>
 #include <QAction>
@@ -371,6 +372,9 @@ PreviewDecoderSettingsDialog::PreviewDecoderSettingsDialog( QWidget* parent )
                  refreshChoices();
                  showWarnings( savedWarnings() );
              } );
+    // A preview imported, removed or renamed while the dialog is open is offered at once.
+    connect( &PreviewManager::instance(), &PreviewManager::previewsChanged, this,
+             [ this ] { refreshChoices(); } );
     layout->addWidget( tabs, 1 );
     choicesStatus_ = new QLabel( this );
     identity( choicesStatus_, "decoderChoicesStatus", tr( "Offered dissectors" ) );
@@ -537,14 +541,12 @@ QStringList PreviewDecoderSettingsDialog::cellChoices( const QTableWidget* table
         return choices_.routeTargets();
     case 2: {
         // The row's TShark dissector first: for a Lua dissector it is also the PDML protocol.
-        QStringList names;
+        auto names = choices_.tsharkDissectors();
         const auto* target = table->item( row, 1 );
         const auto dissector = target ? target->text().trimmed() : QString();
-        if ( !dissector.isEmpty() && !dissector.startsWith( PythonPrefix ) )
-            names << dissector;
-        for ( const auto& name : choices_.tsharkDissectors() ) {
-            if ( !names.contains( name ) )
-                names << name;
+        if ( !dissector.isEmpty() && !dissector.startsWith( PythonPrefix ) ) {
+            names.removeOne( dissector );
+            names.prepend( dissector );
         }
         return names;
     }

@@ -160,6 +160,11 @@ std::optional<QString> unescaped( const QString& raw )
             case '\\':
             case '"':
             case '\'': value += raw[ i ]; break;
+            case 'z':
+                // `\z` skips the white space that follows, line ends included.
+                while ( i + 1 < raw.size() && raw[ i + 1 ].isSpace() )
+                    ++i;
+                break;
             default: return std::nullopt;
             }
         }
@@ -200,17 +205,36 @@ QString declaredName( const QString& source, qsizetype i )
     const auto value = closed ? unescaped( name ) : std::optional<QString>{};
     return value ? value->toLower() : QString{};
 }
-void appendUnique( QStringList* list, const QStringList& values )
-{
-    for ( const auto& value : values )
-        if ( !list->contains( value ) )
-            list->append( value );
-}
+// Names in the order first added, each once. A set keeps adding linear: a generated Lua file may
+// declare thousands of dissectors, and TShark lists some 3000 protocols.
+class UniqueNames {
+public:
+    void add( const QString& name )
+    {
+        if ( !seen_.contains( name ) ) {
+            seen_.insert( name );
+            names_.append( name );
+        }
+    }
+    void add( const QStringList& names )
+    {
+        for ( const auto& name : names )
+            add( name );
+    }
+    const QStringList& names() const
+    {
+        return names_;
+    }
+
+private:
+    QSet<QString> seen_;
+    QStringList names_;
+};
 } // namespace
 
 QStringList luaProtoNames( const QString& source )
 {
-    QStringList names;
+    UniqueNames names;
     QChar previous; // the last character before the current token that was not a space
     qsizetype i = 0;
     while ( i < source.size() ) {
@@ -237,8 +261,8 @@ QStringList luaProtoNames( const QString& source )
             if ( QStringView( source ).mid( i, end - i ) == u"Proto" && previous != '.'
                  && previous != ':' ) {
                 const auto name = declaredName( source, end );
-                if ( PreviewDecoderSettings::isDissectorName( name ) && !names.contains( name ) )
-                    names.append( name );
+                if ( PreviewDecoderSettings::isDissectorName( name ) )
+                    names.add( name );
             }
             previous = source[ end - 1 ];
             i = end;
@@ -248,7 +272,7 @@ QStringList luaProtoNames( const QString& source )
             previous = c;
         ++i;
     }
-    return names;
+    return names.names();
 }
 
 QStringList luaProtoNamesInFile( const QString& path )
@@ -263,15 +287,16 @@ QStringList luaProtoNamesInFile( const QString& path )
 
 QStringList tsharkProtocolNames( const QByteArray& output )
 {
-    QStringList names;
+    UniqueNames unique;
     for ( const auto& line : output.split( '\n' ) ) {
         const auto columns = line.split( '\t' );
         if ( columns.size() < 3 )
             continue;
         const auto name = QString::fromUtf8( columns[ 2 ] ).trimmed();
-        if ( PreviewDecoderSettings::isDissectorName( name ) && !names.contains( name ) )
-            names.append( name );
+        if ( PreviewDecoderSettings::isDissectorName( name ) )
+            unique.add( name );
     }
+    auto names = unique.names();
     std::sort( names.begin(), names.end(), []( const QString& left, const QString& right ) {
         return left.compare( right, Qt::CaseInsensitive ) < 0;
     } );
@@ -280,23 +305,25 @@ QStringList tsharkProtocolNames( const QByteArray& output )
 
 QStringList Choices::luaNames() const
 {
-    QStringList names;
+    UniqueNames names;
     for ( const auto& file : lua )
-        appendUnique( &names, file.names );
-    return names;
+        names.add( file.names );
+    return names.names();
 }
 QStringList Choices::tsharkDissectors() const
 {
-    auto names = luaNames();
-    appendUnique( &names, tshark );
-    return names;
+    UniqueNames names;
+    names.add( luaNames() );
+    names.add( tshark );
+    return names.names();
 }
 QStringList Choices::routeTargets() const
 {
-    auto names = luaNames();
-    appendUnique( &names, python );
-    appendUnique( &names, tshark );
-    return names;
+    UniqueNames names;
+    names.add( luaNames() );
+    names.add( python );
+    names.add( tshark );
+    return names.names();
 }
 
 namespace {
@@ -336,10 +363,12 @@ Choices collect( const QStringList& userLua )
 {
     Choices choices;
     const auto& manager = PreviewManager::instance();
+    UniqueNames previews;
     for ( const auto& preview : manager.all() )
-        appendUnique( &choices.previews, { preview.name } );
+        previews.add( preview.name );
     for ( const auto& preview : manager.packPreviews() )
-        appendUnique( &choices.previews, { preview.name } );
+        previews.add( preview.name );
+    choices.previews = previews.names();
     choices.assemblyProtocols = assembledPreviewProtocols();
     for ( const auto& path : userLua )
         choices.lua.append( { path, cachedLuaNames( path ) } );
@@ -350,6 +379,8 @@ Choices collect( const QStringList& userLua )
     }
     // Only the modules Python's check found a decode() in are decoders; the others are helpers
     // the pack lists so the worker copies them (E16b).
+    UniqueNames modules;
+    UniqueNames decoders;
     for ( const auto& pack : packs.python ) {
         const auto entry = pack.toMap();
         const auto packId = entry.value( "id" ).toString();
@@ -357,11 +388,13 @@ Choices collect( const QStringList& userLua )
         for ( const auto& decoder : entry.value( "decoders" ).toList() ) {
             const auto decoderId = decoder.toMap().value( "id" ).toString();
             const auto target = PythonPrefix + packId + '/' + decoderId;
-            appendUnique( &choices.pythonModules, { target } );
+            modules.add( target );
             if ( entries.contains( decoderId ) )
-                appendUnique( &choices.python, { target } );
+                decoders.add( target );
         }
     }
+    choices.pythonModules = modules.names();
+    choices.python = decoders.names();
     LOG_DEBUG << "Preview route choices collected previews=" << choices.previews.size()
               << " lua_files=" << choices.lua.size() << " lua_names=" << choices.luaNames().size()
               << " python=" << choices.python.size();
