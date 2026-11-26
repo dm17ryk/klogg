@@ -40,6 +40,9 @@ private:
     // Reads `tshark -G protocols` of the saved TShark once, in the background, while the saved
     // decoder is enabled. `retry` reads it again after a failure.
     void loadTsharkProtocols( bool retry = false );
+    // Drops the saved TShark's list (and a reading of it): after a settings change it may be
+    // another file at the same path, size and time.
+    void forgetTsharkProtocols();
     void tsharkProtocolsLoaded( QProcess* process, const QString& key, const QString& failure );
     // An empty PDML protocol, or one that was the previous dissector, follows the dissector.
     void followDissector( QTableWidget* table, QTableWidgetItem* item );

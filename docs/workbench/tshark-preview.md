@@ -64,8 +64,9 @@ Declarations in comments and strings don't count. A name built at run time
 (`Proto(NAME, ...)`) can't be read; type it. TShark's protocols come from
 `tshark -G protocols`. It runs in the background, at most 5 seconds, and only
 for the saved TShark executable while TShark is enabled: like a preview, only
-applied settings run anything. It runs once per executable, and again when the
-dialog is shown after a failure. It uses no personal or global Wireshark
+applied settings run anything. It runs once per executable, again after the
+settings change (the saved executable may have been replaced), and again when
+the dialog is shown after a failure. It uses no personal or global Wireshark
 plugins or settings, like a preview session. The line under the routes counts
 what each source offers.
 

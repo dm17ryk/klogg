@@ -358,10 +358,11 @@ PreviewDecoderSettingsDialog::PreviewDecoderSettingsDialog( QWidget* parent )
     connect( &PreviewDecoderSettings::instance(), &PreviewDecoderSettings::changed, this,
              [ this ] {
                  refreshPythonDecoders();
+                 // The watched TShark, Lua files and packs may have changed within the file
+                 // system's time granularity (same size and time): their lists are read again.
+                 forgetTsharkProtocols();
                  if ( isVisible() )
                      loadTsharkProtocols();
-                 // A watched Lua file or a pack may have changed within the file system's time
-                 // granularity: their names are read again.
                  previewroutes::forgetLuaNames();
                  refreshChoices();
                  showWarnings( savedWarnings() );
@@ -664,6 +665,22 @@ void PreviewDecoderSettingsDialog::showEvent( QShowEvent* event )
 QString PreviewDecoderSettingsDialog::heldOpenNote() const
 {
     return tr( "Settings applied, with the warnings below. OK again closes the dialog." );
+}
+
+void PreviewDecoderSettingsDialog::forgetTsharkProtocols()
+{
+    tsharkProtocolCache().remove( tsharkKey_ );
+    if ( tsharkProcess_ ) {
+        tsharkProcess_->disconnect( this );
+        tsharkProcess_->kill();
+        tsharkProcess_->deleteLater();
+        tsharkProcess_ = nullptr;
+    }
+    // The next load (on showing, or now when shown) reads the list again.
+    tsharkKey_.clear();
+    tsharkFailure_.clear();
+    choices_.tshark.clear();
+    choices_.tsharkLoaded = false;
 }
 
 void PreviewDecoderSettingsDialog::loadTsharkProtocols( bool retry )
