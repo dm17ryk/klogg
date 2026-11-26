@@ -85,7 +85,10 @@ for ((attempt = 1; ; attempt++)); do
   fi
   echo "::warning::Push of latest.json to $branch was rejected (attempt $attempt of $attempts); redoing it on the new tip."
   sleep $((delay * attempt))
-  git fetch --no-tags origin "$branch"
+  if ! git fetch --no-tags origin "$branch"; then
+    echo "::warning::Could not fetch $branch (attempt $attempt of $attempts); trying again."
+    continue
+  fi
   # Only latest.json is tracked-and-changed here; the release files are untracked.
   git reset -q --hard FETCH_HEAD
   if ! commit_release; then

@@ -109,3 +109,16 @@ if (cd "$workdir/broken-job" && bash "$script" ci 26.04.2.1462 master) > "$workd
 fi
 grep -q "Could not update latest.json" "$workdir/broken.log" || { cat "$workdir/broken.log"; fail "unclear error"; }
 echo "PASS: an unreadable latest.json fails with a clear error"
+
+# 8. A push that keeps being rejected stops after the attempt limit with a clear error.
+new_origin rejecting
+printf '#!/bin/sh\necho "rejected by test hook" >&2\nexit 1\n' > "$workdir/rejecting/hooks/pre-receive"
+chmod +x "$workdir/rejecting/hooks/pre-receive"
+if (cd "$workdir/rejecting-job" && CILOGG_PUSH_ATTEMPTS=2 bash "$script" ci 26.04.2.1462 master) \
+    > "$workdir/rejecting.log" 2>&1; then
+  fail "a push rejected every time passed"
+fi
+grep -q "Could not push latest.json to master after 2 attempts" "$workdir/rejecting.log" \
+  || { cat "$workdir/rejecting.log"; fail "unclear attempt-limit error"; }
+remote_latest rejecting | grep -q '"ci": "26.04.2.1"' || fail "remote latest.json changed"
+echo "PASS: a push rejected every time stops after the attempt limit"
