@@ -209,7 +209,7 @@ void SerialCaptureWorker::start()
         return;
     }
 
-    port_ = new QSerialPort( this );
+    port_ = portFactory_ ? portFactory_( this ) : new QSerialPort( this );
     port_->setPortName( settings_.portName );
     port_->setBaudRate( settings_.baudRate );
     port_->setDataBits( settings_.dataBits );

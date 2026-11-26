@@ -420,6 +420,10 @@ void StreamSession::sendBytes( const QByteArray& data, bool sensitive )
         LOG_DEBUG << "Serial compatibility write rejected reason=" << result.error.code;
     }
 #else
+    if ( transportSinkForTests_ && !data.isEmpty() ) {
+        transportSinkForTests_( data, sensitive );
+        return;
+    }
     if ( !worker_ || data.isEmpty() ) {
         LOG_DEBUG << "Skipping COM send because worker or payload is unavailable";
         return;
@@ -454,7 +458,7 @@ void StreamSession::setupWorker()
         return;
     }
 
-    worker_ = new SerialCaptureWorker( settings_ );
+    worker_ = workerFactory_ ? workerFactory_( settings_ ) : new SerialCaptureWorker( settings_ );
     worker_->moveToThread( &thread_ );
     const auto generation = ++workerGeneration_;
 

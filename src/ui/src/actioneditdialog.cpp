@@ -194,8 +194,13 @@ ActionEditDialog::ActionEditDialog( QWidget* parent )
     hexValueEdit_->setMinimumHeight( 65 );
 
     delaySpin_ = new QSpinBox( this );
+    delaySpin_->setObjectName( QStringLiteral( "actionInitialDelaySpin" ) );
     delaySpin_->setRange( 0, 3600000 );
     delaySpin_->setSuffix( tr( " ms" ) );
+    delaySpin_->setToolTip(
+        tr( "How long an automatic send (a response running this action) waits before the "
+            "first transmission. Sending the action yourself (Send button, menu, Commander) "
+            "always transmits at once." ) );
 
     repeatCountSpin_ = new QSpinBox( this );
     repeatCountSpin_->setRange( 1, 1000 );
@@ -365,7 +370,7 @@ ActionEditDialog::ActionEditDialog( QWidget* parent )
 
     auto* advancedPage = new QWidget( tabs );
     auto* advancedLayout = new QFormLayout( advancedPage );
-    advancedLayout->addRow( tr( "Initial delay" ), delaySpin_ );
+    advancedLayout->addRow( tr( "Delay before automatic sends" ), delaySpin_ );
     advancedLayout->addRow( tr( "Repeat count" ), repeatCountSpin_ );
     advancedLayout->addRow( tr( "Repeat interval" ), repeatIntervalSpin_ );
     advancedLayout->addRow( tr( "Template variables (legacy)" ), variableNamesEdit_ );

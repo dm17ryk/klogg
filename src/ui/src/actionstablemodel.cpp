@@ -240,7 +240,7 @@ QString ActionsTableModel::tooltipForAction( const ActionDefinition& action ) co
     }
     tooltip.append( tr( "Repeat: %1" ).arg( action.parameters.repeat ? tr( "yes" ) : tr( "no" ) ) );
     tooltip.append( '\n' );
-    tooltip.append( tr( "Delay: %1" ).arg( action.parameters.delay ) );
+    tooltip.append( tr( "Delay before automatic sends: %1 ms" ).arg( action.parameters.delay ) );
     tooltip.append( '\n' );
     tooltip.append( tr( "Parameters: %1" ).arg( parameterSummary( action ) ) );
     tooltip.append( '\n' );

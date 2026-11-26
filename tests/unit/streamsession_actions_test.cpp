@@ -2,7 +2,9 @@
 
 #include <memory>
 
+#include <QElapsedTimer>
 #include <QPointer>
+#include <QScopeGuard>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
@@ -365,8 +367,9 @@ TEST_CASE( "Per-tab response changes invalidate buffered lineage and automatic t
     automatic.parameters.repeatCount = 2;
     automatic.parameters.repeatInterval = 10;
     QSignalSpy sent( &session, &StreamSession::actionSent );
-    REQUIRE( sendActionDefinition( &session, manual, {}, -1, nullptr, false ) );
-    REQUIRE( sendActionDefinition( &session, automatic, {}, -1, nullptr, true ) );
+    REQUIRE( sendActionDefinition( &session, manual, ActionSendOrigin::Manual, {}, -1, nullptr ) );
+    REQUIRE(
+        sendActionDefinition( &session, automatic, ActionSendOrigin::Automatic, {}, -1, nullptr ) );
     session.setAutoResponsesEnabled( false );
     session.setAutoResponsesEnabled( true );
     REQUIRE( waitForActionTimers() );
@@ -527,7 +530,9 @@ TEST_CASE( "Delayed actions validate the tab generation and automatic eligibilit
     QSignalSpy dispatched( &session, &StreamSession::actionSent );
     QSignalSpy transmitted( &session, &StreamSession::dataTransmitted );
     QString error;
-    REQUIRE( sendActionDefinition( &session, action, {}, -1, &error, automatic ) );
+    REQUIRE( sendActionDefinition(
+        &session, action, automatic ? ActionSendOrigin::Automatic : ActionSendOrigin::Manual, {},
+        -1, &error ) );
     REQUIRE( error.isEmpty() );
     if ( change == 1 ) {
         session.setActionsEnabled( false );
@@ -552,7 +557,10 @@ TEST_CASE( "Delayed actions validate the tab generation and automatic eligibilit
     else {
         REQUIRE( QTest::qWaitFor( [&dispatched] { return dispatched.size() >= 3; }, 5000 ) );
     }
-    CHECK( dispatched.size() == ( cancelled ? 0 : 3 ) );
+    // A manual send ignores the initial delay (#142): its first transmission already happened
+    // when the change came; only the remaining repeats are cancelled.
+    const auto alreadySent = automatic ? 0 : 1;
+    CHECK( dispatched.size() == ( cancelled ? alreadySent : 3 ) );
     // An actionSent signal proves logical dispatch only; there is no transport worker.
     CHECK( transmitted.isEmpty() );
     CHECK( session.isConnectionOpen() );
@@ -583,8 +591,10 @@ TEST_CASE( "The diagnostic journal records action sends when they happen and can
     sent.parameters.delay = 10;
     sent.parameters.repeatCount = 2;
     sent.parameters.repeatInterval = 10;
-    REQUIRE( sendActionDefinition( &session, sent, {}, -1, nullptr, false ) );
-    CHECK( outcomes( 7110 ).isEmpty() ); // scheduled is not sent
+    REQUIRE( sendActionDefinition( &session, sent, ActionSendOrigin::Manual, {}, -1, nullptr ) );
+    // A manual send goes out at once (#142); the repeat is still scheduled and not journaled.
+    const auto immediate = outcomes( 7110 );
+    CHECK( immediate.value( "sent" ) + immediate.value( "rejected" ) == 1 );
     REQUIRE( QTest::qWaitFor( [&dispatched] { return dispatched.size() >= 2; }, 5000 ) );
     const auto delivered = outcomes( 7110 );
     // The checked serial owner may reject a write on this logical test session; either way the
@@ -594,13 +604,16 @@ TEST_CASE( "The diagnostic journal records action sends when they happen and can
 
     auto cancelled = testAction( 7111 );
     cancelled.parameters.delay = 10;
-    REQUIRE( sendActionDefinition( &session, cancelled, {}, -1, nullptr, false ) );
+    cancelled.parameters.repeatCount = 2;
+    cancelled.parameters.repeatInterval = 10;
+    REQUIRE(
+        sendActionDefinition( &session, cancelled, ActionSendOrigin::Manual, {}, -1, nullptr ) );
     session.setActionsEnabled( false );
     session.setActionsEnabled( true );
     REQUIRE( waitForActionTimers() );
     const auto dropped = outcomes( 7111 );
     CHECK( dropped.value( "cancelled" ) == 1 );
-    CHECK( dropped.value( "sent" ) == 0 );
+    CHECK( dropped.value( "sent" ) + dropped.value( "rejected" ) == 1 );
 }
 
 TEST_CASE( "Explicit manual sends remain available on an unmarked tab",
@@ -613,13 +626,14 @@ TEST_CASE( "Explicit manual sends remain available on an unmarked tab",
     auto action = testAction( 7103 );
     QSignalSpy dispatched( &session, &StreamSession::actionSent );
     QString error;
-    REQUIRE( sendActionDefinition( &session, action, {}, -1, &error ) );
+    REQUIRE( sendActionDefinition( &session, action, ActionSendOrigin::Manual, {}, -1, &error ) );
     CHECK( dispatched.size() == 1 );
     action.parameters.delay = 10;
-    REQUIRE( sendActionDefinition( &session, action, {}, -1, &error ) );
+    REQUIRE( sendActionDefinition( &session, action, ActionSendOrigin::Manual, {}, -1, &error ) );
     REQUIRE( QTest::qWaitFor( [&dispatched] { return dispatched.size() >= 2; }, 5000 ) );
     CHECK( dispatched.size() == 2 );
-    CHECK_FALSE( sendActionDefinition( &session, action, {}, -1, &error, true ) );
+    CHECK_FALSE(
+        sendActionDefinition( &session, action, ActionSendOrigin::Automatic, {}, -1, &error ) );
     CHECK_FALSE( error.isEmpty() );
     CHECK( dispatched.size() == 2 );
 }
@@ -636,7 +650,9 @@ TEST_CASE( "Disabling a tab cancels remaining repeats after an immediate dispatc
     action.parameters.repeatCount = 3;
     action.parameters.repeatInterval = 10;
     QSignalSpy dispatched( &session, &StreamSession::actionSent );
-    REQUIRE( sendActionDefinition( &session, action, {}, -1, nullptr, automatic ) );
+    REQUIRE( sendActionDefinition(
+        &session, action, automatic ? ActionSendOrigin::Automatic : ActionSendOrigin::Manual, {},
+        -1, nullptr ) );
     REQUIRE( dispatched.size() == 1 );
     session.setActionsEnabled( false );
     session.setActionsEnabled( true );
@@ -821,7 +837,8 @@ TEST_CASE( "Destroyed action sessions leave no queued logical dispatch",
     QSignalSpy dispatched( session.get(), &StreamSession::actionSent );
     auto action = testAction( 7110 );
     action.parameters.delay = 10;
-    REQUIRE( sendActionDefinition( session.get(), action, {}, -1, nullptr, true ) );
+    REQUIRE( sendActionDefinition( session.get(), action, ActionSendOrigin::Automatic, {}, -1,
+                                   nullptr ) );
     session.reset();
     REQUIRE( waitForActionTimers() );
     CHECK( dispatched.isEmpty() );
@@ -839,7 +856,7 @@ TEST_CASE( "An observation handler may destroy its session safely",
         QObject::connect( session.get(), &StreamSession::actionSent, session.get(),
                           [ &session ] { session.reset(); } );
         const auto action = testAction( 7111 );
-        CHECK_FALSE( sendActionDefinition( session.get(), action ) );
+        CHECK_FALSE( sendActionDefinition( session.get(), action, ActionSendOrigin::Manual ) );
     }
     else {
         QObject::connect( session.get(), &StreamSession::lineObserved, session.get(),
@@ -892,4 +909,71 @@ TEST_CASE( "Capture file notices name the file the bytes were written to",
     REQUIRE( QTest::qWaitFor( [ &delivered ] { return delivered.size() == 2; }, 5000 ) );
     CHECK( delivered.at( 0 ) == oldFile );
     CHECK( delivered.at( 1 ) == newFile );
+}
+
+TEST_CASE( "A manual send ignores the action's initial delay; automatic sends keep it (#142)",
+           "[serial][session][actions][actionruntime][send-latency]" )
+{
+    ScopedActionsState restore;
+    ActionsManager::instance().setAutoResponsesEnabled( true );
+    StreamSession session( settingsFor( QStringLiteral( "TEST_SEND_LATENCY" ) ) );
+    StreamSessionTestAccess::openConnection( session );
+    // A legacy-imported "Read Version" action: a 3600 ms initial delay.
+    auto action = testAction( 7130 );
+    action.sequence.value = QStringLiteral( "GET VERSION:01;" );
+    action.parameters.delay = 3600;
+    CHECK( initialSendDelayMs( action, ActionSendOrigin::Manual ) == 0 );
+    CHECK( initialSendDelayMs( action, ActionSendOrigin::Automatic ) == 3600 );
+    action.parameters.delay = -5;
+    CHECK( initialSendDelayMs( action, ActionSendOrigin::Automatic ) == 0 );
+    action.parameters.delay = 3600;
+
+    // The bytes the session hands to its serial transport (admission into the checked writer in
+    // the shared-writer build), and when.
+    QElapsedTimer pressed;
+    struct Write {
+        QByteArray bytes;
+        qint64 atMs = -1;
+    };
+    QVector<Write> written;
+    StreamSessionTestAccess::setTransportSink(
+        session, [ &written, &pressed ]( const QByteArray& bytes, bool ) {
+            written.push_back( { bytes, pressed.elapsed() } );
+        } );
+    // A failing run may leave a timer pending: detach the sink before the locals go.
+    const auto detachSink
+        = qScopeGuard( [ &session ] { StreamSessionTestAccess::setTransportSink( session, {} ); } );
+
+    pressed.start();
+    REQUIRE( sendActionDefinition( &session, action, ActionSendOrigin::Manual, {}, -1, nullptr ) );
+    // Written inside the call: nothing waits between the press and the transport.
+    REQUIRE( written.size() == 1 );
+    CHECK( written.front().bytes == QByteArrayLiteral( "GET VERSION:01;" ) );
+    INFO( "press to write took " << written.front().atMs << " ms" );
+    CHECK( written.front().atMs < 1000 ); // the old delay was 3600 ms
+
+    // A response running the same action still waits for its configured delay.
+    auto automatic = testAction( 7131 );
+    automatic.parameters.delay = 40;
+    pressed.restart();
+    REQUIRE(
+        sendActionDefinition( &session, automatic, ActionSendOrigin::Automatic, {}, -1, nullptr ) );
+    CHECK( written.size() == 1 );
+    REQUIRE( QTest::qWaitFor( [ &written ] { return written.size() == 2; }, 5000 ) );
+    CHECK( written.back().bytes == QByteArrayLiteral( "PING" ) );
+    // Qt's coarse timers may fire up to 5% early; the point is only "not immediate".
+    CHECK( written.back().atMs >= 30 );
+
+    // Manual repeats: the first goes out at once, the next after the repeat interval.
+    auto repeated = testAction( 7132 );
+    repeated.parameters.delay = 3600;
+    repeated.parameters.repeatCount = 2;
+    repeated.parameters.repeatInterval = 20;
+    pressed.restart();
+    REQUIRE(
+        sendActionDefinition( &session, repeated, ActionSendOrigin::Manual, {}, -1, nullptr ) );
+    CHECK( written.size() == 3 );
+    REQUIRE( QTest::qWaitFor( [ &written ] { return written.size() == 4; }, 1000 ) );
+    CHECK( written.back().atMs >= 15 );
+    CHECK( written.back().atMs < 3600 );
 }
