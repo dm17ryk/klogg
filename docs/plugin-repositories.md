@@ -666,7 +666,8 @@ interpreter, then `python.exe` before `python3.exe` and launcher scripts on `PAT
 **Routing.** A decoder route names `{ "python": "<pack-id>/<decoder-id>" }` instead of a
 `dissector`, in `previewRoutes` (a preview name) or `protocolRoutes` (an assembled protocol, with an
 optional `inputEncoding`). A pack's routes name its own decoders; the user's routes (Preview Decoder
-Settings, where the decoder column takes `python:<pack-id>/<decoder-id>`) may name any pack's. In
+Settings, where the decoder column takes `python:<pack-id>/<decoder-id>` and the **Add Python
+decoder** menu lists the enabled packs' decoders by pack name, E16b) may name any pack's. In
 Automatic mode a Python route has the place a TShark route has: an assembled protocol's route
 first, then routed previews before other matching JSON previews, then the TShark default dissector,
 then JSON. A Python route applies while its decoder's pack is enabled, whether TShark is configured
@@ -695,9 +696,10 @@ from the manifest.
 
 **Capability.** The host feature `python_decoders` (version 1) says this CILogg runs pack Python
 decoders: `get_plugins` reports it in `hostFeatures`, and per pack `pythonDecodersActive` (the pack
-is enabled, has Python decoders and the host has the feature). The Installed tab shows
-"Python decoders: N", "(inactive)" while the pack is disabled, and "requires a newer CILogg" on a
-host without the feature; a pack can also say `"requires": { "host_features": ["python_decoders"] }`
+is enabled, has Python decoders and the host has the feature). The Installed tab names the
+decoders by ID ("Python decoders: record, common"; the first four of a longer list, with how many in
+all), adds "(inactive)" while the pack is disabled, and shows "requires a newer CILogg" on a host
+without the feature; a pack can also say `"requires": { "host_features": ["python_decoders"] }`
 so that an older CILogg lists it as requiring a newer one. The example
 `plugins/examples/python-decoder-pack` shows a decoder with a helper module and its route.
 
@@ -729,6 +731,61 @@ Switch source, Install Folder and Install ZIP), judged from the new version's ca
 or manifest. Two enabled packs never share a route, even one the user's route hides, and a pack's
 block names `<pack-id>/` are its own: its blocks win there, and enabling it is refused while a
 block of the user's uses that namespace.
+
+**As built (E16b, issue #146).** A pack's Python modules go through the pack's life cycle like its
+other files. An install from a repository, a folder or a zip puts them in the pack's store; **Pack
+Files...** and `pack_edit` edit them in place; an update merges them as text (three-way, like `git
+merge-file`), and a conflict goes to the three-pane text merge or follows the automation strategy
+(`fail`, `keep_mine`, `take_theirs`); Revert and Reset to Pack Version bring a version back. The
+preview runs the pack's effective content (`packContentDirectory`: the installed version with the
+user's edits). Every edit, revert, reset and update starts new sessions, which copy the modules
+again, and removing a pack takes its decoders and routes with it. Pack modules and routes never
+enter the user's decoder settings, so exports and projects never carry them.
+`PreviewDecoderPacks::pythonNames` keeps each enabled pack's name beside its decoders (never sent
+to the worker). With it, Preview Decoder Settings has an **Add Python decoder** menu on both route
+tabs ("<pack name>: <decoder id>", the pack's ID added when two packs share a name, the route target
+and the module in its tooltip), each route's decoder says whose it is, why its module is not
+offered, or that its pack is not enabled, and a preview's tooltip and status name the decoder with
+its pack (`PreviewService::pythonDecoderLabel`).
+
+Python's own parser decides which modules the menu offers. When the enabled packs change,
+`PreviewPackRegistry` starts one supervised worker (`message_decoder_python_entries.py`, through
+`PythonEntriesClient`) for the modules of packs it has not checked in that version and edit. The
+worker uses the preview's interpreter (`CILOGG_SCRIPT_PYTHON`, a bundled one, then PATH, as in
+MD03b) in a process group or job object, within 10 seconds, a 64 KiB request and a 128 KiB answer.
+It reads each module (at most 1 MiB) and gives it to `ast.parse` and `compile`, so nothing in the
+module runs and nothing is imported. It then answers once and exits.
+
+A module is a decoder when `decode` may be bound to something callable after its top level:
+
+- **Offered:** a `def` (generic or decorated), a decorated `async def` (its decorator may return a
+  plain function), a lambda, or a name, attribute, call or `from ... import` whose value only
+  running the module would show.
+- **Taken away:** an undecorated `async def` (the worker calls `decode()` without awaiting it), a
+  `class`, a plain `import` (a module), a literal, display or comprehension, `del decode`, and
+  `except ... as decode` (the name is deleted when the handler ends).
+- **Last binding wins:** the last binding on a path through the module decides. A path goes through
+  each branch of `if`, `try`, `for`, `while`, `with` and `match` (a `case` guard before its body);
+  the module is offered when any path ends with a callable `decode`. Statements after `break`,
+  `continue` or `raise` are on no path, a path that raises without a handler does not import, and
+  `if __name__ == "__main__":` never runs on import. Unpacking binds element by element (around a
+  starred target too), and `:=` binds in Python's evaluation order: in a lambda's defaults, but not
+  in a lambda's or a generator's body, which run later. Strings, comments, function and class
+  bodies, and keyword arguments bind nothing at the top level.
+- **Not offered, with the reason:** a module Python cannot parse or compile (its line and the
+  parser's message), one over 1 MiB or nested too deeply, and one that cannot be read. Without an
+  interpreter no module is offered, and the menu and routes say why. A pack with modules the check
+  had no time for shows what it found and stays unchecked. Preview Decoder Settings checks the
+  packs not yet checked again when it opens.
+
+The results reach `PreviewDecoderPacks::pythonEntries` (the decoders of each pack), `pythonNotes`
+(why each other module is not one) and `pythonCheck` (`done`, `checking` or why the check failed).
+Changes to them alone emit `PreviewDecoderSettings::pythonChecked`, and no preview session restarts.
+What only running the module would show stays unseen: a name bound by `from module import *`, `exec`
+or `globals()`. Such a decoder can still be routed by typing its target.
+
+The CLI, native MCP and Python report the same pack fields (`pythonDecoders`,
+`pythonDecodersActive`) and `hostFeatures`.
 
 ### 4.5 Actions, responses, highlighters and filters
 

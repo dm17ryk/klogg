@@ -277,11 +277,40 @@ PreviewDecoderPacks PreviewDecoderSettings::packs() const
 {
     return packs_;
 }
+QString PreviewDecoderSettings::pythonDecoderPack( const QString& decoder ) const
+{
+    const auto slash = decoder.indexOf( QLatin1Char( '/' ) );
+    if ( slash <= 0 ) {
+        return {};
+    }
+    const auto packId = decoder.left( slash );
+    const auto decoderId = decoder.mid( slash + 1 );
+    for ( const auto& value : packs_.python ) {
+        const auto pack = value.toMap();
+        if ( pack.value( "id" ).toString() != packId ) {
+            continue;
+        }
+        for ( const auto& listed : pack.value( "decoders" ).toList() ) {
+            if ( listed.toMap().value( "id" ).toString() == decoderId ) {
+                const auto name = packs_.pythonNames.value( packId ).toString();
+                return name.isEmpty() ? packId : name;
+            }
+        }
+    }
+    return {};
+}
 void PreviewDecoderSettings::setPacks( const PreviewDecoderPacks& packs )
 {
     if ( packs == packs_ )
         return;
+    const bool sessions = !packs.sameSessions( packs_ );
     packs_ = packs;
+    if ( !sessions ) {
+        LOG_DEBUG << "Preview decoder Python check changed state="
+                  << packs_.pythonCheck.toStdString();
+        Q_EMIT pythonChecked();
+        return;
+    }
     LOG_INFO << "Preview decoder pack contributions changed packs=" << packs_.lua.size()
              << " python_packs=" << packs_.python.size()
              << " preview_routes=" << packs_.previewRoutes.size()
