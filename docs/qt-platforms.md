@@ -111,8 +111,8 @@ running. A stuck Apple Silicon queue is handled by this rule:
    benchmarks, plugin examples) keep their labels. Delete the variable once
    `macos-26` allocates again.
 3. While no Apple Silicon label allocates, a pull request may merge when every
-   other job passed and its macOS arm64 jobs were cancelled without a runner.
-   The pull request says so and links the issue.
+   other job passed and its macOS arm64 jobs, in any workflow, were cancelled
+   without a runner. The pull request says so and links the issue.
 4. A release during the outage: once every other job of the master `CI Build`
    run has passed, cancel the run. Then start `Make CI Release` with
    `ci-run-id` set to that run and `allow-missing-macos-arm64` checked. The

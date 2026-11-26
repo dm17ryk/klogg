@@ -20,7 +20,8 @@ DIR_612 = "packages-macos-arm-qt612"
 
 def run(**overrides):
     value = {"id": 42, "path": ".github/workflows/ci-build.yml", "head_branch": "master",
-             "status": "completed", "conclusion": "success"}
+             "status": "completed", "conclusion": "success",
+             "head_repository": {"full_name": "dm17ryk/klogg"}, "repository": {"full_name": "dm17ryk/klogg"}}
     value.update(overrides)
     return value
 
@@ -93,6 +94,11 @@ class CiRunTests(unittest.TestCase):
     def test_outage_release_comes_from_master(self):
         with self.assertRaisesRegex(release.ReleaseInputError, "master"):
             release.check_ci_run(run(head_branch="feat/x", conclusion="cancelled"), green_jobs(), True)
+
+    def test_outage_release_refuses_a_fork_branch_named_master(self):
+        fork = run(conclusion="cancelled", head_repository={"full_name": "someone/klogg"})
+        with self.assertRaisesRegex(release.ReleaseInputError, "someone/klogg:master"):
+            release.check_ci_run(fork, green_jobs(), True)
 
     def test_outage_release_needs_the_job_list(self):
         with self.assertRaisesRegex(release.ReleaseInputError, "no jobs"):

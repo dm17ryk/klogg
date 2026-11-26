@@ -79,9 +79,12 @@ def check_ci_run(run: dict, jobs: list, allow_missing_macos_arm64: bool) -> list
         raise ReleaseInputError(
             f"CI Build run {run_id} is still {run.get('status')}. Cancel it once every job "
             "except the queued macOS arm64 ones has finished, then start the release again.")
-    if run.get("head_branch") != RELEASE_BRANCH:
+    head_repository = (run.get("head_repository") or {}).get("full_name")
+    repository = (run.get("repository") or {}).get("full_name")
+    if run.get("head_branch") != RELEASE_BRANCH or not head_repository or head_repository != repository:
         raise ReleaseInputError(
-            f"CI Build run {run_id} built {run.get('head_branch')}; an outage release comes from {RELEASE_BRANCH}")
+            f"CI Build run {run_id} built {head_repository}:{run.get('head_branch')}; "
+            f"an outage release comes from {repository}:{RELEASE_BRANCH}")
     if not jobs:
         raise ReleaseInputError(f"CI Build run {run_id} has no jobs")
     left_out = []
