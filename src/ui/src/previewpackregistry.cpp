@@ -121,6 +121,9 @@ void PreviewPackRegistry::attach( cilogg::plugins::PluginManager* manager )
                                      const QJsonObject& json ) {
         return check( id, directory, json );
     } );
+    // A removed pack's responses start off again when it is installed again (E16c3).
+    manager->setPackRemoved(
+        []( const QString& id ) { ActionsManager::instance().forgetPack( id ); } );
     connect( manager, &cilogg::plugins::PluginManager::changed, this,
              &PreviewPackRegistry::refresh );
     refresh();

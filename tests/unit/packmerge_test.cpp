@@ -848,6 +848,12 @@ TEST_CASE( "Pack actions and responses have a canonical one-item-per-file form",
         { "a step that runs no action",
           linking( QJsonObject{ { "steps", QJsonArray{ QJsonObject{ { "action_id", -1 } } } },
                                 { "comment", "x" } } ) },
+        // CILogg skips a step it cannot read, so the pack would lose it.
+        { "a step without an action_id",
+          linking( QJsonObject{ { "steps", QJsonArray{ QJsonObject{ { "delay_ms", 10 } } } },
+                                { "comment", "x" } } ) },
+        { "steps that are not a list",
+          linking( QJsonObject{ { "steps", QJsonObject{} }, { "comment", "x" } } ) },
         { "a step naming another pack's action",
           linking( QJsonObject{
               { "steps", QJsonArray{ QJsonObject{ { "action_id", 7 },

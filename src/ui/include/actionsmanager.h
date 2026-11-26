@@ -84,7 +84,7 @@ class ActionsManager : public QObject {
     // until turned on). actions() and responses() stay the user's own (saved and exported).
     void setPackItems( const QVector<PackActionItems>& packs );
     // The packs' listed actions and responses (none of a kind while the user's and theirs would
-    // pass MaxListedActionItems).
+    // pass MaxListedActionItems; no responses either while the actions they run give way).
     QVector<ListedAction> packActions() const;
     QVector<ListedResponse> packResponses() const;
     const ListedAction* packAction( int id ) const;
@@ -96,6 +96,9 @@ class ActionsManager : public QObject {
     std::optional<int> resolvePackResponse( const QString& namespacedId ) const;
     // Turns every response of an enabled pack on or off; returns how many changed.
     int setPackResponsesEnabled( const QString& packId, bool enabled );
+    // A removed pack: which of its responses were on is forgotten, so installing it again starts
+    // them off (its run-time ids stay). Disabling or updating a pack keeps that state.
+    void forgetPack( const QString& packId );
     // Copy to My Actions / My Responses: the user's own copy with a new id. A response's linked
     // pack actions are copied with it and its links name the copies. The copy's id, or nothing
     // with `errorMessage`.
@@ -120,6 +123,8 @@ class ActionsManager : public QObject {
     QStringList linkPackSteps( ResponseDefinition* response ) const;
     // Gives the enabled packs' items their run-time ids (never one of the user's).
     void applyPackItems();
+    // The packs' responses run their own pack's actions: while those give way, so do they.
+    bool packActionsGiveWay() const;
 
     ActionsRepository repository_;
     QVector<ActionDefinition> actions_;

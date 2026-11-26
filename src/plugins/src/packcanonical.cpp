@@ -255,16 +255,22 @@ QString responseLinkError( int id, const QJsonObject& response, const QSet<int>&
     if ( run.contains( "action_id" ) ) {
         links.append( { run.value( "action_id" ), true } );
     }
+    // Every step is an action of the file to run: CILogg skips one it cannot read, so the pack
+    // would lose it.
+    if ( run.contains( "steps" ) && !run.value( "steps" ).isArray() ) {
+        return QStringLiteral( "response %1 has steps that are not a list." ).arg( id );
+    }
     for ( const auto& step : run.value( "steps" ).toArray() ) {
         const auto object = step.toObject();
+        if ( !step.isObject() || !object.contains( "action_id" ) ) {
+            return QStringLiteral( "response %1 has a step without an action_id." ).arg( id );
+        }
         if ( object.contains( "pack_action" ) ) {
             return QStringLiteral( "response %1 names a pack action (pack_action): a pack's "
                                    "response runs its own pack's actions." )
                 .arg( id );
         }
-        if ( object.contains( "action_id" ) ) {
-            links.append( { object.value( "action_id" ), false } );
-        }
+        links.append( { object.value( "action_id" ), false } );
     }
     for ( const auto& [ link, noneAllowed ] : links ) {
         if ( !link.isDouble() ) {

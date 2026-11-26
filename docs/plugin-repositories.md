@@ -880,7 +880,10 @@ those reach the range), and an update, delete or move of a pack's item is refuse
 snapshots keep that response and an import runs that pack's action under its run-time id there;
 while no enabled pack has it, the step runs nothing and keeps the name (an import says so). The
 pack check refuses more than 4,096 actions or responses with the user's, only for a pack that
-brings items of that kind; when the user's grow past that, the packs' give way (not listed). The Actions and Responses windows list the packs' items after the user's
+brings items of that kind; when the user's grow past that, the packs' give way (not listed), and
+the packs' responses give way with the actions they run. Disabling or updating a pack keeps which
+of its responses are on; removing it forgets that (`PluginManager::setPackRemoved`), so installing
+it again starts them off. The Actions and Responses windows list the packs' items after the user's
 as "<name> (<pack name>)", read only (Duplicate, Delete and Move disabled), with the pack and its
 `<pack-id>/<local-id>` in the tooltip: **Edit** opens the pack item editor on `actions/<id>.json`
 or `responses/<id>.json`, **Copy to My Actions** and **Copy to My Responses** call

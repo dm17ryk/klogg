@@ -1825,6 +1825,18 @@ TEST_CASE( "Pack actions and responses join the user's with run-time ids, respon
     CHECK( actions.setPackResponsesEnabled( "a.pack", false ) == 1 );
     CHECK( !actions.packResponses().first().response.enabled );
     CHECK( actions.setPackResponsesEnabled( "a.pack", false ) == 0 );
+    // Removing the pack forgets which of its responses were on: installed again, they start off
+    // (Codex review of #176); the run-time ids stay.
+    REQUIRE( actions.setResponseEnabled( boot, true ) );
+    REQUIRE( manager.manage( "remove", "a.pack", {} ).ok() );
+    CHECK( actions.packActions().isEmpty() );
+    writeActionPack( root.path(), "a.pack", PackActionsJson );
+    manager.discover();
+    REQUIRE( manager.manage( "enable", "a.pack", {} ).ok() );
+    REQUIRE( actions.packResponses().size() == 1 );
+    CHECK( actions.packResponses().first().response.id == boot );
+    CHECK( !actions.packResponses().first().response.enabled );
+    CHECK( actions.resolvePackAction( "a.pack/7" ) == status );
 
     // A pack's items are not changed as the user's (copy them, or edit the pack's item), and the
     // packs' id range is not the user's.
@@ -1893,14 +1905,18 @@ TEST_CASE( "A pack's actions must be ones CILogg runs, within the action limits"
     CHECK( PreviewPackRegistry::instance()
                .check( "a.pack", folder, Manifest::read( folder ).json )
                .contains( "would make 4097 actions" ) );
-    // When the user's grow past it, the packs' give way.
-    actions.setPackItems( { { "a.pack", "A", { userAction( 1 ) }, {} } } );
+    // When the user's grow past it, the packs' give way, and so do the packs' responses that
+    // run them (Codex review of #176).
+    actions.setPackItems( { { "a.pack", "A", { userAction( 1 ) }, { userResponse( 5, 1 ) } } } );
     REQUIRE( actions.packActions().size() == 1 );
+    CHECK( actions.packResponses().size() == 1 );
     const auto fits = actions.packActions().first().action.id;
     CHECK( actions.findActionById( fits ) != nullptr );
-    actions.setPackItems( { { "a.pack", "A", { userAction( 1 ), userAction( 2 ) }, {} } } );
+    actions.setPackItems(
+        { { "a.pack", "A", { userAction( 1 ), userAction( 2 ) }, { userResponse( 5, 1 ) } } } );
     CHECK( actions.packActions().isEmpty() );
     CHECK( actions.findActionById( fits ) == nullptr );
+    CHECK( actions.packResponses().isEmpty() );
     CHECK( actions.effectiveResponses().isEmpty() );
     actions.setPackItems( {} );
 

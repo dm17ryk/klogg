@@ -92,11 +92,14 @@ std::optional<std::pair<QString, int>> splitNamespacedId( const QString& text )
     return std::pair{ text.left( slash ), local };
 }
 
-// The listed items of a kind: none while the user's and the packs' would pass the limit.
+// The listed items of a kind: none while the user's and the packs' would pass the limit, or while
+// the actions they run give way (`dependsOn` past the limit).
 template <typename Listed, typename Own>
-QVector<Listed> listedPackItems( const QVector<Own>& own, const QVector<Listed>& packs )
+QVector<Listed> listedPackItems( const QVector<Own>& own, const QVector<Listed>& packs,
+                                 bool dependsOnGivesWay = false )
 {
-    return own.size() + packs.size() > MaxListedActionItems ? QVector<Listed>{} : packs;
+    return dependsOnGivesWay || own.size() + packs.size() > MaxListedActionItems ? QVector<Listed>{}
+                                                                                 : packs;
 }
 } // namespace
 
@@ -132,6 +135,18 @@ bool ActionsManager::validateResponseLinks( const ResponseDefinition& response,
     }
 
     return true;
+}
+
+bool ActionsManager::packActionsGiveWay() const
+{
+    return actions_.size() + packActions_.size() > MaxListedActionItems;
+}
+
+void ActionsManager::forgetPack( const QString& packId )
+{
+    auto& settings = PersistentInfo::getSettings( app_settings{} );
+    settings.remove( QStringLiteral( "PackActions/%1/on" ).arg( packId ) );
+    LOG_INFO << "Pack response states forgotten pack=" << packId.toStdString();
 }
 
 QStringList ActionsManager::linkPackSteps( ResponseDefinition* response ) const
@@ -330,7 +345,7 @@ const ResponseDefinition* ActionsManager::findResponseByName( const QString& nam
         return &( *it );
     }
     // Then the packs' (the user's first, as they are matched).
-    if ( listedPackItems( responses_, packResponses_ ).isEmpty() ) {
+    if ( listedPackItems( responses_, packResponses_, packActionsGiveWay() ).isEmpty() ) {
         return nullptr;
     }
     const auto listed = std::find_if(
@@ -756,7 +771,7 @@ QVector<ListedAction> ActionsManager::packActions() const
 
 QVector<ListedResponse> ActionsManager::packResponses() const
 {
-    return listedPackItems( responses_, packResponses_ );
+    return listedPackItems( responses_, packResponses_, packActionsGiveWay() );
 }
 
 const ListedAction* ActionsManager::packAction( int id ) const
@@ -772,7 +787,8 @@ const ListedAction* ActionsManager::packAction( int id ) const
 
 const ListedResponse* ActionsManager::packResponse( int id ) const
 {
-    if ( id < PackItemIdBase || listedPackItems( responses_, packResponses_ ).isEmpty() ) {
+    if ( id < PackItemIdBase
+         || listedPackItems( responses_, packResponses_, packActionsGiveWay() ).isEmpty() ) {
         return nullptr;
     }
     const auto it = std::find_if(
@@ -820,7 +836,7 @@ std::optional<int> ActionsManager::resolvePackResponse( const QString& namespace
 
 int ActionsManager::setPackResponsesEnabled( const QString& packId, bool enabled )
 {
-    if ( listedPackItems( responses_, packResponses_ ).isEmpty() ) {
+    if ( listedPackItems( responses_, packResponses_, packActionsGiveWay() ).isEmpty() ) {
         return 0;
     }
     auto& settings = PersistentInfo::getSettings( app_settings{} );
