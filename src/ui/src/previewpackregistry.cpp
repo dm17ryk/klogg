@@ -127,11 +127,48 @@ QString pythonCode( const QString& text )
     return code;
 }
 
-// Whether a pack's Python module binds `decode` at its top level (E16b): `def decode(`, `decode =`
-// (annotated too) or an import that binds the name, outside strings and comments. Not `async def`:
-// the worker calls decode() and never awaits it. Preview Decoder Settings offers these modules as
-// decoders and leaves out the helpers a pack lists so the worker copies them; a module that binds
-// the name otherwise can still be routed by typing its target.
+// Whether the statement whose `:` or `=` follows a name at the start of a line, at `at` in `code`,
+// assigns the name: `=` (not `==`), or an annotation and then `=` outside its brackets. An
+// annotation alone (`decode: marker(enabled=True)`) binds nothing.
+bool assignsName( const QString& code, qsizetype at )
+{
+    const auto equals = [ &code ]( qsizetype position ) {
+        return position < code.size() && code[ position ] == QLatin1Char( '=' );
+    };
+    if ( code[ at ] == QLatin1Char( '=' ) ) {
+        return !equals( at + 1 );
+    }
+    int depth = 0;
+    for ( auto position = at + 1; position < code.size() && code[ position ] != QLatin1Char( '\n' );
+          ++position ) {
+        const auto c = code[ position ];
+        if ( c == QLatin1Char( '(' ) || c == QLatin1Char( '[' ) || c == QLatin1Char( '{' ) ) {
+            ++depth;
+        }
+        else if ( ( c == QLatin1Char( ')' ) || c == QLatin1Char( ']' ) || c == QLatin1Char( '}' ) )
+                  && depth > 0 ) {
+            --depth;
+        }
+        else if ( c == QLatin1Char( '=' ) && depth == 0 ) {
+            const auto before = code[ position - 1 ];
+            const bool comparison = equals( position + 1 ) || before == QLatin1Char( '<' )
+                                    || before == QLatin1Char( '>' ) || before == QLatin1Char( '!' );
+            if ( !comparison ) {
+                return true;
+            }
+            ++position; // the second `=` of `==`
+        }
+    }
+    return false;
+}
+
+// Whether a pack's Python module binds `decode` at its top level (E16b): `def decode(` (generic
+// `def decode[T](` too), `decode = value` (annotated too) or a `from ... import` that binds the
+// name, outside strings and comments, and no top-level `del` of it. Not `async def` (the worker
+// calls decode() and never awaits it) and not a plain `import`, which binds a module. Preview
+// Decoder Settings offers these modules as decoders and leaves out the helpers a pack lists so the
+// worker copies them; a module that binds the name otherwise can still be routed by typing its
+// target.
 bool bindsDecode( const QString& path )
 {
     QFile file( path );
@@ -147,15 +184,28 @@ bool bindsDecode( const QString& path )
     text.replace( QStringLiteral( "\r\n" ), QStringLiteral( "\n" ) );
     text.replace( QLatin1Char( '\r' ), QLatin1Char( '\n' ) );
     const auto code = pythonCode( text );
-    static const QRegularExpression definition(
-        QStringLiteral( R"(^def[ \t]+decode[ \t]*\(|^decode[ \t]*(?::[^=\n]*)?=(?!=))" ),
+    static const QRegularExpression removal( QStringLiteral( R"(^del[ \t][^\n]*\bdecode\b)" ),
+                                             QRegularExpression::MultilineOption );
+    if ( removal.match( code ).hasMatch() ) {
+        return false;
+    }
+    static const QRegularExpression function(
+        QStringLiteral( R"(^def[ \t]+decode[ \t]*(?:\[[^\n]*?\][ \t]*)?\()" ),
         QRegularExpression::MultilineOption );
-    if ( definition.match( code ).hasMatch() ) {
+    if ( function.match( code ).hasMatch() ) {
         return true;
     }
-    // `import a as decode` or `from m import x, y as decode`, also in parentheses over lines.
+    static const QRegularExpression named( QStringLiteral( R"(^decode[ \t]*[:=])" ),
+                                           QRegularExpression::MultilineOption );
+    auto assignment = named.globalMatch( code );
+    while ( assignment.hasNext() ) {
+        if ( assignsName( code, assignment.next().capturedEnd() - 1 ) ) {
+            return true;
+        }
+    }
+    // `from m import x, y as decode`, also in parentheses over lines.
     static const QRegularExpression imports(
-        QStringLiteral( R"(^(?:from[ \t]+[\w.]+[ \t]+)?import[ \t]+(\([^)]*\)|[^\n]*))" ),
+        QStringLiteral( R"(^from[ \t]+[\w.]+[ \t]+import[ \t]+(\([^)]*\)|[^\n]*))" ),
         QRegularExpression::MultilineOption );
     auto match = imports.globalMatch( code );
     while ( match.hasNext() ) {

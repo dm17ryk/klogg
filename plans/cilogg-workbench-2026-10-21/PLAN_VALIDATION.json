@@ -1602,6 +1602,15 @@
           "P2 (fixed): semicolons on a long one-line suite rescanned the line (quadratic); the scan keeps the line start and reads its first characters only"
         ],
         "result": "fixed in the commit after beb5125b"
+      },
+      {
+        "head": "01383f47",
+        "reviewer": "Codex review bot",
+        "findings": [
+          "P2 (fixed): an annotation without a value counted as an assignment; the annotation is read up to an = outside its brackets",
+          "P2 (fixed): a generic def decode[T](...) was missed; an optional type-parameter list is read"
+        ],
+        "result": "fixed in the commit after 01383f47"
       }
     ]
   }

@@ -531,6 +531,16 @@ TEST_CASE( "Only the modules that define decode() are offered as decoders", "[pa
         // Real ones after a bracket and a backslash that continue a statement over lines.
         { "afterbrackets", "ITEMS = (\n    1,\n)\ndecode = None\n" },
         { "continued", "VALUE = 1 + \\\n    2\ndecode = None\n" },
+        // An annotation alone binds nothing; with a value after its brackets it does.
+        { "annotationonly", "def marker(**kw):\n    return int\ndecode: marker(enabled=True)\n" },
+        { "annotatedbrackets", "from typing import Callable\ndecode: Callable[[bytes, dict], list] "
+                               "= lambda p, c: []\n" },
+        // A generic function (Python 3.12).
+        { "generic", "def decode[T](payload: T, context):\n    return None\n" },
+        // A name deleted again, and a plain import, which binds a module, are not decoders.
+        { "deleted", "def decode(payload, context):\n    return None\ndel decode\n" },
+        { "moduleimport", "import decode\n" },
+        { "aliasedmodule", "import json as decode\n" },
         // Statements after a semicolon at the top level, but not the body of a one-line def.
         { "semicolon", "VERSION = 1; from .plain import decode\n" },
         { "semicolonassign", "VERSION = 1; decode = None\n" },
@@ -548,28 +558,31 @@ TEST_CASE( "Only the modules that define decode() are offered as decoders", "[pa
         { "escaped",
           "TEXT = \"a \\\" b\" # it's\ndef decode(payload, context):\n    return None\n" },
     };
-    QJsonArray decoders;
+    // Each module in a pack of its own: together they are more than a pack may list.
+    QStringList entries;
     for ( auto module = modules.cbegin(); module != modules.cend(); ++module ) {
+        INFO( module.key().toStdString() );
         writeFile( root.filePath( "python/" + module.key() + ".py" ), module.value() );
-        decoders.append(
-            QJsonObject{ { "id", module.key() }, { "module", "python/" + module.key() + ".py" } } );
+        const QJsonArray decoders{ QJsonObject{ { "id", module.key() },
+                                                { "module", "python/" + module.key() + ".py" } } };
+        const QJsonObject manifest{ { "id", PackId },
+                                    { "name", PackName },
+                                    { "version", "1.0.0" },
+                                    { "protocol_version", 1 },
+                                    { "kind", "config-pack" },
+                                    { "pack_format", 1 },
+                                    { "content", QJsonObject{ { "python_decoders", decoders } } } };
+        const auto pack = PreviewPackRegistry::read( PackId, root.path(), manifest );
+        REQUIRE( pack.error.isEmpty() );
+        REQUIRE( pack.pythonModules.size() == 1 );
+        entries.append( pack.pythonEntries );
     }
-    const QJsonObject manifest{ { "id", PackId },
-                                { "name", PackName },
-                                { "version", "1.0.0" },
-                                { "protocol_version", 1 },
-                                { "kind", "config-pack" },
-                                { "pack_format", 1 },
-                                { "content", QJsonObject{ { "python_decoders", decoders } } } };
-    const auto pack = PreviewPackRegistry::read( PackId, root.path(), manifest );
-    REQUIRE( pack.error.isEmpty() );
-    CHECK( pack.pythonModules.size() == modules.size() );
-    auto entries = pack.pythonEntries;
     entries.sort();
     CHECK( entries
-           == QStringList{ "afterbrackets", "annotated", "assigned", "bom", "continued", "cr",
-                           "crlf", "escaped", "imported", "parenthesized", "plain", "rebound",
-                           "semicolon", "semicolonassign", "softkeyword" } );
+           == QStringList{ "afterbrackets", "annotated", "annotatedbrackets", "assigned", "bom",
+                           "continued", "cr", "crlf", "escaped", "generic", "imported",
+                           "parenthesized", "plain", "rebound", "semicolon", "semicolonassign",
+                           "softkeyword" } );
 }
 
 TEST_CASE( "The decode() check reads a module near the size limit in linear time",
