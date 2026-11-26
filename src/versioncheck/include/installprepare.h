@@ -99,6 +99,8 @@ struct PrepareResult {
     std::vector<std::filesystem::path> blocked;
     // Top-level DLLs that could not be moved and may be another program's: left where they were.
     std::vector<std::filesystem::path> leftInPlace;
+    // False when a folder of the installation could not be read to its end.
+    bool listedAll = true;
 };
 
 // Moves aside every file of the CILogg installation in `directory`, so running processes keep

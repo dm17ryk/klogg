@@ -426,6 +426,53 @@ TEST_CASE( "Another program's DLL in use in the same folder does not block the i
     REQUIRE( readText( root / "cilogg.exe" ) == "old executable" );
 }
 
+TEST_CASE( "An incomplete rollback keeps its whole record for another pass", "[installprepare]" )
+{
+    QTemporaryDir temporary;
+    REQUIRE( temporary.isValid() );
+    const auto root = nativePath( temporary.path() );
+    writeText( root / "cilogg.exe", "old executable" );
+    writeText( root / "Qt6Core.dll", "old library" );
+    std::vector<std::string> lines;
+    REQUIRE( prepare::runPrepare( root, {}, recorder( lines ) ) == prepare::PreparedExitCode );
+    // The copy wrote some files, then failed.
+    writeText( root / "Qt6Core.dll", "new library" );
+    writeText( root / "plugins" / "added.json", "only in the new version" );
+    {
+        // Security software holds the old library's copy during the first rollback.
+        ExclusiveHandle scanner( root / "Qt6Core.dll.cilogg-old" );
+        REQUIRE( scanner.isOpen() );
+        REQUIRE( prepare::runRollback( root, recorder( lines ) )
+                 == prepare::RollbackIncompleteExitCode );
+    }
+    REQUIRE( readText( root / "cilogg.exe" ) == "old executable" );
+    REQUIRE_FALSE( fs::exists( root / "plugins" / "added.json" ) );
+    const auto record = readText( root / prepare::ManifestFileName );
+    REQUIRE( record.find( "#prepared" ) != std::string::npos );
+
+    REQUIRE( prepare::runRollback( root, recorder( lines ) ) == prepare::PreparedExitCode );
+    REQUIRE( readText( root / "Qt6Core.dll" ) == "old library" );
+    REQUIRE( readText( root / "cilogg.exe" ) == "old executable" );
+    REQUIRE_FALSE( fs::exists( root / prepare::ManifestFileName ) );
+    REQUIRE( movedAsideFiles( root ).empty() );
+}
+
+TEST_CASE( "A read-only old copy is deleted too", "[installprepare]" )
+{
+    QTemporaryDir temporary;
+    REQUIRE( temporary.isValid() );
+    const auto root = nativePath( temporary.path() );
+    writeText( root / "cilogg.exe", "executable" );
+    writeText( root / "plugins" / "user.json", "current" );
+    const auto copy = root / "plugins" / "user.json.cilogg-old";
+    writeText( copy, "old" );
+    REQUIRE( SetFileAttributesW( copy.c_str(), FILE_ATTRIBUTE_READONLY ) );
+    std::vector<std::string> lines;
+
+    REQUIRE( prepare::removeMovedAside( root, recorder( lines ) ) == 0 );
+    REQUIRE_FALSE( fs::exists( copy ) );
+}
+
 TEST_CASE( "Without its finishing mark, nothing is cleaned up", "[installprepare]" )
 {
     QTemporaryDir temporary;

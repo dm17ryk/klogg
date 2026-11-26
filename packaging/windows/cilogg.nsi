@@ -197,6 +197,7 @@ FunctionEnd
 ; Puts the moved-aside previous files back (once).
 Function CiloggRollback
     ${If} $CiloggPrepared == 1
+        Push $0
         ${CiloggLog} "Restoring the previous files"
         nsExec::ExecToLog '"$PLUGINSDIR\cilogg_updater.exe" --installer-rollback "$CiloggDir" --log "$CiloggLog"'
         Pop $0
@@ -205,6 +206,7 @@ Function CiloggRollback
             StrCpy $CiloggRestoreFailed 1
             ${CiloggLog} "Some previous files could not be restored (result $0); run setup again"
         ${EndIf}
+        Pop $0
     ${EndIf}
 FunctionEnd
 
@@ -308,19 +310,6 @@ Section "MSVC Runtime libraries" vcruntime
 
 SectionEnd
 
-Section "Create Start menu shortcut" shortcut
-!ifndef CILOGG_TEST_INSTALL
-    SetShellVarContext all
-    CreateShortCut "$SMPROGRAMS\cilogg.lnk" "$INSTDIR\cilogg.exe" "" "$INSTDIR\cilogg.exe" 0
-!endif
-SectionEnd
-
-Section /o "Associate with .log files" associate
-!ifndef CILOGG_TEST_INSTALL
-    ${registerExtension} "$INSTDIR\cilogg.exe" ".log" "Log file"
-!endif
-SectionEnd
-
 ; The executable is written last: a CILogg started from the folder while files are copied
 ; fails to start instead of loading a mix of old and new files. Then the moved-aside files are
 ; deleted (or, while still in use, left for the next update and the next restart) and the ones
@@ -359,9 +348,12 @@ Section "-CILogg executable" ciloggexe
     ${EndIf}
     nsExec::ExecToLog '"$PLUGINSDIR\cilogg_updater.exe" --installer-finish "$CiloggDir" --log "$CiloggLog"'
     Pop $0
-    ${If} $0 == 4
-        ; The manifest could not be marked as finishing: a later run would take this
-        ; installation for an interrupted one. Undo it now instead.
+    ; Only 0 (done) and the helper's FinishIncompleteExitCode 5 come after the manifest was marked
+    ; as finishing; other results (it did not start, wrong arguments, or 4: the mark could not be
+    ; written) leave a manifest a later run would take for an interrupted copy. Undo it now.
+    ${If} $0 == "error"
+    ${OrIf} $0 == 1
+    ${OrIf} $0 == 4
         ${CiloggLog} "The update could not be completed (result $0)"
         Call CiloggRollback
         ${If} $CiloggRestoreFailed == 1
@@ -404,6 +396,21 @@ Section "-CILogg executable" ciloggexe
 !endif
     ${CiloggLog} "CILogg ${VERSION} installed in $INSTDIR"
 SectionEnd
+
+; After the last section: they point at the new executable, so only once it is in place.
+Section "Create Start menu shortcut" shortcut
+!ifndef CILOGG_TEST_INSTALL
+    SetShellVarContext all
+    CreateShortCut "$SMPROGRAMS\cilogg.lnk" "$INSTDIR\cilogg.exe" "" "$INSTDIR\cilogg.exe" 0
+!endif
+SectionEnd
+
+Section /o "Associate with .log files" associate
+!ifndef CILOGG_TEST_INSTALL
+    ${registerExtension} "$INSTDIR\cilogg.exe" ".log" "Log file"
+!endif
+SectionEnd
+
 
 # Descriptions
 !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN

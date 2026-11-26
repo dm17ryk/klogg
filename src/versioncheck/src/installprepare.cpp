@@ -288,6 +288,8 @@ ProcessInfo queryProcess( DWORD pid, const std::map<DWORD, ProcessEntry>& proces
 struct Listing {
     std::vector<fs::path> files;
     std::vector<fs::path> folders;
+    // False when the folder could not be read to its end.
+    bool complete = true;
 };
 
 Listing listDirectory( const fs::path& directory )
@@ -297,8 +299,11 @@ Listing listDirectory( const fs::path& directory )
     const auto pattern = directory / L"*";
     const auto find = FindFirstFileExW( pattern.c_str(), FindExInfoBasic, &data,
                                         FindExSearchNameMatch, nullptr, FIND_FIRST_EX_LARGE_FETCH );
-    if ( find == INVALID_HANDLE_VALUE )
+    if ( find == INVALID_HANDLE_VALUE ) {
+        const auto error = GetLastError();
+        listing.complete = error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND;
         return listing;
+    }
     do {
         const std::wstring name = data.cFileName;
         if ( name == L"." || name == L".."
@@ -309,6 +314,7 @@ Listing listDirectory( const fs::path& directory )
         else
             listing.files.push_back( directory / name );
     } while ( FindNextFileW( find, &data ) );
+    listing.complete = GetLastError() == ERROR_NO_MORE_FILES;
     FindClose( find );
     return listing;
 }
@@ -321,14 +327,24 @@ bool isLinkOrJunction( const fs::path& path )
            || ( attributes & FILE_ATTRIBUTE_REPARSE_POINT ) != 0;
 }
 
-// True when `file` is gone.
+// True when `file` is gone. A read-only file is deleted too.
 bool removeFile( const fs::path& file, std::string* error )
 {
     if ( DeleteFileW( file.c_str() ) )
         return true;
-    const auto code = GetLastError();
+    auto code = GetLastError();
     if ( code == ERROR_FILE_NOT_FOUND || code == ERROR_PATH_NOT_FOUND )
         return true;
+    if ( code == ERROR_ACCESS_DENIED ) {
+        const auto attributes = GetFileAttributesW( file.c_str() );
+        if ( attributes != INVALID_FILE_ATTRIBUTES && ( attributes & FILE_ATTRIBUTE_READONLY )
+             && SetFileAttributesW( file.c_str(), attributes & ~FILE_ATTRIBUTE_READONLY ) ) {
+            if ( DeleteFileW( file.c_str() ) )
+                return true;
+            code = GetLastError();
+            SetFileAttributesW( file.c_str(), attributes );
+        }
+    }
     if ( error )
         *error = systemErrorText( code );
     return false;
@@ -338,6 +354,7 @@ bool removeFile( const fs::path& file, std::string* error )
 struct Listing {
     std::vector<fs::path> files;
     std::vector<fs::path> folders;
+    bool complete = true;
 };
 
 Listing listDirectory( const fs::path& directory )
@@ -354,6 +371,7 @@ Listing listDirectory( const fs::path& directory )
         else if ( it->is_regular_file( status ) )
             listing.files.push_back( it->path() );
     }
+    listing.complete = !error || error == std::errc::no_such_file_or_directory;
     return listing;
 }
 
@@ -375,12 +393,13 @@ bool removeFile( const fs::path& file, std::string* error )
 
 #endif
 
-void collectFiles( const fs::path& directory, std::vector<fs::path>& files )
+void collectFiles( const fs::path& directory, std::vector<fs::path>& files, bool* complete )
 {
     const auto listing = listDirectory( directory );
+    *complete = *complete && listing.complete;
     files.insert( files.end(), listing.files.begin(), listing.files.end() );
     for ( const auto& folder : listing.folders )
-        collectFiles( folder, files );
+        collectFiles( folder, files, complete );
 }
 
 std::string lowerName( const fs::path& path )
@@ -419,9 +438,11 @@ bool isOwnedTopLevelFile( const fs::path& file )
 
 // The files of the CILogg installation in `directory`: the top-level files cilogg.nsi installs,
 // the files earlier updates moved aside there, and everything in the folders it installs.
-std::vector<fs::path> installationFiles( const fs::path& directory )
+// `complete` (optional) is false when a folder could not be read to its end.
+std::vector<fs::path> installationFiles( const fs::path& directory, bool* complete = nullptr )
 {
     const auto top = listDirectory( directory );
+    bool read = top.complete;
     std::vector<fs::path> files;
     for ( const auto& file : top.files ) {
         if ( isOwnedTopLevelFile( file ) || isMovedAside( file ) )
@@ -429,8 +450,10 @@ std::vector<fs::path> installationFiles( const fs::path& directory )
     }
     for ( const auto& folder : top.folders ) {
         if ( listed( OwnedFolders, lowerName( folder ) ) )
-            collectFiles( folder, files );
+            collectFiles( folder, files, &read );
     }
+    if ( complete )
+        *complete = read;
     return files;
 }
 
@@ -860,7 +883,7 @@ PrepareResult moveAside( const fs::path& directory, const Log& log,
     std::vector<fs::path> executables;
     std::vector<fs::path> libraries;
     std::vector<fs::path> others;
-    for ( const auto& file : installationFiles( directory ) ) {
+    for ( const auto& file : installationFiles( directory, &result.listedAll ) ) {
         if ( isMovedAside( file ) )
             continue;
         if ( lowerExtension( file ) == ".exe" )
@@ -1102,7 +1125,7 @@ int runPrepare( const fs::path& directory, const fs::path& report, const Log& lo
                 = rollback( directory, earlier, log, hasMarker( manifestPath, PreparedMarker ),
                             readLeftInPlace( manifestPath ) );
             if ( !left.empty() ) {
-                writeManifest( manifestPath, left );
+                // Kept whole, with its marks: another pass skips what is restored already.
                 log( "Kept " + toUtf8( manifestPath ) + "; run setup again" );
                 return RollbackIncompleteExitCode;
             }
@@ -1130,8 +1153,12 @@ int runPrepare( const fs::path& directory, const fs::path& report, const Log& lo
     } );
     for ( const auto& file : result.leftInPlace )
         manifest << LeftInPlacePrefix << withoutSeparators( toUtf8( file ) ) << "\n";
-    if ( result.blocked.empty() )
+    // Only a complete listing makes the manifest a complete record of the previous version.
+    if ( result.blocked.empty() && result.listedAll )
         manifest << PreparedMarker << "\n";
+    if ( !result.listedAll )
+        log( "A folder of the installation could not be read to its end; a failed installation "
+             "keeps the files it added" );
     manifest.flush();
     recorded = recorded && static_cast<bool>( manifest );
     if ( result.blocked.empty() && recorded ) {
@@ -1157,7 +1184,7 @@ int runPrepare( const fs::path& directory, const fs::path& report, const Log& lo
     manifest.close();
     writeReport( report, result.blocked, blockers, log );
     if ( !left.empty() ) {
-        writeManifest( manifestPath, left );
+        // Kept whole, with its marks: another pass skips what is restored already.
         log( "Kept " + toUtf8( manifestPath ) + "; run setup again" );
         return RollbackIncompleteExitCode;
     }
@@ -1208,7 +1235,7 @@ int runRollback( const fs::path& directory, const Log& log )
                                 hasMarker( manifestPath, PreparedMarker ),
                                 readLeftInPlace( manifestPath ) );
     if ( !left.empty() ) {
-        writeManifest( manifestPath, left );
+        // Kept whole, with its marks: another pass skips what is restored already.
         log( "Kept " + toUtf8( manifestPath ) + "; run setup again" );
         return RollbackIncompleteExitCode;
     }
