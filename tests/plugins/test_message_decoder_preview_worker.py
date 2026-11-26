@@ -113,6 +113,7 @@ class WireTests(unittest.TestCase):
         </field>
         <field name="probe.flag" showname=".... ...1 = Flag: True" size="1" pos="1" show="True" value="1"/>
         <field name="probe.name" showname="Name […]: abc" size="3" pos="2" show="abcdef" value="616263"/>
+        <field name="probe.more" showname="More: Battery OK (0) […]" size="1" pos="2" show="0" value="00"/>
         <field name="probe.generated" showname="Generated: Ready (7)" size="0" pos="0" show="7"/>
         <field show="Plain legacy text" size="1" pos="4" value="00"/>
         </proto></packet></pdml>""".encode("utf-8"),
@@ -132,13 +133,15 @@ class WireTests(unittest.TestCase):
                 ["probe.flag", "True", "1", "1", "1"],
                 # A label Wireshark cut off keeps the whole raw text.
                 ["probe.name", "abcdef", "616263", "2", "3"],
+                # The same marker in a value (appended text) is part of the display text.
+                ["probe.more", "Battery OK (0) […]", "00", "2", "1"],
                 # Without raw bytes, Raw keeps the raw show value.
                 ["probe.generated", "Ready (7)", "7", "0", "0"],
                 ["Plain legacy text", "", "00", "4", "1"],
             ],
         )
         self.assertEqual(fields[1]["attributes"]["name"], "_ws.lua.text")
-        self.assertEqual([field["depth"] for field in fields], [0, 1, 2, 2, 1, 1, 1, 1])
+        self.assertEqual([field["depth"] for field in fields], [0, 1, 2, 2, 1, 1, 1, 1, 1])
 
     def test_pdml_limits_and_dtd_are_explicit_errors(self):
         for data, limits, reason in [

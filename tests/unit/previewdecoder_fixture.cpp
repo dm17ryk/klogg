@@ -113,6 +113,17 @@ int main( int argc, char** argv )
                              { "columns", QJsonArray{ "probe.status", value, "00", "0", "1" } },
                              { "attributes", status } }
             };
+            // Wireshark's truncation mark appended by the dissector to the value is display text.
+            const auto appended
+                = QStringLiteral( "Battery OK (0) [" ) + QChar( 0x2026 ) + QLatin1Char( ']' );
+            const QJsonObject more{ { "name", "probe.more" }, { "showname", "More: " + appended },
+                                    { "show", "0" },          { "value", "00" },
+                                    { "pos", "0" },           { "size", "1" } };
+            fields.append( QJsonObject{ { "id", "0/0/1" },
+                                        { "depth", 1 },
+                                        { "positionOrigin", "engine_data_source_unresolved" },
+                                        { "columns", QJsonArray{ "probe.more", appended, "00", "0", "1" } },
+                                        { "attributes", more } } );
         }
         QJsonObject response{
             { "version", 1 },

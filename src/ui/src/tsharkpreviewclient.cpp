@@ -35,10 +35,14 @@ QJsonArray displayColumns( const QJsonObject& attributes, bool protocol )
         name = showname.isEmpty() ? show : showname;
     else if ( protocol || !attributes.contains( "showname" ) || !showname.contains( ": " ) )
         value = attributes.contains( "show" ) ? show : showname;
-    else if ( showname.contains( truncatedLabel ) && !show.isEmpty() )
-        value = show;
-    else
-        value = showname.mid( showname.indexOf( ": " ) + 2 );
+    else {
+        // Wireshark's mark follows the field's name ("Name […]: ..."); the same text in the
+        // value is the dissector's own (appended text).
+        const auto separator = showname.indexOf( ": " );
+        value = showname.left( separator ).endsWith( truncatedLabel ) && !show.isEmpty()
+                    ? show
+                    : showname.mid( separator + 2 );
+    }
     const auto raw = attributes.contains( "value" ) ? text( "value" )
                      : !show.isEmpty() && show != value ? show
                                                         : QString();

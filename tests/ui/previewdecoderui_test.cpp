@@ -530,7 +530,7 @@ TEST_CASE( "The preview pane shows Lua display text and every cell's whole text 
     auto* tree = tab.findChild<QTreeWidget*>( "previewFields" );
     REQUIRE( tree->topLevelItemCount() == 1 );
     auto* header = tree->topLevelItem( 0 );
-    REQUIRE( header->childCount() == 1 );
+    REQUIRE( header->childCount() == 2 );
     auto* status = header->child( 0 );
     // Issue #181: the label of a text-only subtree, and a value string's text.
     CHECK( header->text( 0 ) == "Header: two bytes" );

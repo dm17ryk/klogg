@@ -355,10 +355,12 @@ def display_columns(kind, attr):
         name, value = showname or show, ""
     elif kind == "proto" or showname is None or ": " not in showname:
         value = show if show is not None else showname or ""
-    elif TRUNCATED_LABEL in showname and show:
-        value = show
     else:
-        value = showname.split(": ", 1)[1]
+        # Wireshark puts its mark right after the field's name ("Name […]: ..."); the same text
+        # in the value is the dissector's own (appended text).
+        label, value = showname.split(": ", 1)
+        if label.endswith(TRUNCATED_LABEL) and show:
+            value = show
     raw = attr.get("value")
     if raw is None:
         raw = show if show and show != value else ""
