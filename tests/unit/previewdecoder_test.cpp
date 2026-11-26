@@ -1016,9 +1016,8 @@ TEST_CASE( "A settings change during an Automatic engine run is not a decoder fa
     request.sessionOwner = &channel;
     request.definitions = MappedCarrierDefinitions;
     request.timeoutMs = 8000;
-    // A warm engine: its client already follows settings changes when the request starts.
-    qputenv( "CILOGG_PREVIEW_FIXTURE_MODE", "valid" );
-    REQUIRE( PreviewService::evaluateAndWait( request ).value( "backend" ) == "tshark_lua" );
+    // The client exists before the request (FixtureEngine resets it), so it follows settings
+    // changes before the request does. The engine stalls until the change retires it.
     qputenv( "CILOGG_PREVIEW_FIXTURE_MODE", "stall" );
     QVariantMap result;
     QEventLoop loop;
