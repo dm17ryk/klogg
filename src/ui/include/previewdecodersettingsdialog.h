@@ -39,6 +39,8 @@ private:
     void tsharkProtocolsLoaded( QProcess* process, const QString& key, const QString& failure );
     // An empty PDML protocol, or one that was the previous dissector, follows the dissector.
     void followDissector( QTableWidget* table, QTableWidgetItem* item );
+    // The warnings for the saved settings; while TShark is listing, only those it cannot settle.
+    QVector<previewroutes::Warning> savedWarnings();
     void showWarnings( const QVector<previewroutes::Warning>& warnings );
     void useDeclaredNames();
     QCheckBox* enabled_;

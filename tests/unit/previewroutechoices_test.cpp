@@ -127,6 +127,16 @@ TEST_CASE( "Lua Proto declarations give the dissector names", "[previewroutes]" 
                    "local a, b = Proto(\"one\", \"1\"), Proto('two', '2') local c = \"x" )
                == QStringList{ "one", "two" } );
     }
+    SECTION( "strings continued on the next line" )
+    {
+        // A backslash before a Windows line end, and `\z`, continue a short string.
+        CHECK( previewroutes::luaProtoNames(
+                   "local s = \"a\\\r\nProto('in_crlf', 'x')\" local p = Proto('real', 'x')" )
+               == QStringList{ "real" } );
+        CHECK( previewroutes::luaProtoNames(
+                   "local s = 'a\\z\r\n   Proto(\"in_z\", \"x\")' local p = Proto('real2', 'x')" )
+               == QStringList{ "real2" } );
+    }
     SECTION( "nothing declared" )
     {
         CHECK( previewroutes::luaProtoNames( "print(\"hello\")" ).isEmpty() );
@@ -226,6 +236,21 @@ TEST_CASE( "Apply warns about dissectors nothing declares", "[previewroutes]" )
         }
         CHECK( data );
     }
+    SECTION( "while TShark's list loads, only what it cannot settle is reported" )
+    {
+        choices.tshark.clear();
+        choices.tsharkLoaded = false;
+        choices.tsharkPending = true;
+        QStringList names;
+        for ( const auto& warning : previewroutes::check( configuration, choices ) )
+            names << warning.name;
+        CHECK_FALSE( names.contains( "data" ) );
+        CHECK_FALSE( names.contains( "json" ) );
+        CHECK_FALSE( names.contains( "nowhere" ) );
+        CHECK( names.contains( "my_proto.lua" ) );
+        CHECK( names.contains( "stale.lua" ) );
+        CHECK( names.contains( "org.example.alpha/missing" ) );
+    }
     SECTION( "nothing to report" )
     {
         CHECK( previewroutes::check( { { "defaultDissector", "my_proto" } }, choices ).isEmpty() );
@@ -323,11 +348,11 @@ TEST_CASE( "Decoder settings offer the known route values", "[previewroutes]" )
         CHECK( previews->item( 0, 2 )->text() == "pack_proto" );
         commit( previews, 0, 1, "user_proto" );
         CHECK( previews->item( 0, 2 )->text() == "user_proto" );
-        // One the user chose stays, and a Python decoder takes none.
+        // One the user chose stays...
         commit( previews, 0, 2, "custom" );
         commit( previews, 0, 1, "pack_proto" );
         CHECK( previews->item( 0, 2 )->text() == "custom" );
-        commit( previews, 0, 2, "pack_proto" );
+        // ...but a Python decoder takes none: the settings would refuse the route.
         commit( previews, 0, 1, "python:org.example.alpha/summary" );
         CHECK( previews->item( 0, 2 )->text().isEmpty() );
         // A typed dissector nothing declares may not name a PDML protocol: every decoded
@@ -338,6 +363,19 @@ TEST_CASE( "Decoder settings offer the known route values", "[previewroutes]" )
         CHECK( previews->item( 0, 2 )->text() == "pack_proto" );
         commit( previews, 0, 1, "typed_unknown" );
         CHECK( previews->item( 0, 2 )->text().isEmpty() );
+    }
+    SECTION( "refreshing the lists keeps the default dissector being typed" )
+    {
+        auto* fallback = dialog.findChild<QComboBox*>( "decoderDefaultDissector" );
+        auto* remove = dialog.findChild<QPushButton*>( "decoderRemoveLua" );
+        REQUIRE( fallback );
+        REQUIRE( remove );
+        fallback->setEditText( "user_pr" );
+        fallback->lineEdit()->setCursorPosition( 4 );
+        // Whether or not a Lua file is selected to go, the lists are refreshed.
+        remove->click();
+        CHECK( fallback->currentText() == "user_pr" );
+        CHECK( fallback->lineEdit()->cursorPosition() == 4 );
     }
     SECTION( "an empty encoding stays empty when its drop-down is only visited" )
     {
@@ -401,6 +439,10 @@ TEST_CASE( "Apply saves, warns and offers the declared name", "[previewroutes]" 
 
     SECTION( "Apply saves as typed, warns, and the declared name replaces the file name" )
     {
+        // Spaces around a typed dissector are not part of it.
+        dialog.findChild<QTableWidget*>( "decoderPreviewRoutes" )
+            ->item( 0, 1 )
+            ->setText( "  my_proto.lua " );
         buttons->button( QDialogButtonBox::Apply )->click();
         // The warning does not block the save.
         CHECK( status->text() == "Settings applied." );

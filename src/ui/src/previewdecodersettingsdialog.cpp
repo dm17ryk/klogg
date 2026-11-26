@@ -134,7 +134,7 @@ QVariantMap routes( QTableWidget* table, bool protocol, QString* error )
                 route[ "protocol" ] = text( 2 );
         }
         else
-            route = { { "dissector", text( 1 ) }, { "protocol", text( 2 ) } };
+            route = { { "dissector", target }, { "protocol", text( 2 ) } };
         if ( protocol && !text( EncodingColumn ).isEmpty() )
             route[ "inputEncoding" ] = text( EncodingColumn );
         result[ name ] = route;
@@ -271,7 +271,9 @@ PreviewDecoderSettingsDialog::PreviewDecoderSettingsDialog( QWidget* parent )
     layout->addWidget( scripts_ );
     auto* files = new QHBoxLayout;
     auto* add = new QPushButton( tr( "Add Lua…" ), this );
+    identity( add, "decoderAddLua", add->text() );
     auto* remove = new QPushButton( tr( "Remove selected" ), this );
+    identity( remove, "decoderRemoveLua", remove->text() );
     files->addWidget( add );
     files->addWidget( remove );
     files->addStretch();
@@ -283,10 +285,14 @@ PreviewDecoderSettingsDialog::PreviewDecoderSettingsDialog( QWidget* parent )
             if ( scripts_->findItems( path, Qt::MatchExactly ).isEmpty() )
                 scripts_->addItem( path );
         }
+        // The shown warnings stay those of the applied Lua files: a TShark list that arrives
+        // now must not check the saved routes against Lua files that are not applied yet.
+        checked_ = false;
         refreshChoices();
     } );
     connect( remove, &QPushButton::clicked, this, [ this ] {
         delete scripts_->takeItem( scripts_->currentRow() );
+        checked_ = false;
         refreshChoices();
     } );
     auto* tabs = new QTabWidget( this );
@@ -459,11 +465,17 @@ void PreviewDecoderSettingsDialog::followDissector( QTableWidget* table, QTableW
         pdml = new QTableWidgetItem;
         table->setItem( item->row(), 2, pdml );
     }
+    // A Python decoder takes no PDML protocol, not even one the user chose: the settings would
+    // refuse the route.
+    if ( current.startsWith( PythonPrefix ) ) {
+        pdml->setText( {} );
+        return;
+    }
     const auto selected = pdml->text().trimmed();
     if ( !selected.isEmpty() && selected != previous )
         return;
     // Only a dissector a Lua file declares or TShark lists is surely also a PDML protocol's name;
-    // for any other (and for a Python decoder, which takes none) every decoded protocol shows.
+    // for any other, every decoded protocol shows.
     pdml->setText( choices_.tsharkDissectors().contains( current ) ? current : QString() );
 }
 
@@ -476,13 +488,34 @@ void PreviewDecoderSettingsDialog::refreshChoices()
     choices.tshark = choices_.tshark;
     choices.tsharkLoaded = choices_.tsharkLoaded;
     choices_ = std::move( choices );
-    // The default dissector is TShark's: no Python decoder.
-    const auto text = dissector_->currentText();
+    showChoicesStatus();
+    // The default dissector is TShark's: no Python decoder. Refilling it keeps what is being
+    // typed there, with its cursor and selection.
+    const auto names = choices_.tsharkDissectors();
+    QStringList current;
+    for ( int i = 0; i < dissector_->count(); ++i )
+        current << dissector_->itemText( i );
+    if ( current == names )
+        return;
+    auto* edit = dissector_->lineEdit();
+    const auto text = edit->text();
+    const auto cursor = edit->cursorPosition();
+    const auto selectionStart = edit->selectionStart();
+    const auto selectionLength = edit->selectedText().size();
     const QSignalBlocker blocker( dissector_ );
     dissector_->clear();
-    dissector_->addItems( choices_.tsharkDissectors() );
+    dissector_->addItems( names );
     dissector_->setEditText( text );
-    showChoicesStatus();
+    if ( selectionStart >= 0 )
+        edit->setSelection( selectionStart, static_cast<int>( selectionLength ) );
+    else
+        edit->setCursorPosition( cursor );
+}
+
+QVector<previewroutes::Warning> PreviewDecoderSettingsDialog::savedWarnings()
+{
+    choices_.tsharkPending = !tsharkProcess_.isNull();
+    return previewroutes::check( PreviewDecoderSettings::instance().configuration(), choices_ );
 }
 
 void PreviewDecoderSettingsDialog::showChoicesStatus()
@@ -528,6 +561,7 @@ void PreviewDecoderSettingsDialog::loadTsharkProtocols( bool retry )
         tsharkProcess_->disconnect( this );
         tsharkProcess_->kill();
         tsharkProcess_->deleteLater();
+        tsharkProcess_ = nullptr;
     }
     tsharkKey_ = key;
     tsharkFailure_.clear();
@@ -602,10 +636,12 @@ void PreviewDecoderSettingsDialog::tsharkProtocolsLoaded( QProcess* process, con
     LOG_INFO << "Preview decoder settings TShark protocols=" << names.size()
              << " failure=" << tsharkFailure_;
     refreshChoices();
-    // Apply's warnings are checked again with the list.
-    if ( checked_ )
-        showWarnings(
-            previewroutes::check( PreviewDecoderSettings::instance().configuration(), choices_ ) );
+    // Apply's warnings are checked again with the list; when none remain, OK's note goes too.
+    if ( checked_ ) {
+        showWarnings( savedWarnings() );
+        if ( warnings_.isEmpty() )
+            error_->setText( tr( "Settings applied." ) );
+    }
 }
 
 void PreviewDecoderSettingsDialog::reload()
@@ -671,8 +707,7 @@ bool PreviewDecoderSettingsDialog::apply()
         loadTsharkProtocols();
     refreshChoices();
     checked_ = true;
-    showWarnings(
-        previewroutes::check( PreviewDecoderSettings::instance().configuration(), choices_ ) );
+    showWarnings( savedWarnings() );
     return true;
 }
 
@@ -704,12 +739,14 @@ void PreviewDecoderSettingsDialog::useDeclaredNames()
         if ( !warning.suggestion.isEmpty() )
             replacements.insert( warning.name, warning.suggestion );
     }
-    // Each replaced dissector takes its PDML protocol along (followDissector).
+    // Each replaced dissector takes its PDML protocol along (followDissector). Apply saves a
+    // route's dissector without the spaces around it, so the warnings name it so.
     for ( auto* table : { previewRoutes_, protocolRoutes_ } ) {
         for ( int row = 0; row < table->rowCount(); ++row ) {
             auto* item = table->item( row, 1 );
-            if ( item && replacements.contains( item->text() ) )
-                item->setText( replacements.value( item->text() ) );
+            const auto name = item ? item->text().trimmed() : QString();
+            if ( replacements.contains( name ) )
+                item->setText( replacements.value( name ) );
         }
     }
     if ( replacements.contains( dissector_->currentText() ) )

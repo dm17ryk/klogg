@@ -63,8 +63,23 @@ qsizetype skipQuoted( const QString& source, qsizetype i, QString* value = nullp
 {
     const QChar quote = source[ i ];
     qsizetype j = i + 1;
-    while ( j < source.size() && source[ j ] != quote && source[ j ] != '\n' )
-        j += source[ j ] == '\\' && j + 1 < source.size() ? 2 : 1;
+    while ( j < source.size() && source[ j ] != quote && source[ j ] != '\n' ) {
+        if ( source[ j ] != '\\' || j + 1 >= source.size() ) {
+            ++j;
+            continue;
+        }
+        // An escape. A backslash before a line end (also CR LF or LF CR) continues the string
+        // on the next line, and `\z` skips the white space that follows, line ends included.
+        const QChar escaped = source[ j + 1 ];
+        j += 2;
+        if ( ( escaped == '\r' || escaped == '\n' ) && j < source.size()
+             && ( source[ j ] == '\r' || source[ j ] == '\n' ) && source[ j ] != escaped )
+            ++j;
+        else if ( escaped == 'z' ) {
+            while ( j < source.size() && source[ j ].isSpace() )
+                ++j;
+        }
+    }
     const bool ended = j < source.size() && source[ j ] == quote;
     if ( value )
         *value = source.mid( i + 1, j - i - 1 );
@@ -287,6 +302,9 @@ Warning dissectorWarning( const QString& field, const QString& name, const Choic
         warning.text = tr( "`%1` looks like a file name, but no selected Lua file of that name "
                            "registers a dissector." )
                            .arg( name );
+    }
+    else if ( choices.tsharkPending ) {
+        // TShark's list, still loading, may know it: the check runs again once it is there.
     }
     else if ( choices.tsharkLoaded ) {
         warning.text = tr( "`%1` is not declared by a selected Lua file, and TShark does not "

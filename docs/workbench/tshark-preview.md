@@ -63,7 +63,8 @@ what each source offers.
 When you choose a dissector that a Lua file declares or TShark lists, an empty
 PDML protocol takes its name. It keeps following the dissector until you choose
 another PDML protocol. **Use the declared names** (below) does the same. Any
-other dissector, and a Python decoder, leaves it empty.
+other dissector leaves it empty. A Python decoder takes no PDML protocol, so
+choosing one clears the field.
 
 **Apply checks the routes.** The settings are saved first, then CILogg warns about:
 
@@ -71,7 +72,9 @@ other dissector, and a Python decoder, leaves it empty.
 - a `python:` route to a decoder that no enabled pack has.
 
 TShark lists protocols, not every dissector name, so a valid dissector-only name
-can also be warned about. The warning doesn't block it.
+can also be warned about. The warning doesn't block it. While TShark is still
+listing its protocols, Apply skips names only that list could settle and checks
+them again when it arrives.
 
 When the value looks like a Lua file name (`my_proto.lua`), or differs from a
 known name only in case, the warning names the dissector to use. **Use the
