@@ -43,6 +43,8 @@ struct Choices {
     // TShark's protocols, while `tsharkLoaded`.
     QStringList tshark;
     bool tsharkLoaded = false;
+    // Why TShark's list could not be read ("timed out", ...), or empty.
+    QString tsharkFailure;
     // TShark is still listing its protocols: names only its list could settle are not reported.
     bool tsharkPending = false;
     // TShark is disabled, so no TShark route runs: names only its list could settle are not

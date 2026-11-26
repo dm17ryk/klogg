@@ -260,6 +260,12 @@ TEST_CASE( "Apply warns about dissectors nothing declares", "[previewroutes]" )
             }
         }
         CHECK( data );
+        // Why the list is missing is part of the warning.
+        choices.tsharkFailure = "timed out";
+        bool reason = false;
+        for ( const auto& warning : previewroutes::check( configuration, choices ) )
+            reason = reason || ( warning.name == "data" && warning.text.contains( "(timed out)" ) );
+        CHECK( reason );
     }
     SECTION( "while TShark's list loads, only what it cannot settle is reported" )
     {
@@ -428,13 +434,20 @@ TEST_CASE( "Decoder settings offer the known route values", "[previewroutes]" )
     {
         auto* fallback = dialog.findChild<QComboBox*>( "decoderDefaultDissector" );
         auto* remove = dialog.findChild<QPushButton*>( "decoderRemoveLua" );
+        auto* scripts = dialog.findChild<QListWidget*>( "decoderLuaScripts" );
         REQUIRE( fallback );
         REQUIRE( remove );
+        REQUIRE( scripts );
         fallback->setEditText( "user_pr" );
-        fallback->lineEdit()->setCursorPosition( 4 );
-        // Whether or not a Lua file is selected to go, the lists are refreshed.
+        fallback->lineEdit()->setSelection( 1, 3 );
+        // Removing the user's Lua file takes its dissector out of the list: the list is refilled,
+        // and the text being typed keeps its selection (and so its cursor).
+        scripts->setCurrentRow( 0 );
         remove->click();
+        REQUIRE( scripts->count() == 0 );
+        CHECK( items( fallback ) == QStringList{ "pack_proto" } );
         CHECK( fallback->currentText() == "user_pr" );
+        CHECK( fallback->lineEdit()->selectedText() == "ser" );
         CHECK( fallback->lineEdit()->cursorPosition() == 4 );
     }
     SECTION( "an empty encoding stays empty when its drop-down is only visited" )

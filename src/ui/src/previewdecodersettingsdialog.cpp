@@ -622,6 +622,8 @@ QVector<previewroutes::Warning> PreviewDecoderSettingsDialog::savedWarnings() co
     choices.tsharkLoaded = choices_.tsharkLoaded;
     choices.tsharkPending = !tsharkProcess_.isNull();
     choices.tsharkDisabled = !config.value( "enabled" ).toBool();
+    // Why the list could not be read (timed out, ...) is part of the warnings that need it.
+    choices.tsharkFailure = tsharkFailure_;
     return previewroutes::check( config, choices );
 }
 

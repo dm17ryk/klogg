@@ -29,7 +29,8 @@ private:
     // A route table's tab, with its Add Python decoder button in `addPython` (E16b).
     QTableWidget* routeTable( QTabWidget* tabs, const QString& name, const QString& title,
                               bool protocol, QPushButton** addPython );
-    // Adds a route row with empty cells (the encoding: the default one), or with `target`.
+    // Adds a route row: `target` as its dissector or decoder, the default input encoding in a
+    // protocol route's encoding cell, and the other cells empty.
     int addRouteRow( QTableWidget* table, bool protocol, const QString& target = {} );
     // The values a route cell offers (issue #180).
     QStringList cellChoices( const QTableWidget* table, int row, int column ) const;

@@ -357,6 +357,11 @@ Warning dissectorWarning( const QString& field, const QString& name, const Choic
     else if ( choices.tsharkDisabled ) {
         // No TShark route runs while TShark is disabled; its list would settle the name.
     }
+    else if ( !choices.tsharkFailure.isEmpty() ) {
+        warning.text = tr( "`%1` is not declared by a selected Lua file; TShark's protocol list "
+                           "is not loaded to check it (%2)." )
+                           .arg( name, choices.tsharkFailure );
+    }
     else {
         warning.text = tr( "`%1` is not declared by a selected Lua file; TShark's protocol list "
                            "is not loaded to check it." )
