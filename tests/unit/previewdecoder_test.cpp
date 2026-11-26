@@ -1002,6 +1002,96 @@ TEST_CASE( "Automatic falls back to JSON after any TShark/Lua failure", "[previe
     CHECK_FALSE( explicitFailure.contains( "carrierName" ) );
 }
 
+TEST_CASE( "A settings change during an Automatic engine run is not a decoder failure",
+           "[previewdecoder]" )
+{
+    const QVariantMap config{ { "previewRoutes",
+                                QVariantMap{ { "Mapped carrier",
+                                               QVariantMap{ { "dissector", "synthetic" } } } } } };
+    FixtureEngine engine( config );
+    QObject channel;
+    auto request = directRequest( "AB", "" );
+    request.decoder = "auto";
+    request.dissector.clear();
+    request.sessionOwner = &channel;
+    request.definitions = MappedCarrierDefinitions;
+    request.timeoutMs = 8000;
+    // A warm engine: its client already follows settings changes when the request starts.
+    qputenv( "CILOGG_PREVIEW_FIXTURE_MODE", "valid" );
+    REQUIRE( PreviewService::evaluateAndWait( request ).value( "backend" ) == "tshark_lua" );
+    qputenv( "CILOGG_PREVIEW_FIXTURE_MODE", "stall" );
+    QVariantMap result;
+    QEventLoop loop;
+    QPointer<QProcess> token = PreviewService::evaluate( &loop, request, [ & ]( QVariantMap value ) {
+        result = std::move( value );
+        loop.quit();
+    } );
+    REQUIRE( token );
+    // Once the engine runs, a settings change retires its channel (#182 review).
+    QObject::connect( token, QOverload<int, QProcess::ExitStatus>::of( &QProcess::finished ),
+                      &loop, [ & ]( int, QProcess::ExitStatus ) {
+                          QTimer::singleShot( 300, &loop, [ & ] {
+                              auto changed = PreviewDecoderSettings::instance().configuration();
+                              changed[ "defaultDissector" ] = "changed";
+                              PreviewDecoderSettings::instance().setConfiguration( changed );
+                          } );
+                      } );
+    QTimer::singleShot( 7000, &loop, &QEventLoop::quit );
+    loop.exec();
+    INFO( QJsonDocument::fromVariant( result ).toJson( QJsonDocument::Compact ).toStdString() );
+    CHECK( result.value( "reason" ) == "configuration_changed" );
+    CHECK( result.value( "backend" ) == "tshark_lua" );
+    CHECK_FALSE( result.contains( "fallbackReason" ) );
+    CHECK_FALSE( result.value( "decoderAttempts" ).toList().contains( "json_preview" ) );
+}
+
+TEST_CASE( "An Automatic engine result after the deadline gives way to the JSON fallback",
+           "[previewdecoder][previewdeadline]" )
+{
+    FixtureEngine engine( { { "previewRoutes",
+                              QVariantMap{ { "Mapped carrier",
+                                             QVariantMap{ { "dissector", "synthetic" } } } } } } );
+    qputenv( "CILOGG_PREVIEW_FIXTURE_MODE", "valid" );
+    auto& client = TsharkPreviewClient::instance();
+    QObject channel;
+    auto request = directRequest( "AB", "" );
+    request.decoder = "auto";
+    request.dissector.clear();
+    request.sessionOwner = &channel;
+    request.definitions = MappedCarrierDefinitions;
+    REQUIRE( PreviewService::evaluateAndWait( request ).value( "backend" ) == "tshark_lua" );
+    const auto processes = client.findChildren<QProcess*>();
+    REQUIRE( processes.size() == 1 );
+    QPointer<QProcess> worker = processes.front();
+    request.timeoutMs = 1000;
+    QVariantMap result;
+    QEventLoop loop;
+    auto* token = PreviewService::evaluate( &loop, request, [ & ]( QVariantMap value ) {
+        result = std::move( value );
+        loop.quit();
+    } );
+    REQUIRE( token );
+    bool forcedDelivery = false;
+    // As in the explicit overdue test: block the loop past the budget, then deliver the engine's
+    // success ahead of the overdue timers (#182 review).
+    QObject::connect( token, QOverload<int, QProcess::ExitStatus>::of( &QProcess::finished ), &loop,
+                      [ & ]( int, QProcess::ExitStatus ) {
+                          if ( !result.isEmpty() || !worker )
+                              return;
+                          QThread::msleep( static_cast<unsigned long>( request.timeoutMs + 50 ) );
+                          forcedDelivery = worker->waitForReadyRead( 1000 );
+                      } );
+    QTimer::singleShot( 6000, &loop, &QEventLoop::quit );
+    if ( result.isEmpty() )
+        loop.exec();
+    REQUIRE( forcedDelivery );
+    INFO( QJsonDocument::fromVariant( result ).toJson( QJsonDocument::Compact ).toStdString() );
+    CHECK( result.value( "backend" ) == "json_preview" );
+    CHECK( result.value( "state" ) == "completed" );
+    CHECK( result.value( "fallbackReason" ) == "timeout" );
+    CHECK( result.value( "previewName" ) == "Mapped carrier" );
+}
+
 TEST_CASE( "Explicit TShark resolves its dissector from the route Automatic would use",
            "[previewdecoder]" )
 {
