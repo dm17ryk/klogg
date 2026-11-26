@@ -1341,6 +1341,9 @@ QString VersionChecker::describeInstallResult( int code, const QString& phase )
         case protocol::InstallerPrepareFailedExitCode:
             return tr( "The installer could not prepare the CILogg folder and stopped before "
                        "replacing any files." );
+        case protocol::InstallerFinishIncompleteExitCode:
+            return tr( "The update was installed, but some files of the previous version that "
+                       "it does not replace could not be put back. Run the installer again." );
         default:
             return tr( "The installer failed with exit code %1." ).arg( code );
         }

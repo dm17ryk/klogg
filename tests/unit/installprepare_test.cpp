@@ -151,9 +151,12 @@ TEST_CASE( "Moved-aside names belong to their original only", "[installprepare]"
     REQUIRE_FALSE( prepare::isMovedAside( folder / ".cilogg-old" ) );
 
     REQUIRE( prepare::isMovedAsideNameOf( original, folder / "Qt6Core.dll.cilogg-old" ) );
-    REQUIRE( prepare::isMovedAsideNameOf( original, folder / "Qt6Core.dll.12.cilogg-old" ) );
+    REQUIRE( prepare::isMovedAsideNameOf( original, folder / "Qt6Core.dll.cilogg-old-12" ) );
+    REQUIRE( prepare::isMovedAside( folder / "data.2.cilogg-old-3" ) );
+    REQUIRE_FALSE( prepare::isMovedAside( folder / "Qt6Core.dll.cilogg-old-" ) );
     REQUIRE_FALSE( prepare::isMovedAsideNameOf( original, folder / "Qt6Gui.dll.cilogg-old" ) );
-    REQUIRE_FALSE( prepare::isMovedAsideNameOf( original, folder / "Qt6Core.dll.x.cilogg-old" ) );
+    REQUIRE_FALSE( prepare::isMovedAsideNameOf( original, folder / "Qt6Core.dll.cilogg-old-x" ) );
+    REQUIRE_FALSE( prepare::isMovedAsideNameOf( original, folder / "Qt6Core.dll.2.cilogg-old" ) );
     REQUIRE_FALSE(
         prepare::isMovedAsideNameOf( original, folder / "other" / "Qt6Core.dll.cilogg-old" ) );
     REQUIRE_FALSE(
@@ -190,7 +193,7 @@ TEST_CASE( "The manifest and the blocker lines round-trip", "[installprepare]" )
     REQUIRE( prepare::describeProcess( process ).find( "started by claude" ) != std::string::npos );
 }
 
-TEST_CASE( "Executables are moved aside and put back when they are not replaced",
+TEST_CASE( "CILogg's files are moved aside and put back when they are not replaced",
            "[installprepare]" )
 {
     QTemporaryDir temporary;
@@ -211,14 +214,14 @@ TEST_CASE( "Executables are moved aside and put back when they are not replaced"
         root, recorder( lines ),
         [ &seen ]( const prepare::MovedFile& moved ) { seen.push_back( moved ); } );
     REQUIRE( result.blocked.empty() );
-    REQUIRE( result.moved.size() == 4 );
-    REQUIRE( seen.size() == 4 );
+    REQUIRE( result.moved.size() == 5 );
+    REQUIRE( seen.size() == 5 );
     // Executables first, so nothing starts from a half-replaced folder.
     REQUIRE( result.moved.front().original.extension() == ".exe" );
     REQUIRE_FALSE( fs::exists( root / "cilogg.exe" ) );
     REQUIRE( readText( root / "cilogg.exe.cilogg-old" ) == "old executable" );
-    // A file nobody uses stays where it is: the installer overwrites it in place.
-    REQUIRE( readText( root / "README.md" ) == "old readme" );
+    // Every file of the installation, so a failed installation can put each one back.
+    REQUIRE( readText( root / "README.md.cilogg-old" ) == "old readme" );
     REQUIRE( readText( root / "tool.exe" ) == "another program" );
     REQUIRE( readText( root / "extras" / "helper.dll" ) == "another library" );
 
@@ -230,29 +233,34 @@ TEST_CASE( "Executables are moved aside and put back when they are not replaced"
 
     REQUIRE( readText( root / "cilogg.exe" ) == "new executable" );
     REQUIRE( readText( root / "dropped.dll" ) == "only in the old version" );
+    REQUIRE( readText( root / "README.md" ) == "old readme" );
     REQUIRE( movedAsideFiles( root ).empty() );
 }
 
-TEST_CASE( "A failed installation restores every moved file", "[installprepare]" )
+TEST_CASE( "A failed installation restores every file of the previous version",
+           "[installprepare]" )
 {
     QTemporaryDir temporary;
     REQUIRE( temporary.isValid() );
     const auto root = nativePath( temporary.path() );
     writeText( root / "cilogg.exe", "old executable" );
     writeText( root / "Qt6Core.dll", "old library" );
+    writeText( root / "python_runtime" / "Lib" / "os.py", "old module" );
 
     std::vector<std::string> lines;
     const auto result = prepare::moveAside( root, recorder( lines ) );
-    REQUIRE( result.moved.size() == 2 );
-    // The copy stopped after one file.
+    REQUIRE( result.moved.size() == 3 );
+    // The copy wrote a new module and part of a library, then stopped.
+    writeText( root / "python_runtime" / "Lib" / "os.py", "new module" );
     writeText( root / "Qt6Core.dll", "partly written" );
 
-    REQUIRE( prepare::rollback( root, result.moved, recorder( lines ) ) );
+    REQUIRE( prepare::rollback( root, result.moved, recorder( lines ) ).empty() );
     REQUIRE( readText( root / "cilogg.exe" ) == "old executable" );
     REQUIRE( readText( root / "Qt6Core.dll" ) == "old library" );
+    REQUIRE( readText( root / "python_runtime" / "Lib" / "os.py" ) == "old module" );
     REQUIRE( movedAsideFiles( root ).empty() );
     // A second pass (the installer retries an incomplete restore) leaves restored files alone.
-    REQUIRE( prepare::rollback( root, result.moved, recorder( lines ) ) );
+    REQUIRE( prepare::rollback( root, result.moved, recorder( lines ) ).empty() );
     REQUIRE( readText( root / "cilogg.exe" ) == "old executable" );
 }
 
@@ -282,17 +290,18 @@ TEST_CASE( "A moved-aside file whose original is missing is put back, never dele
     REQUIRE( temporary.isValid() );
     const auto root = nativePath( temporary.path() );
     writeText( root / "cilogg.exe", "executable" );
-    // An update could not put Qt6Core.dll back; one of cilogg.exe's old copies is obsolete.
+    // An update could not put Qt6Core.dll back; cilogg.exe's old copies are obsolete.
     writeText( root / "Qt6Core.dll.cilogg-old", "the only copy" );
     writeText( root / "cilogg.exe.cilogg-old", "obsolete" );
-    writeText( root / "data.2.cilogg-old", "ambiguous" );
+    writeText( root / "cilogg.exe.cilogg-old-2", "obsolete too" );
+    writeText( root / "plugins" / "table.2.cilogg-old", "a name with a number" );
     std::vector<std::string> lines;
 
-    // "data.2" may be the file's own name or a second copy of "data": kept, not guessed.
-    REQUIRE( prepare::removeMovedAside( root, recorder( lines ) ) == 1 );
+    REQUIRE( prepare::removeMovedAside( root, recorder( lines ) ) == 0 );
     REQUIRE( readText( root / "Qt6Core.dll" ) == "the only copy" );
     REQUIRE_FALSE( fs::exists( root / "cilogg.exe.cilogg-old" ) );
-    REQUIRE( readText( root / "data.2.cilogg-old" ) == "ambiguous" );
+    REQUIRE_FALSE( fs::exists( root / "cilogg.exe.cilogg-old-2" ) );
+    REQUIRE( readText( root / "plugins" / "table.2" ) == "a name with a number" );
 }
 
 TEST_CASE( "Prepare, finish and rollback keep their manifest inside the folder",
@@ -526,20 +535,29 @@ TEST_CASE( "A junction in the installation folder never leads the installer outs
                    + "\n" );
     std::vector<std::string> lines;
 
-    REQUIRE( prepare::runRollback( root, recorder( lines ) )
-             == prepare::RollbackIncompleteExitCode );
-    REQUIRE( prepare::runPrepare( root, {}, recorder( lines ) )
-             == prepare::RollbackIncompleteExitCode );
-    REQUIRE( prepare::runFinish( root, recorder( lines ) ) == prepare::PreparedExitCode );
+    // The entry is refused and dropped: it can never be acted on, so it must not block later
+    // updates either.
+    REQUIRE( prepare::runRollback( root, recorder( lines ) ) == prepare::PreparedExitCode );
+    REQUIRE_FALSE( fs::exists( root / prepare::ManifestFileName ) );
     REQUIRE( readText( outside / "victim.dll" ) == "protected library" );
     REQUIRE( readText( outside / "victim.dll.cilogg-old" ) == "protected copy" );
-    REQUIRE_FALSE( fs::exists( root / prepare::ManifestFileName ) );
+    for ( const auto* finishing : { "", "#finishing\n" } ) {
+        writeText( root / prepare::ManifestFileName,
+                   prepare::formatManifestLine(
+                       { junction / "victim.dll", junction / "victim.dll.cilogg-old" } )
+                       + "\n" + finishing );
+        REQUIRE( prepare::runPrepare( root, {}, recorder( lines ) ) == prepare::PreparedExitCode );
+        REQUIRE( readText( outside / "victim.dll" ) == "protected library" );
+        REQUIRE( readText( outside / "victim.dll.cilogg-old" ) == "protected copy" );
+        REQUIRE( prepare::runRollback( root, recorder( lines ) ) == prepare::PreparedExitCode );
+        REQUIRE( readText( root / "cilogg.exe" ) == "executable" );
+    }
     // Moving aside never enters the junction either.
     const auto result = prepare::moveAside( root, recorder( lines ) );
     REQUIRE( result.blocked.empty() );
     REQUIRE( result.moved.size() == 1 );
     REQUIRE( readText( outside / "victim.dll" ) == "protected library" );
-    REQUIRE( prepare::rollback( root, result.moved, recorder( lines ) ) );
+    REQUIRE( prepare::rollback( root, result.moved, recorder( lines ) ).empty() );
     std::error_code removed;
     fs::remove( junction, removed );
 }

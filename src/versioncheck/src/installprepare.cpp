@@ -64,6 +64,29 @@ std::string lowerAscii( std::string text )
     return text;
 }
 
+bool allDigits( const std::string& text, std::size_t from )
+{
+    return from < text.size()
+           && std::all_of( text.begin() + static_cast<std::ptrdiff_t>( from ), text.end(),
+                           []( char character ) {
+                               return std::isdigit( static_cast<unsigned char>( character ) ) != 0;
+                           } );
+}
+
+// Length of the moved-aside part of a lower-case file name, ".cilogg-old" or
+// ".cilogg-old-<n>", or 0 when the name has none. What is left is the original name.
+std::size_t movedAsideSuffixLength( const std::string& name )
+{
+    const std::string suffix = MovedAsideSuffix;
+    auto body = name.size();
+    const auto dash = name.find_last_of( '-' );
+    if ( dash != std::string::npos && allDigits( name, dash + 1 ) )
+        body = dash;
+    if ( body <= suffix.size() || name.compare( body - suffix.size(), suffix.size(), suffix ) != 0 )
+        return 0;
+    return name.size() - ( body - suffix.size() );
+}
+
 std::string toUtf8( const fs::path& path )
 {
 #ifdef __cpp_char8_t
@@ -475,18 +498,34 @@ bool deleteOrSchedule( const fs::path& file, const fs::path& directory, const Lo
     return false;
 }
 
-// Renames `original` to the first free "<name>[.<n>].cilogg-old" next to it.
+// True when a file holds the name `path`, also one that is being deleted.
+bool nameTaken( const fs::path& path )
+{
+#ifdef _WIN32
+    if ( GetFileAttributesW( path.c_str() ) != INVALID_FILE_ATTRIBUTES )
+        return true;
+    // A file deleted while another process still has it open keeps its name until then.
+    return GetLastError() == ERROR_ACCESS_DENIED;
+#else
+    std::error_code error;
+    return fs::exists( fs::symlink_status( path, error ) );
+#endif
+}
+
+// Renames `original` to the first free "<name>.cilogg-old" or "<name>.cilogg-old-<n>" next to it.
 RenameResult moveToFreeName( const fs::path& original, const fs::path& directory, fs::path* movedTo,
                              std::string* error )
 {
     for ( int copy = 1; copy <= MaxMovedAsideCopies; ++copy ) {
         auto name = original.filename();
-        if ( copy > 1 )
-            name += "." + std::to_string( copy );
         name += MovedAsideSuffix;
+        if ( copy > 1 )
+            name += "-" + std::to_string( copy );
         const auto target = original.parent_path() / name;
         const auto result = renameInside( original, target, directory, error );
-        if ( result == RenameResult::DestinationExists )
+        if ( result == RenameResult::DestinationExists
+             || ( result == RenameResult::Failed && error && *error != OutsideError
+                  && nameTaken( target ) ) )
             continue;
         if ( result == RenameResult::Renamed )
             *movedTo = target;
@@ -591,10 +630,7 @@ std::vector<MovedFile> parseManifest( const std::string& text )
 
 bool isMovedAside( const fs::path& path )
 {
-    const auto name = lowerAscii( toUtf8( path.filename() ) );
-    const std::string suffix = MovedAsideSuffix;
-    return name.size() > suffix.size()
-           && name.compare( name.size() - suffix.size(), suffix.size(), suffix ) == 0;
+    return movedAsideSuffixLength( lowerAscii( toUtf8( path.filename() ) ) ) > 0;
 }
 
 bool isExecutableImage( const fs::path& path )
@@ -617,18 +653,9 @@ bool isMovedAsideNameOf( const fs::path& original, const fs::path& candidate )
 #endif
     const auto name = lowerAscii( toUtf8( original.filename() ) );
     const auto candidateName = lowerAscii( toUtf8( candidate.filename() ) );
-    const auto suffixLength = std::string( MovedAsideSuffix ).size();
-    if ( candidateName.size() < name.size() + suffixLength
-         || candidateName.compare( 0, name.size(), name ) != 0 )
-        return false;
-    // Empty for the first copy, ".<n>" for the others.
-    const auto counter
-        = candidateName.substr( name.size(), candidateName.size() - name.size() - suffixLength );
-    return counter.empty()
-           || ( counter.size() > 1 && counter.front() == '.'
-                && std::all_of( counter.begin() + 1, counter.end(), []( char character ) {
-                       return std::isdigit( static_cast<unsigned char>( character ) ) != 0;
-                   } ) );
+    const auto suffixLength = movedAsideSuffixLength( candidateName );
+    return suffixLength > 0 && candidateName.size() - suffixLength == name.size()
+           && candidateName.compare( 0, name.size(), name ) == 0;
 }
 
 std::vector<ProcessInfo> processesRunningFrom( const fs::path& directory )
@@ -674,6 +701,7 @@ std::vector<ProcessInfo> processesUsing( const std::vector<fs::path>& files, std
     status = RmRegisterResources( session, static_cast<UINT>( pointers.size() ), pointers.data(), 0,
                                   nullptr, 0, nullptr );
     std::vector<RM_PROCESS_INFO> infos;
+    bool listed = false;
     for ( int attempt = 0; status == ERROR_SUCCESS && attempt < 5; ++attempt ) {
         UINT needed = 0;
         auto count = static_cast<UINT>( infos.size() );
@@ -685,11 +713,15 @@ std::vector<ProcessInfo> processesUsing( const std::vector<fs::path>& files, std
             status = ERROR_SUCCESS;
             continue;
         }
-        if ( status == ERROR_SUCCESS )
+        if ( status == ERROR_SUCCESS ) {
             infos.resize( count );
+            listed = true;
+        }
         break;
     }
     RmEndSession( session );
+    if ( status == ERROR_SUCCESS && !listed )
+        status = ERROR_MORE_DATA; // the list kept growing
     if ( status != ERROR_SUCCESS ) {
         if ( error )
             *error = "Restart Manager query failed: " + systemErrorText( status );
@@ -737,39 +769,24 @@ std::size_t removeMovedAside( const fs::path& directory, const Log& log )
     std::size_t removed = 0;
     std::size_t restored = 0;
     std::size_t remaining = 0;
-    const auto suffixLength = std::strlen( MovedAsideSuffix );
     for ( const auto& file : installationFiles( directory ) ) {
-        if ( !isMovedAside( file ) )
-            continue;
         const auto fileName = toUtf8( file.filename() );
-        const auto stem = fileName.substr( 0, fileName.size() - suffixLength );
-        const auto dot = stem.find_last_of( '.' );
-        const bool counted = dot != std::string::npos && dot + 1 < stem.size()
-                             && std::all_of( stem.begin() + static_cast<std::ptrdiff_t>( dot + 1 ),
-                                             stem.end(), []( char character ) {
-                                                 return std::isdigit(
-                                                            static_cast<unsigned char>( character ) )
-                                                        != 0;
-                                             } );
-        const auto original = file.parent_path() / fromUtf8( stem );
+        const auto suffixLength = movedAsideSuffixLength( lowerAscii( fileName ) );
+        if ( suffixLength == 0 )
+            continue;
+        const auto original
+            = file.parent_path() / fromUtf8( fileName.substr( 0, fileName.size() - suffixLength ) );
         std::error_code error;
-        const bool replaced
-            = fs::exists( original, error )
-              || ( counted
-                   && fs::exists( file.parent_path() / fromUtf8( stem.substr( 0, dot ) ), error ) );
-        if ( !replaced ) {
+        if ( !fs::exists( original, error ) ) {
             // The only copy of a file an update could not put back: never delete it.
             std::string renameError;
-            if ( !counted
-                 && renameInside( file, original, directory, &renameError )
-                        == RenameResult::Renamed ) {
+            if ( renameInside( file, original, directory, &renameError ) == RenameResult::Renamed ) {
                 ++restored;
                 log( "Put back " + toUtf8( original ) );
             }
             else {
                 ++remaining;
-                log( "Kept " + toUtf8( file ) + ": its original is missing"
-                     + ( renameError.empty() ? std::string{} : " (" + renameError + ")" ) );
+                log( "Kept " + toUtf8( file ) + ": its original is missing (" + renameError + ")" );
             }
             continue;
         }
@@ -804,7 +821,7 @@ PrepareResult moveAside( const fs::path& directory, const Log& log,
             executables.push_back( file );
         else if ( isExecutableImage( file ) )
             libraries.push_back( file );
-        else if ( isInUse( file ) )
+        else
             others.push_back( file );
     }
     std::vector<fs::path> ordered = std::move( executables );
@@ -862,10 +879,10 @@ PrepareResult moveAside( const fs::path& directory, const Log& log,
 std::vector<MovedFile> finish( const fs::path& directory, const std::vector<MovedFile>& moved,
                                const Log& log )
 {
-    std::vector<MovedFile> notPutBack;
     std::size_t deleted = 0;
     std::size_t kept = 0;
     std::size_t restored = 0;
+    std::vector<MovedFile> notReplaced;
     for ( const auto& file : moved ) {
         std::error_code error;
         if ( !fs::exists( file.movedTo, error ) )
@@ -875,38 +892,62 @@ std::vector<MovedFile> finish( const fs::path& directory, const std::vector<Move
                 ++deleted;
             else
                 ++kept;
-            continue;
-        }
-        // The installation did not ship this file (an optional component, or one a newer
-        // version no longer has): keep the previous one, as an in-place copy would have.
-        std::string renameError;
-        if ( renameInside( file.movedTo, file.original, directory, &renameError )
-             == RenameResult::Renamed ) {
-            ++restored;
-            log( "Not replaced, kept the previous file: " + toUtf8( file.original ) );
         }
         else {
-            log( "Cannot put back " + toUtf8( file.original ) + ": " + renameError );
-            notPutBack.push_back( file );
+            notReplaced.push_back( file );
         }
+    }
+    // The installation did not ship these files (an optional component, or one a newer version
+    // no longer has): keep the previous ones, as an in-place copy would have. Security software
+    // can hold one for a moment: they are tried again after a pause.
+    std::vector<std::pair<MovedFile, std::string>> notPutBack;
+    for ( int round = 0; round <= MoveRetryRounds && !notReplaced.empty(); ++round ) {
+        if ( round > 0 )
+            std::this_thread::sleep_for( MoveRetryDelay );
+        notPutBack.clear();
+        for ( const auto& file : notReplaced ) {
+            std::string renameError;
+            if ( renameInside( file.movedTo, file.original, directory, &renameError )
+                 == RenameResult::Renamed ) {
+                ++restored;
+                log( "Not replaced, kept the previous file: " + toUtf8( file.original ) );
+            }
+            else {
+                notPutBack.emplace_back( file, renameError );
+            }
+        }
+        notReplaced.clear();
+        for ( const auto& entry : notPutBack ) {
+            if ( entry.second != OutsideError )
+                notReplaced.push_back( entry.first );
+        }
+    }
+    std::vector<MovedFile> left;
+    for ( const auto& [ file, error ] : notPutBack ) {
+        log( "Cannot put back " + toUtf8( file.original ) + ": " + error );
+        // Retried by the next update; an entry that can never be acted on is dropped.
+        if ( error != OutsideError )
+            left.push_back( file );
     }
     log( "Replaced files: " + std::to_string( deleted ) + " old copies deleted, "
          + std::to_string( kept ) + " still in use, " + std::to_string( restored )
-         + " not replaced and kept, " + std::to_string( notPutBack.size() )
-         + " not put back" );
-    return notPutBack;
+         + " not replaced and kept, " + std::to_string( left.size() ) + " not put back" );
+    return left;
 }
 
-bool rollback( const fs::path& directory, const std::vector<MovedFile>& moved, const Log& log )
+std::vector<MovedFile> rollback( const fs::path& directory, const std::vector<MovedFile>& moved,
+                                 const Log& log )
 {
-    bool complete = true;
+    std::vector<MovedFile> left;
+    std::size_t lost = 0;
     for ( auto file = moved.rbegin(); file != moved.rend(); ++file ) {
         std::error_code error;
         if ( !fs::exists( file->movedTo, error ) ) {
-            // Restored by an earlier pass, unless the original is gone too.
+            // Restored by an earlier pass, unless the original is gone too: then nothing can
+            // bring it back, and the next installation writes it again.
             if ( !fs::exists( file->original, error ) ) {
                 log( "Lost: " + toUtf8( file->original ) );
-                complete = false;
+                ++lost;
             }
             continue;
         }
@@ -917,7 +958,8 @@ bool rollback( const fs::path& directory, const std::vector<MovedFile>& moved, c
             if ( moveToFreeName( file->original, directory, &newCopy, &moveError )
                  != RenameResult::Renamed ) {
                 log( "Cannot remove the new " + toUtf8( file->original ) + ": " + moveError );
-                complete = false;
+                if ( moveError != OutsideError )
+                    left.push_back( *file );
                 continue;
             }
             deleteOrSchedule( newCopy, directory, log );
@@ -926,12 +968,16 @@ bool rollback( const fs::path& directory, const std::vector<MovedFile>& moved, c
         if ( renameInside( file->movedTo, file->original, directory, &renameError )
              != RenameResult::Renamed ) {
             log( "Cannot restore " + toUtf8( file->original ) + ": " + renameError );
-            complete = false;
+            // An entry outside the installation folder can never be acted on: dropped.
+            if ( renameError != OutsideError )
+                left.push_back( *file );
         }
     }
-    log( complete ? "Restored " + std::to_string( moved.size() ) + " files"
-                  : std::string( "Some files could not be restored" ) );
-    return complete;
+    log( left.empty() && lost == 0
+             ? "Restored " + std::to_string( moved.size() ) + " files"
+             : "Restored the previous files except " + std::to_string( left.size() )
+                   + " to try again and " + std::to_string( lost ) + " lost" );
+    return left;
 }
 
 int runPrepare( const fs::path& directory, const fs::path& report, const Log& log )
@@ -962,7 +1008,9 @@ int runPrepare( const fs::path& directory, const fs::path& report, const Log& lo
         else {
             log( "Restoring " + std::to_string( earlier.size() )
                  + " files an interrupted update moved aside" );
-            if ( !rollback( directory, earlier, log ) ) {
+            const auto left = rollback( directory, earlier, log );
+            if ( !left.empty() ) {
+                writeManifest( manifestPath, left );
                 log( "Kept " + toUtf8( manifestPath ) + "; run setup again" );
                 return RollbackIncompleteExitCode;
             }
@@ -1004,10 +1052,11 @@ int runPrepare( const fs::path& directory, const fs::path& report, const Log& lo
     else {
         log( "Cannot record the moved files in " + toUtf8( manifestPath ) );
     }
-    const bool restored = rollback( directory, result.moved, log );
+    const auto left = rollback( directory, result.moved, log );
     manifest.close();
     writeReport( report, result.blocked, blockers, log );
-    if ( !restored ) {
+    if ( !left.empty() ) {
+        writeManifest( manifestPath, left );
         log( "Kept " + toUtf8( manifestPath ) + "; run setup again" );
         return RollbackIncompleteExitCode;
     }
@@ -1024,8 +1073,9 @@ int runFinish( const fs::path& directory, const Log& log )
         return PreparedExitCode;
     }
     {
+        // On a line of its own, also after a line an interrupted pass left unfinished.
         std::ofstream marker( manifestPath, std::ios::binary | std::ios::app );
-        marker << FinishingMarker << "\n";
+        marker << "\n" << FinishingMarker << "\n";
     }
     const auto notPutBack = finish( directory, readManifest( directory, manifestPath, log ), log );
     if ( notPutBack.empty() ) {
@@ -1046,7 +1096,9 @@ int runRollback( const fs::path& directory, const Log& log )
         log( "No files were moved aside" );
         return PreparedExitCode;
     }
-    if ( !rollback( directory, readManifest( directory, manifestPath, log ), log ) ) {
+    const auto left = rollback( directory, readManifest( directory, manifestPath, log ), log );
+    if ( !left.empty() ) {
+        writeManifest( manifestPath, left );
         log( "Kept " + toUtf8( manifestPath ) + "; run setup again" );
         return RollbackIncompleteExitCode;
     }

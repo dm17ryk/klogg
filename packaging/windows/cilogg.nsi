@@ -220,11 +220,7 @@ Section "CILogg" cilogg
     Call CiloggPrepareInstallDirectory
     SetOutPath $INSTDIR
     ClearErrors
-    ; cilogg.exe itself is written by the last section.
-    File release\cilogg_grep.exe
-    File release\cilogg_updater.exe
-    File /nonfatal release\cilogg_crashpad_handler.exe
-    File /nonfatal release\cilogg_minidump_dump.exe
+    ; Every executable is written by the last section, once the files it loads are in place.
     File /nonfatal release\tbb12.dll
 
     File COPYING
@@ -234,11 +230,11 @@ Section "CILogg" cilogg
     File MCP.md
     File release\documentation.html
     SetOutPath $INSTDIR\python_runtime
-    File /nonfatal /r release\python_runtime\*
+    File /nonfatal /r /x *.exe release\python_runtime\*
     SetOutPath $INSTDIR\plugins
-    File /r release\plugins\*
+    File /r /x *.exe release\plugins\*
     SetOutPath $INSTDIR\plugin-sdk
-    File /r release\plugin-sdk\*
+    File /r /x *.exe release\plugin-sdk\*
     SetOutPath $INSTDIR
     File release\plugin-sdk.md
     ${If} ${Errors}
@@ -351,10 +347,21 @@ SectionEnd
 ; deleted (or, while still in use, left for the next update and the next restart) and the ones
 ; this installation did not replace are put back.
 Section "-CILogg executable" ciloggexe
-    SetOutPath $INSTDIR
     ${If} $CiloggCopyFailed != 1
-        ; Only into a complete folder.
+        ; Only into a complete folder: a CILogg MCP server that keeps running starts
+        ; cilogg_grep.exe and Python from here at any time.
         ClearErrors
+        SetOutPath $INSTDIR\python_runtime
+        File /nonfatal /r release\python_runtime\*.exe
+        SetOutPath $INSTDIR\plugins
+        File /nonfatal /r release\plugins\*.exe
+        SetOutPath $INSTDIR\plugin-sdk
+        File /nonfatal /r release\plugin-sdk\*.exe
+        SetOutPath $INSTDIR
+        File release\cilogg_grep.exe
+        File release\cilogg_updater.exe
+        File /nonfatal release\cilogg_crashpad_handler.exe
+        File /nonfatal release\cilogg_minidump_dump.exe
         File release\cilogg.exe
         ${If} ${Errors}
             StrCpy $CiloggCopyFailed 1
@@ -374,7 +381,9 @@ Section "-CILogg executable" ciloggexe
     Pop $0
     StrCpy $CiloggPrepared 0
     ${If} $0 != 0
-        ${CiloggLog} "Some files this installation did not replace could not be put back (result $0); the next update puts them back"
+        ${CiloggLog} "Some files of the previous version that this installation does not replace could not be put back (result $0); run setup again"
+        SetErrorLevel 6
+        MessageBox MB_OK|MB_ICONEXCLAMATION "CILogg was installed, but some files of the previous version could not be put back. Run setup again." /SD IDOK
     ${EndIf}
     ${CiloggLog} "CILogg ${VERSION} installed in $INSTDIR"
 SectionEnd
@@ -403,7 +412,7 @@ Section "Uninstall"
     Delete "$INSTDIR\cilogg_crashpad_handler.exe"
     Delete "$INSTDIR\cilogg_minidump_dump.exe"
     ; Files an update moved aside while a process used them, and its record.
-    Delete /REBOOTOK "$INSTDIR\*.cilogg-old"
+    Delete /REBOOTOK "$INSTDIR\*.cilogg-old*"
     Delete "$INSTDIR\cilogg-update-moves.txt"
     Delete "$INSTDIR\cilogg-installer.log"
     Delete "$INSTDIR\cilogg-installer-report.txt"

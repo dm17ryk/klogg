@@ -183,7 +183,7 @@ function Assert-Running([Diagnostics.Process[]]$processes, [string]$what) {
 }
 
 function Get-MovedAside {
-    return @(Get-ChildItem -LiteralPath $installDirectory -Recurse -File -Filter '*.cilogg-old' -ErrorAction SilentlyContinue)
+    return @(Get-ChildItem -LiteralPath $installDirectory -Recurse -File -Filter '*.cilogg-old*' -ErrorAction SilentlyContinue)
 }
 
 $stopFile = Join-Path $workDirectory 'stop-supervisor'
@@ -306,7 +306,7 @@ try {
     if ($sharedInstall.ExitCode -ne 0) { throw "Installing into a shared folder failed with exit $($sharedInstall.ExitCode)`n$($sharedInstall.Log)" }
     Assert-Running @($shared) 'Another program in the shared folder'
     if ((Get-Content -LiteralPath $sharedLibrary -Raw).Trim() -ne 'another program') { throw "The installer changed another program's file" }
-    if (@(Get-ChildItem -LiteralPath $sharedDirectory -Recurse -File -Filter '*.cilogg-old').Count -ne 0) {
+    if (@(Get-ChildItem -LiteralPath $sharedDirectory -Recurse -File -Filter '*.cilogg-old*').Count -ne 0) {
         throw 'A first installation moved files aside'
     }
     $results.Add([pscustomobject]@{ case = 'first-install-into-shared-folder'; exitCode = $sharedInstall.ExitCode })

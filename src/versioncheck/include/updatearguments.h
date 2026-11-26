@@ -68,8 +68,10 @@ inline constexpr int InstallerFilesInUseExitCode = 2;
 inline constexpr int InstallerCopyFailedExitCode = 3;
 // as InstallerCopyFailedExitCode, but some previous files could not be restored,
 inline constexpr int InstallerRestoreIncompleteExitCode = 4;
-// the installation folder could not be prepared; nothing was replaced.
+// the installation folder could not be prepared; nothing was replaced,
 inline constexpr int InstallerPrepareFailedExitCode = 5;
+// installed, but files of the previous version that it does not replace could not be put back.
+inline constexpr int InstallerFinishIncompleteExitCode = 6;
 
 // Helper exit codes for its own failures. System error codes pass through unchanged.
 inline constexpr int RelaunchFailedExitCode = 3;

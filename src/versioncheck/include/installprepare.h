@@ -16,8 +16,9 @@
 
 namespace cilogg::install_prepare {
 
-// Suffix of a file moved aside during an update. It is deleted once no process uses it: at the
-// end of that update or by the next one.
+// Suffix of a file moved aside during an update: "<name>.cilogg-old", or "<name>.cilogg-old-<n>"
+// while an earlier copy is still in use. It is deleted once no process uses it: at the end of that
+// update or by the next one.
 inline constexpr char MovedAsideSuffix[] = ".cilogg-old";
 // The record of the files moved aside. It lives inside the installation folder, and every entry
 // must lie inside that folder. In Program Files only administrators can change it; whoever can
@@ -70,8 +71,8 @@ std::vector<MovedFile> parseManifest( const std::string& text );
 bool isMovedAside( const std::filesystem::path& path );
 // Executable images (.exe, .dll, .pyd) a process may load at any moment of an installation.
 bool isExecutableImage( const std::filesystem::path& path );
-// True when `candidate` is the name moveAside() gives `original`: same folder, the original
-// file name, an optional counter and MovedAsideSuffix.
+// True when `candidate` is a name moveAside() gives `original`: same folder, the original file
+// name, MovedAsideSuffix and an optional "-<n>".
 bool isMovedAsideNameOf( const std::filesystem::path& original,
                          const std::filesystem::path& candidate );
 
@@ -96,9 +97,9 @@ struct PrepareResult {
     std::vector<std::filesystem::path> blocked;
 };
 
-// Moves aside the files of the CILogg installation in `directory` that a process may use while it
-// is replaced: every executable image, and every other file that is in use. First the .exe files
-// (so nothing can start from a half-replaced folder), then the DLLs, then the rest.
+// Moves aside every file of the CILogg installation in `directory`, so running processes keep
+// theirs and a failed installation can put the previous version back exactly. First the .exe
+// files (so nothing can start from a half-replaced folder), then the DLLs, then the rest.
 //
 // Only CILogg's files are considered: the top-level files cilogg.nsi installs (its executables,
 // the uninstaller, the DLLs and its documents) and the folders it installs. A folder that holds
@@ -117,9 +118,11 @@ std::vector<MovedFile> finish( const std::filesystem::path& directory,
                                const std::vector<MovedFile>& moved, const Log& log );
 
 // After a failed copy: puts every original back, moving a partly installed new file aside.
-// Entries an earlier pass restored are skipped. False when an original could not be restored.
-bool rollback( const std::filesystem::path& directory, const std::vector<MovedFile>& moved,
-               const Log& log );
+// Entries an earlier pass restored are skipped. Returns the entries that could not be restored
+// for now (another attempt may succeed); a file lost meanwhile and an entry outside the
+// installation folder are logged and dropped, as nothing can ever act on them.
+std::vector<MovedFile> rollback( const std::filesystem::path& directory,
+                                 const std::vector<MovedFile>& moved, const Log& log );
 
 // The installer modes of cilogg_updater. "prepare" first restores what an interrupted earlier
 // update left (from its manifest), then moves files aside and records them in the manifest; when
