@@ -1478,7 +1478,180 @@
       "checkReservedPaths (GitNexus: CRITICAL through validatePackManifest): the actions file joins the files CILogg writes, as E16c1 and E16c2 did for the filters and highlighters files"
     ],
     "localClangCheck": "clang-cl -fsyntax-only with the Unix warning set, -Wshadow-all and -Werror on every changed C++ file",
+    "qualification": "merged",
+    "pullRequest": "https://github.com/dm17ryk/klogg/pull/176",
+    "mergedAs": "bb956619fe472b69a4d2a9fa8117b360715bbc0d",
+    "reviewRounds": [
+      {
+        "head": "d84f2609",
+        "reviewer": "Codex review bot",
+        "findings": 6,
+        "result": "all fixed"
+      },
+      {
+        "head": "068b9065",
+        "reviewer": "Codex review bot",
+        "findings": 3,
+        "result": "all fixed"
+      },
+      {
+        "head": "e432fb04",
+        "reviewer": "Codex review bot",
+        "findings": 3,
+        "result": "all fixed"
+      },
+      {
+        "head": "fa2f1082",
+        "reviewer": "independent Claude review (cpp-reviewer); Codex bot over its usage limit, local Codex CLI out of credits",
+        "findings": 3,
+        "result": "all fixed"
+      },
+      {
+        "head": "0ed11656",
+        "reviewer": "independent Claude review (cpp-reviewer)",
+        "findings": 3,
+        "result": "all fixed"
+      },
+      {
+        "head": "6e6acf4b",
+        "reviewer": "independent Claude review (cpp-reviewer)",
+        "findings": 0,
+        "result": "passed (one P3 note answered); hosted CI 38 passed, 1 skipped; merged pinned to the head without another update (master 8fb28e5f touched none of its files)"
+      }
+    ]
+  },
+  "e16bChecks": {
+    "date": "2026-11-26",
+    "task": "E16",
+    "slice": "E16b",
+    "decision": "D16",
+    "planChange": "MD03b (the Python preview backend) before the full MD03 contract, approved by Dmitry on 2026-11-24; merged in #163 (52e21ee7)",
+    "issues": [
+      "https://github.com/dm17ryk/klogg/issues/146 (fixes)"
+    ],
+    "basedOn": "dfc1740e, with master bb956619 (E16c3) merged in",
+    "taskStatus": "in_progress",
+    "hardDagAndRequirementsUnchanged": true,
+    "otherTaskRecordsPreserved": true,
+    "otherTaskRecordUpdates": "MD03's slice MD03b recorded as completed (merged in #163 as 52e21ee7; it said implemented_pending_gates)",
+    "productCodeChanged": true,
+    "productBuildRun": true,
+    "testsWrittenFirst": "tests/unit/packpython_test.cpp was written before the product change and failed to compile on the missing PreviewDecoderPacks::pythonNames and PreviewDecoderSettings::pythonDecoderPack; its life-cycle cases cover behaviour MD03b and E16a2 already had and passed at once; the review round's plain-text cases were written with their fix",
+    "highRiskSymbols": [
+      "PreviewService::tooltipHtml (GitNexus: MEDIUM, 6 direct users): signature unchanged; the Python decoder's label gains its pack's name",
+      "detect_changes rates the diff critical because its hunks are in PreviewDecoderSettings, PreviewService and the decoder settings dialog; the changes are additive (a field, two functions, the dialog's menu and tooltips) and the flows it lists reach logging",
+      "D19 commit: detect_changes rates the diff critical (34 symbols, 159 flows) because the index is stale and its hunks are in previewdecodersettings.h, which most of the UI includes; the listed flows reach logging. The change to shared code: PreviewDecoderPacks gains pythonNotes, pythonCheck and sameSessions(), and setPacks() emits pythonChecked instead of changed when only the check differs. GitNexus impact on PreviewPackRegistry::refresh and PreviewDecoderSettings::setPacks: LOW."
+    ],
+    "localClangCheck": "clang-cl -fsyntax-only with the Unix warning set, -Wshadow-all and -Werror on every changed C++ file; clean except a lambda init-capture in previewservice.cpp that is already on master",
     "qualification": "local_gates_passed_hosted_pending",
-    "pullRequest": "https://github.com/dm17ryk/klogg/pull/176"
+    "pullRequest": "https://github.com/dm17ryk/klogg/pull/179",
+    "reviewRounds": [
+      {
+        "head": "c71f9212",
+        "reviewer": "Codex review bot",
+        "findings": [
+          "P2 (fixed): helper modules offered as decoders; the menu offers the modules that bind decode at their top level",
+          "P2 (fixed): decoders of packs with the same name looked alike; the menu adds the pack's ID and the tooltip shows the route target"
+        ],
+        "result": "fixed in the commit after c71f9212"
+      },
+      {
+        "head": "eb920aa0",
+        "reviewer": "Codex review bot",
+        "findings": [
+          "P2 (fixed): text in a docstring or string counted as a decode() binding; the scan now ignores strings and comments"
+        ],
+        "result": "fixed in the commit after eb920aa0"
+      },
+      {
+        "head": "f7303284",
+        "reviewer": "Codex review bot",
+        "findings": [
+          "P2 (fixed): a keyword argument at the start of a line inside a call counted as decode =; lines inside brackets and after a backslash now continue their statement"
+        ],
+        "result": "fixed in the commit after f7303284"
+      },
+      {
+        "head": "adca616d",
+        "reviewer": "Codex review bot",
+        "findings": [
+          "P2 (fixed): a module starting with a UTF-8 byte order mark hid its first-line decode(); the scan drops it (and takes a lone carriage return as a newline)"
+        ],
+        "result": "fixed in the commit after adca616d"
+      },
+      {
+        "head": "c431ce23",
+        "reviewer": "Codex review bot",
+        "findings": [
+          "P2 (fixed): a binding after a top-level semicolon was not found; a top-level semicolon now starts a statement (not in a one-line compound body)"
+        ],
+        "result": "fixed in the commit after c431ce23"
+      },
+      {
+        "head": "cf4547fd",
+        "reviewer": "Codex review bot",
+        "findings": [
+          "P2 (fixed): match/case used as names before a semicolon hid the binding; only hard keywords open a compound statement, and an indented semicolon no longer yields a top-level statement"
+        ],
+        "result": "fixed in the commit after cf4547fd"
+      },
+      {
+        "head": "beb5125b",
+        "reviewer": "Codex review bot",
+        "findings": [
+          "P2 (fixed): async def decode was offered but the worker never awaits it; async def no longer counts",
+          "P2 (fixed): semicolons on a long one-line suite rescanned the line (quadratic); the scan keeps the line start and reads its first characters only"
+        ],
+        "result": "fixed in the commit after beb5125b"
+      },
+      {
+        "head": "01383f47",
+        "reviewer": "Codex review bot",
+        "findings": [
+          "P2 (fixed): an annotation without a value counted as an assignment; the annotation is read up to an = outside its brackets",
+          "P2 (fixed): a generic def decode[T](...) was missed; an optional type-parameter list is read"
+        ],
+        "result": "fixed in the commit after 01383f47"
+      },
+      {
+        "head": "bb2a1056",
+        "reviewer": "Codex review bot",
+        "findings": [
+          "P2 (fixed): del of an attribute counted as deleting decode",
+          "P2 (fixed): generic bounds with nested brackets were missed",
+          "P2 (fixed): a lambda default in an annotation counted as an assignment",
+          "P2 (fixed): a later async def did not take an earlier def away",
+          "P2 (fixed): form feeds were not whitespace",
+          "P2 (fixed): a newline inside a string ended the logical line of a one-line suite"
+        ],
+        "result": "fixed in the commit after bb2a1056"
+      },
+      {
+        "head": "5886ef7e",
+        "reviewer": "Codex review bot",
+        "findings": [
+          "P2: del of decode in a target list",
+          "P2: multi-line f-string replacement fields",
+          "P2: the helper tooltip claimed the route fails"
+        ],
+        "result": "fixed in the commit after 5886ef7e"
+      },
+      {
+        "head": "54cdc7d0",
+        "reviewer": "Codex review bot",
+        "findings": [
+          "P2: match guards before case bodies",
+          "P2: statements after break or continue",
+          "P2: retry modules that time out",
+          "P2: nested := in evaluation order",
+          "P2: lambda defaults run in the module scope",
+          "P2: generator bodies do not run at import",
+          "P2: known values around a starred target"
+        ],
+        "result": "fixed in the commit after 54cdc7d0"
+      }
+    ],
+    "decoderCheck": "D19 (2026-11-26): Python's parser (ast.parse and compile in message_decoder_python_entries.py) replaces the C++ text scan; the scan's documented limits (tuple assignments, if and try) are gone, and only what running a module would show (a star import, exec) stays unseen",
+    "pythonTests": "python -m unittest discover -s tests/plugins -p test_message_decoder_python_entries.py: 14 cases pass on Python 3.9.25, 3.10.2, 3.12.14 and 3.14.10 (3.9 and 3.10 skip the 3.10 and 3.12 syntax)"
   }
 }

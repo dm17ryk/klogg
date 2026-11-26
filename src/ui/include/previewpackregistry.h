@@ -15,6 +15,7 @@
 #include "actionsconfig.h"
 #include "highlighterset.h"
 #include "predefinedfilters.h"
+#include "previewdecodersettings.h"
 #include "previewmanager.h"
 
 namespace cilogg::plugins {
@@ -65,8 +66,14 @@ public:
     static PreviewPackRegistry& instance();
     // Follows the manager's changes and installs the pack check (PluginManager::setPackCheck).
     void attach( cilogg::plugins::PluginManager* manager );
-    // Reloads the enabled packs that changed and applies them.
+    // Reloads the enabled packs that changed and applies them. E16b: the packs' Python modules
+    // are checked afterwards, once for each version and edit of a pack (PythonEntriesClient); the
+    // results reach PreviewDecoderPacks::pythonEntries and pythonNotes when the check ends.
     void refresh();
+    // E16b: checks the enabled packs' Python modules that no check has read yet (no Python
+    // interpreter was found then, say), unless a check is running. Preview Decoder Settings calls
+    // it when it opens.
+    void checkPythonDecoders();
     // The pack check: the refusal, or an empty string.
     QString check( const QString& id, const QString& directory,
                    const QJsonObject& manifest ) const;
@@ -104,7 +111,32 @@ private:
     // end up without its route or with another one (its name stays free for another try).
     static QString copyWithRoute( const Contribution& pack, const QString& name,
                                   const QString& target, const std::function<QString()>& copy );
+    // What a check found in one pack's modules: its decoders, and why each other module is not
+    // one (PreviewDecoderPacks::pythonEntries, pythonNotes).
+    struct PythonCheck {
+        QStringList entries;
+        QVariantMap notes;
+    };
+    // The applied packs with what the checks found so far, and where the check is.
+    PreviewDecoderPacks withPythonCheck() const;
+    // Checks the applied packs' modules no check has read, unless that check runs already.
+    void startPythonCheck();
+    void finishPythonCheck( const QString& request, const QVariantMap& result );
     QPointer<cilogg::plugins::PluginManager> manager_;
+    // E16b: the packs as last applied, without the check's results.
+    PreviewDecoderPacks decoder_;
+    // Pack ID -> "<pack ID>@<contribution key>" of each applied pack with Python modules.
+    QHash<QString, QString> pythonKeys_;
+    // What the checks found, by "<pack ID>@<contribution key>"; packs whose modules the last check
+    // had no time for are in pythonPartial_, and still to be checked.
+    QHash<QString, PythonCheck> pythonChecks_;
+    QHash<QString, PythonCheck> pythonPartial_;
+    // The running check (its request ID, empty when none runs) and the packs it reads (as
+    // pythonKeys_); why the last one failed.
+    QString pythonRequest_;
+    QHash<QString, QString> pythonPending_;
+    QString pythonFailure_;
+    quint64 pythonRequests_ = 0;
     QVector<Contribution> applied_;
     QHash<QString, Contribution> cache_;
     QStringList appliedKeys_;

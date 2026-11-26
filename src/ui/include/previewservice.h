@@ -46,5 +46,8 @@ public:
     // Which limit cut a limited result, and by how much (#183), e.g. "390 of 768 rows: result
     // limit 1024 KiB, the whole result needs 1650 KiB". Empty when the result names no limit.
     static QString limitText( const QVariantMap& result );
+    // E16b: the Python decoder that decoded `result`, "<pack-id>/<decoder-id>", followed by its
+    // pack's name while that pack is enabled; empty for another backend. Plain text.
+    static QString pythonDecoderLabel( const QVariantMap& result );
     static int workerMain( int argc, char* argv[] );
 };

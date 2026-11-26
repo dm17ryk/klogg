@@ -26,7 +26,16 @@ or assembled protocol to that decoder's `decode(payload, context)` in a supervis
 (backend `python_decoder`). A Python route applies while its pack is enabled, also when TShark is
 disabled or not configured, and has a TShark route's place in Automatic mode. Automatic falls back
 to JSON only when the decoder returns `None` (`decoder_not_dispatched`); explicit TShark ignores
-Python routes.
+Python routes. **Add Python decoder**, on both route tabs, lists the enabled packs' decoders as
+"<pack name>: <decoder id>" (with the pack's ID when two packs share a name) and adds a route to
+the one you pick; name its preview or protocol in the first column. Python's own parser decides
+what it lists: the modules where `decode` may be a function after the top level. It reads each
+module with `ast` and runs nothing. Helper modules a pack also lists are left out, and so are
+modules Python cannot compile; the button's tooltip lists the latter with their line. The check
+runs with the preview's Python interpreter when the packs change; without an interpreter the menu
+stays empty and says why. A route's decoder cell says which pack the decoder belongs to, why its
+module is not offered, or that its pack is not enabled (the route then does not apply). A preview's
+tooltip and status show the decoder with its pack's name (E16b).
 
 Configure preview routes by existing preview definition name, and protocol
 routes by assembled protocol name. Each selects a named dissector and may

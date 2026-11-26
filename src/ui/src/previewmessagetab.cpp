@@ -1851,9 +1851,9 @@ void PreviewMessageTab::presentResult( const QVariantMap& result )
     const auto limit = PreviewService::limitText( result );
     if ( !limit.isEmpty() )
         status += " (" + limit + ")";
-    // A Python decoder names its decoder, and the place of a failure.
+    // A Python decoder names its decoder with its pack (E16b), and the place of a failure.
     if ( python )
-        status += " - " + result.value( "decoder" ).toString().left( 256 );
+        status += " - " + PreviewService::pythonDecoderLabel( result ).left( 256 );
     if ( !result.value( "detail" ).toString().isEmpty() )
         status += " (" + result.value( "detail" ).toString().left( 256 ) + ")";
     const auto fallback = result.value( "fallbackReason" ).toString();

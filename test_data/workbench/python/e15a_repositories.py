@@ -54,8 +54,11 @@ def main():
         report["checkUpdates"] = {"state": checked["state"], "updates": result.get("updates"),
                                   "checked": result.get("checked")}
         report["repositories"] = manage("repositories")["repositories"]
-        # E16a1: the example configuration pack the CLI installed and MCP enabled.
-        report["plugins"] = app.command("get_plugins")["plugins"]
+        # E16a1: the example configuration pack the CLI installed and MCP enabled (and E16b's
+        # example pack with Python decoders), with the host features they need.
+        listing = app.command("get_plugins")
+        report["plugins"] = listing["plugins"]
+        report["hostFeatures"] = listing.get("hostFeatures")
         try:
             app.command("plugin_manage", plugin_operation="restart", plugin_id=PACK_ID)
             report["packRestartRefused"] = False

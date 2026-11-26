@@ -112,6 +112,7 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/tsharkpreviewclient.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/previewworkerclient.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/pythondecoderclient.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/pythonentriesclient.h
   ${CMAKE_CURRENT_SOURCE_DIR}/preview_decoder.qrc
   ${CMAKE_CURRENT_SOURCE_DIR}/include/previewsource.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/previewtree.h
@@ -223,6 +224,7 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/tsharkpreviewclient.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/previewworkerclient.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/pythondecoderclient.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/pythonentriesclient.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/previewsource.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/previewrepository.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/previewstablemodel.cpp
