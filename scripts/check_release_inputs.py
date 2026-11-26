@@ -52,8 +52,12 @@ def load_json_values(text: str) -> list:
 
 
 def never_got_a_runner(job: dict) -> bool:
-    """A job cancelled (or skipped) while still queued: no runner, no steps."""
-    return (job.get("conclusion") in ("cancelled", "skipped")
+    """A job that ended while still queued: no runner, no steps.
+
+    A cancelled queued job, or one GitHub gave up on ("not acquired by Runner of
+    type hosted even after multiple attempts"), which may end as cancelled or failed.
+    """
+    return (job.get("conclusion") in ("cancelled", "skipped", "failure")
             and not job.get("runner_name") and not job.get("steps"))
 
 

@@ -61,6 +61,11 @@ class CiRunTests(unittest.TestCase):
         jobs = green_jobs() + [job(ARM_610), never_started(ARM_612)]
         self.assertEqual(release.check_ci_run(run(conclusion="cancelled"), jobs, True), [DIR_612])
 
+    def test_arm64_job_github_failed_before_a_runner_counts_as_never_started(self):
+        not_acquired = job(ARM_612, conclusion="failure", runner=None, steps=[])
+        jobs = green_jobs() + [job(ARM_610), not_acquired]
+        self.assertEqual(release.check_ci_run(run(conclusion="failure"), jobs, True), [DIR_612])
+
     def test_arm64_job_that_ran_and_failed_blocks_the_release(self):
         jobs = green_jobs() + [job(ARM_610, conclusion="failure"), never_started(ARM_612)]
         with self.assertRaisesRegex(release.ReleaseInputError, "Qt 6.10.1"):
