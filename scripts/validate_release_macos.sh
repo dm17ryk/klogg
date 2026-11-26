@@ -41,6 +41,17 @@ validate_dmg() (
   validate_app_bundle "$app"
 )
 
+# Every macOS package must be present. Only during a hosted Apple Silicon runner
+# outage may "Make CI Release" leave the arm64 ones out (docs/qt-platforms.md).
+package_check=(macos-packages --root .)
+if [[ "${CILOGG_ALLOW_MISSING_MACOS_ARM64:-false}" == "true" ]]; then
+  package_check+=(--allow-missing-macos-arm64)
+fi
+missing="$(python3 "$SCRIPT_DIR/check_release_inputs.py" "${package_check[@]}")"
+if [[ -n "$missing" ]]; then
+  echo "Left out of this release: ${missing//$'\n'/, }"
+fi
+
 for dir in ./packages-macos-*; do
   [[ -d "$dir" ]] || continue
 

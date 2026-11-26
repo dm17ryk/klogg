@@ -14,12 +14,48 @@ on:
       ci-run-id:
         description: "Run ID of CI workflow"
         required: false
+      allow-missing-macos-arm64:
+        description: "Release without the macOS arm64 packages if their CI Build jobs never got a runner (needs ci-run-id; docs/qt-platforms.md)"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
 
 jobs:
+  check-ci-run:
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - name: Check the CI Build run
+      env:
+        GH_TOKEN: ${{ github.token }}
+        CI_RUN_ID: ${{ github.event.inputs.ci-run-id }}
+        ALLOW_MISSING_MACOS_ARM64: ${{ github.event.inputs.allow-missing-macos-arm64 }}
+      shell: bash
+      run: |
+        if [ -z "$CI_RUN_ID" ]; then
+          if [ "$ALLOW_MISSING_MACOS_ARM64" = "true" ]; then
+            echo "::error::allow-missing-macos-arm64 needs ci-run-id: the master CI Build run whose macOS arm64 jobs got no runner"
+            exit 1
+          fi
+          echo "Releasing the last successful CI Build run."
+          exit 0
+        fi
+        gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CI_RUN_ID" > "$RUNNER_TEMP/ci-run.json"
+        gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$CI_RUN_ID/jobs?per_page=100" --jq '.jobs[]' > "$RUNNER_TEMP/ci-jobs.json"
+        args=(ci-run --run "$RUNNER_TEMP/ci-run.json" --jobs "$RUNNER_TEMP/ci-jobs.json")
+        if [ "$ALLOW_MISSING_MACOS_ARM64" = "true" ]; then
+          args+=(--allow-missing-macos-arm64)
+        fi
+        python3 ./scripts/check_release_inputs.py "${args[@]}"
+
   validate-linux:
+    needs: check-ci-run
     runs-on: ubuntu-24.04
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -43,6 +79,7 @@ jobs:
       run: bash ./scripts/validate_release_linux.sh
 
   validate-windows:
+    needs: check-ci-run
     runs-on: windows-2022
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -66,7 +103,10 @@ jobs:
       run: ./scripts/validate_release_windows.ps1
 
   validate-macos:
-    runs-on: macos-26
+    needs: check-ci-run
+    # Validation only mounts DMGs and checks files, so it runs on the Intel host that
+    # kept allocating when the Apple Silicon labels did not (#193).
+    runs-on: macos-15-intel
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     - name: Download artifacts for last successful CI workflow
@@ -82,10 +122,13 @@ jobs:
         workflow: ci-build.yml
         run_id: ${{ github.event.inputs.ci-run-id }}
     - name: Validate macOS artifacts
+      env:
+        CILOGG_ALLOW_MISSING_MACOS_ARM64: ${{ github.event.inputs.allow-missing-macos-arm64 }}
       run: bash ./scripts/validate_release_macos.sh
 
   release:
     needs:
+      - check-ci-run
       - validate-linux
       - validate-windows
       - validate-macos
@@ -217,6 +260,7 @@ jobs:
       env:
         GH_TOKEN: ${{ env.CILOGG_GITHUB_TOKEN }}
         RELEASE_CHANNEL: ${{ github.event.inputs.channel }}
+        ALLOW_MISSING_MACOS_ARM64: ${{ github.event.inputs.allow-missing-macos-arm64 }}
       shell: bash
       run: |
         if [ "$RELEASE_CHANNEL" = "stable" ]; then
@@ -225,6 +269,13 @@ jobs:
         else
           tag="continuous-${CILOGG_VERSION}"
           flags=(--prerelease --generate-notes)
+        fi
+        if [ "$ALLOW_MISSING_MACOS_ARM64" = "true" ]; then
+          missing="$(python3 ./scripts/check_release_inputs.py macos-packages --root . --allow-missing-macos-arm64 | paste -sd ' ' -)"
+          if [ -n "$missing" ]; then
+            # Prepended to the generated notes.
+            flags+=(--notes "This release has no macOS Apple Silicon (arm64) packages: their CI Build jobs never got a GitHub-hosted runner. Missing: ${missing}.")
+          fi
         fi
           mapfile -d '' assets < <(
             find ./packages-* -maxdepth 1 -type f -print0
