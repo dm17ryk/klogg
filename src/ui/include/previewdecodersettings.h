@@ -21,11 +21,35 @@ struct PreviewDecoderPacks {
     // The packs' versions and file states: a new version whose Lua keeps its file names still
     // changes it, so sessions restart. Never sent to the worker.
     QString key;
+    // E16b: the name of each pack in `python` (pack ID -> name), for the places that show a
+    // pack's decoders. Never sent to the worker. A pack's name comes from its plugin.json, whose
+    // version and modification time are part of `key`, so comparing it here restarts no session
+    // that would not restart anyway.
+    QVariantMap pythonNames;
+    // E16b: what Python's parser found in the packs' modules (PreviewPackRegistry checks them
+    // when the packs change, PythonEntriesClient). For each checked pack in `python`, the IDs of
+    // its decoders (pack ID -> string list): the modules where `decode` may be callable after the
+    // top level; the others are helpers a pack lists so the worker copies them, or modules Python
+    // refuses. Why each other module is not a decoder (pack ID -> {module ID -> {reason, line,
+    // detail}}, reasons as message_decoder_python_entries.py gives them). Never sent to the
+    // worker, and no session restarts for them.
+    QVariantMap pythonEntries;
+    QVariantMap pythonNotes;
+    // Where that check is: "done", "checking", or why it failed for the packs not checked yet
+    // ("python_unavailable" when no Python interpreter was found, "timeout", ...).
+    QString pythonCheck = QStringLiteral( "done" );
 
-    bool operator==( const PreviewDecoderPacks& other ) const
+    // Whether the packs give sessions the same configuration (everything but the check).
+    bool sameSessions( const PreviewDecoderPacks& other ) const
     {
         return lua == other.lua && python == other.python && previewRoutes == other.previewRoutes
-               && protocolRoutes == other.protocolRoutes && key == other.key;
+               && protocolRoutes == other.protocolRoutes && key == other.key
+               && pythonNames == other.pythonNames;
+    }
+    bool operator==( const PreviewDecoderPacks& other ) const
+    {
+        return sameSessions( other ) && pythonEntries == other.pythonEntries
+               && pythonNotes == other.pythonNotes && pythonCheck == other.pythonCheck;
     }
 };
 
@@ -54,10 +78,16 @@ public:
     // user's routes, the packs' Lua under `packLua` and their Python modules under `packPython`.
     PreviewDecoderSnapshot snapshot() const;
     PreviewDecoderPacks packs() const;
-    // Replaces the pack contributions; a change discards the warm TShark sessions.
+    // Replaces the pack contributions; a change discards the warm TShark sessions (changed()). A
+    // change of the Python check's results alone restarts nothing (pythonChecked()).
     void setPacks( const PreviewDecoderPacks& packs );
+    // E16b: the name of the enabled pack whose Python decoder `decoder` ("<pack-id>/<decoder-id>")
+    // is, or an empty string when no enabled pack has that decoder.
+    QString pythonDecoderPack( const QString& decoder ) const;
 Q_SIGNALS:
     void changed();
+    // E16b: only the Python check's results in packs() changed.
+    void pythonChecked();
 
 private:
     PreviewDecoderSettings();

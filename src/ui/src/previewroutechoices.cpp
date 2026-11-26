@@ -243,13 +243,21 @@ Choices collect( const QStringList& userLua )
         for ( const auto& path : pack.toMap().value( "files" ).toStringList() )
             choices.lua.append( { path, luaProtoNamesInFile( path ) } );
     }
+    // Only the modules Python's check found a decode() in are decoders; the others are helpers
+    // the pack lists so the worker copies them (E16b).
     for ( const auto& pack : packs.python ) {
         const auto entry = pack.toMap();
+        const auto packId = entry.value( "id" ).toString();
+        const auto entries = packs.pythonEntries.value( packId ).toStringList();
         for ( const auto& decoder : entry.value( "decoders" ).toList() ) {
-            appendUnique( &choices.python, { PythonPrefix + entry.value( "id" ).toString() + '/'
-                                             + decoder.toMap().value( "id" ).toString() } );
+            const auto decoderId = decoder.toMap().value( "id" ).toString();
+            const auto target = PythonPrefix + packId + '/' + decoderId;
+            appendUnique( &choices.pythonModules, { target } );
+            if ( entries.contains( decoderId ) )
+                appendUnique( &choices.python, { target } );
         }
     }
+    choices.pythonPending = packs.pythonCheck != QLatin1String( "done" );
     LOG_DEBUG << "Preview route choices collected previews=" << choices.previews.size()
               << " lua_files=" << choices.lua.size() << " lua_names=" << choices.luaNames().size()
               << " python=" << choices.python.size();
@@ -340,7 +348,10 @@ void checkRoutes( const QVariantMap& routes, const QString& label, const Choices
         const auto field = label.arg( route.key() );
         if ( entry.contains( "python" ) ) {
             const auto target = entry.value( "python" ).toString();
-            if ( !choices.python.contains( PythonPrefix + target ) ) {
+            // A listed module waits for Python's check to tell whether it is a decoder.
+            const bool unchecked = choices.pythonPending
+                                   && choices.pythonModules.contains( PythonPrefix + target );
+            if ( !choices.python.contains( PythonPrefix + target ) && !unchecked ) {
                 warnings->append(
                     { field, target, {},
                       tr( "`python:%1`: no enabled pack has this decoder, so the route does "

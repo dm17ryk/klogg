@@ -46,6 +46,7 @@ add_executable(cilogg_tests
     previewroutechoices_test.cpp
     pythonruntime_test.cpp
     pythondecoder_test.cpp
+    packpython_test.cpp
     searchbarlayout_test.cpp
     serialcapturesettings_test.cpp
     streamsession_actions_test.cpp

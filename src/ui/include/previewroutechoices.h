@@ -34,8 +34,14 @@ struct Choices {
     QStringList assemblyProtocols;
     // The selected Lua files, then the enabled packs' Lua files, with what each declares.
     QVector<LuaFile> lua;
-    // `python:<pack-id>/<decoder-id>` for every Python decoder of the enabled packs.
+    // `python:<pack-id>/<decoder-id>` for every Python decoder of the enabled packs: the modules
+    // Python's check found a decode() in (E16b, PreviewDecoderPacks::pythonEntries).
     QStringList python;
+    // The same for every module the enabled packs list, helpers included.
+    QStringList pythonModules;
+    // Python's check of the packs' modules has not ended (or could not run): a route to a listed
+    // module is not reported.
+    bool pythonPending = false;
     // TShark's protocols, while `tsharkLoaded`.
     QStringList tshark;
     bool tsharkLoaded = false;

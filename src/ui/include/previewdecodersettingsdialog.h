@@ -26,8 +26,11 @@ protected:
 
 private:
     bool apply();
+    // A route table's tab, with its Add Python decoder button in `addPython` (E16b).
     QTableWidget* routeTable( QTabWidget* tabs, const QString& name, const QString& title,
-                              bool protocol );
+                              bool protocol, QPushButton** addPython );
+    // Adds a route row with empty cells (the encoding: the default one), or with `target`.
+    int addRouteRow( QTableWidget* table, bool protocol, const QString& target = {} );
     // The values a route cell offers (issue #180).
     QStringList cellChoices( const QTableWidget* table, int row, int column ) const;
     // Rereads the selected Lua files and the enabled packs, and refills the drop-downs.
@@ -46,6 +49,12 @@ private:
     // What the status says when OK stays open to show new warnings.
     QString heldOpenNote() const;
     void useDeclaredNames();
+    // E16b: the Add Python decoder menus list the enabled packs' decoders by pack name, and each
+    // route's target says which pack's decoder it is, or that no enabled pack has it.
+    void refreshPythonDecoders();
+    void describeTarget( QTableWidgetItem* item ) const;
+    QPushButton* previewAddPython_ = nullptr;
+    QPushButton* protocolAddPython_ = nullptr;
     QCheckBox* enabled_;
     QCheckBox* approval_;
     QLineEdit* tshark_;
@@ -65,7 +74,7 @@ private:
     QString tsharkKey_;
     QString tsharkFailure_;
     QPointer<QProcess> tsharkProcess_;
-    // The shown warnings: always those of the saved settings (checked on opening, on Apply and
-    // when a TShark list arrives).
+    // The shown warnings: always those of the saved settings (checked on opening, on Apply, when
+    // a TShark list arrives and when the packs or their Python check change).
     QVector<previewroutes::Warning> warnings_;
 };

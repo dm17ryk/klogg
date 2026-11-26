@@ -276,6 +276,24 @@ TEST_CASE( "Apply warns about dissectors nothing declares", "[previewroutes]" )
         CHECK( names.contains( "my_proto.lua" ) );
         CHECK( names.contains( "org.example.alpha/missing" ) );
     }
+    SECTION( "a helper module is no decoder, unless Python's check has not ended" )
+    {
+        choices.pythonModules = { "python:org.example.alpha/summary",
+                                  "python:org.example.alpha/helper" };
+        configuration[ "protocolRoutes" ] = QVariantMap{
+            { "EHCI", QVariantMap{ { "python", "org.example.alpha/helper" } } } };
+        const auto pythonNames = [ & ] {
+            QStringList names;
+            for ( const auto& warning : previewroutes::check( configuration, choices ) )
+                names << warning.name;
+            return names;
+        };
+        CHECK( pythonNames().contains( "org.example.alpha/helper" ) );
+        choices.pythonPending = true;
+        CHECK_FALSE( pythonNames().contains( "org.example.alpha/helper" ) );
+        // A module no enabled pack lists is reported all the same.
+        CHECK( pythonNames().contains( "org.example.alpha/missing" ) );
+    }
     SECTION( "nothing to report" )
     {
         CHECK( previewroutes::check( { { "defaultDissector", "my_proto" } }, choices ).isEmpty() );
@@ -312,11 +330,15 @@ TEST_CASE( "Decoder settings offer the known route values", "[previewroutes]" )
     PreviewDecoderPacks packs;
     packs.lua = { QVariantMap{ { "id", "org.example.alpha" },
                                { "files", QStringList{ packLua } } } };
-    packs.python = { QVariantMap{ { "id", "org.example.alpha" },
-                                  { "root", dir.path() },
-                                  { "decoders", QVariantList{ QVariantMap{
-                                                    { "id", "summary" },
-                                                    { "module", "summary.py" } } } } } };
+    // Two listed modules; Python's check (E16b) found decode() in `summary` only, `common` is a
+    // helper and is not offered.
+    packs.python = { QVariantMap{
+        { "id", "org.example.alpha" },
+        { "root", dir.path() },
+        { "decoders",
+          QVariantList{ QVariantMap{ { "id", "summary" }, { "module", "summary.py" } },
+                        QVariantMap{ { "id", "common" }, { "module", "common.py" } } } } } };
+    packs.pythonEntries = { { "org.example.alpha", QStringList{ "summary" } } };
     packs.key = "previewroutes-test";
     PreviewDecoderSettings::instance().setPacks( packs );
     REQUIRE( PreviewDecoderSettings::instance().setConfiguration(
@@ -342,6 +364,7 @@ TEST_CASE( "Decoder settings offer the known route values", "[previewroutes]" )
         const auto dissectors = items( editor( previews, 0, 1 ) );
         CHECK( dissectors.mid( 0, 3 )
                == QStringList{ "user_proto", "pack_proto", "python:org.example.alpha/summary" } );
+        CHECK_FALSE( dissectors.contains( "python:org.example.alpha/common" ) );
         CHECK( editor( previews, 0, 1 )->isEditable() );
         // The PDML protocol offers the row's dissector first, and no Python decoder.
         const auto pdml = items( editor( previews, 0, 2 ) );
