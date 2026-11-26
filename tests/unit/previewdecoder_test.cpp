@@ -639,7 +639,9 @@ TEST_CASE( "Native framed client rejects malformed output and recovers within bo
         { "depth", "worker_protocol_error" },    { "count", "worker_protocol_error" },
         { "surplus", "worker_protocol_error" },  { "large", "result_limit" },
         { "stderr", "diagnostic_limit" },        { "stall", "timeout" },
-        { "bad_limit", "worker_protocol_error" }, { "unnamed_limit", "worker_protocol_error" }
+        { "bad_limit", "worker_protocol_error" }, { "unnamed_limit", "worker_protocol_error" },
+        { "limit_reason", "worker_protocol_error" }, { "limit_needed", "worker_protocol_error" },
+        { "limit_rows", "worker_protocol_error" }
     };
     int counter = 0;
     const auto run = [ & ]( QObject* channel, int timeoutMs = 5000 ) {
@@ -773,6 +775,21 @@ TEST_CASE( "TShark results fit 2048 rows, take the request's result limit and na
     CHECK( PreviewService::limitText( result )
            == "1 of 769 rows: result limit 128 KiB, the whole result needs 262 KiB." );
     CHECK( PreviewService::tooltipHtml( result ).contains( "the whole result needs 262 KiB" ) );
+    // A tree cut at the row limit, through the host's check (review).
+    result = run( "limited_rows" );
+    REQUIRE( result.value( "available" ).toBool() );
+    CHECK( result.value( "fields" ).toList().size() == 2048 );
+    CHECK( PreviewService::limitText( result ) == "2048 of 2400 rows: the row limit is 2048." );
+    // A tree past the worker's PDML limits fails as a whole, and says which limit (review).
+    result = run( "pdml_items" );
+    CHECK( result.value( "reason" ) == "field_limit" );
+    CHECK( PreviewService::limitText( result )
+           == "TShark's tree passed the worker's limit of 8192 items." );
+    CHECK( PreviewService::limitText( { { "backend", "tshark_lua" },
+                                        { "state", "failed" },
+                                        { "reason", "output_limit" },
+                                        { "limited", true } } )
+           == "TShark's output passed the worker's limit of 4 MiB." );
     CHECK( PreviewService::limitText( { { "limited", true },
                                         { "limit", QVariantMap{ { "name", "rows" },
                                                                  { "maximum", 2048 },

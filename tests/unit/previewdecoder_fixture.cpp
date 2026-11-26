@@ -91,9 +91,11 @@ int main( int argc, char** argv )
         }
         if ( mode == "depth" )
             field[ "depth" ] = 33;
-        // "rows" fills the row limit (2048); "count" passes it (#183).
+        // "rows" fills the row limit (2048); "count" passes it (#183). The "*_rows" modes are a
+        // tree cut at it.
+        const bool rowCut = mode == "limited_rows" || mode == "limit_rows";
         QJsonArray fields;
-        for ( int i = 0; i < ( mode == "count" ? 2049 : mode == "rows" ? 2048 : 1 ); ++i )
+        for ( int i = 0; i < ( mode == "count" ? 2049 : mode == "rows" || rowCut ? 2048 : 1 ); ++i )
             fields.append( field );
         QJsonObject response{
             { "version", 1 },
@@ -125,18 +127,40 @@ int main( int argc, char** argv )
             response[ "scriptSha256" ] = QJsonArray{ "not-a-hash" };
         if ( mode == "hash_newline" )
             response[ "scriptSha256" ] = QJsonArray{ QString( 64, 'a' ) + "\n" };
-        // A result cut off at its byte limit names it (#183); "bad_limit" miscounts the rows and
-        // "unnamed_limit" names none.
-        if ( mode == "limited_bytes" || mode == "bad_limit" || mode == "unnamed_limit" ) {
+        // A result cut off at its byte limit names it (#183); "bad_limit" miscounts the rows,
+        // "unnamed_limit" names none, "limit_reason" gives the row limit's reason and
+        // "limit_needed" says the whole result fits.
+        if ( mode == "limited_bytes" || mode == "bad_limit" || mode == "unnamed_limit"
+             || mode == "limit_reason" || mode == "limit_needed" ) {
             response[ "complete" ] = false;
             response[ "limited" ] = true;
-            response[ "reason" ] = "response_limit";
+            response[ "reason" ] = mode == "limit_reason" ? "rendered_field_limit" : "response_limit";
             if ( mode != "unnamed_limit" )
-                response[ "limit" ] = QJsonObject{ { "name", "bytes" },
-                                                   { "maximum", 131072 },
-                                                   { "shownRows", mode == "bad_limit" ? 2 : 1 },
-                                                   { "totalRows", 769 },
-                                                   { "neededBytes", 268000 } };
+                response[ "limit" ]
+                    = QJsonObject{ { "name", "bytes" },
+                                   { "maximum", 131072 },
+                                   { "shownRows", mode == "bad_limit" ? 2 : 1 },
+                                   { "totalRows", 769 },
+                                   { "neededBytes", mode == "limit_needed" ? 131072 : 268000 } };
+        }
+        // A tree cut at the row limit; "limit_rows" claims the whole tree was shown.
+        if ( rowCut ) {
+            response[ "complete" ] = false;
+            response[ "limited" ] = true;
+            response[ "reason" ] = "rendered_field_limit";
+            response[ "limit" ] = QJsonObject{ { "name", "rows" },
+                                               { "maximum", 2048 },
+                                               { "shownRows", 2048 },
+                                               { "totalRows", mode == "limit_rows" ? 2048 : 2400 } };
+        }
+        // TShark's tree past the worker's PDML item limit fails as a whole.
+        if ( mode == "pdml_items" ) {
+            response[ "state" ] = "failed";
+            response[ "reason" ] = "field_limit";
+            response[ "available" ] = false;
+            response[ "complete" ] = false;
+            response[ "limited" ] = true;
+            response[ "fields" ] = QJsonArray{};
         }
         if ( mode == "reported_timeout" ) {
             response[ "state" ] = "failed";
