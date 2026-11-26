@@ -43,6 +43,7 @@ add_executable(cilogg_tests
     previewdecoder_test.cpp
     previewsource_test.cpp
     previewcommands_test.cpp
+    previewroutechoices_test.cpp
     pythonruntime_test.cpp
     pythondecoder_test.cpp
     searchbarlayout_test.cpp

@@ -48,8 +48,7 @@ bool isString( const QVariant& value )
 }
 bool named( const QString& value, bool empty = false )
 {
-    static const QRegularExpression pattern( "\\A[A-Za-z][A-Za-z0-9_.-]{0,127}\\z" );
-    return ( empty && value.isEmpty() ) || pattern.match( value ).hasMatch();
+    return ( empty && value.isEmpty() ) || PreviewDecoderSettings::isDissectorName( value );
 }
 bool encoding( const QString& value )
 {
@@ -173,6 +172,11 @@ PreviewDecoderSettings& PreviewDecoderSettings::instance()
 {
     static PreviewDecoderSettings settings;
     return settings;
+}
+bool PreviewDecoderSettings::isDissectorName( const QString& value )
+{
+    static const QRegularExpression pattern( "\\A[A-Za-z][A-Za-z0-9_.-]{0,127}\\z" );
+    return pattern.match( value ).hasMatch();
 }
 PreviewDecoderSettings::PreviewDecoderSettings()
     : watcher_( this )
