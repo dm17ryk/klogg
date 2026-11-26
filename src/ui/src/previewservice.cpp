@@ -827,6 +827,15 @@ void PreviewService::cancel( QProcess* process )
         state->stop( "cancelled" );
 }
 
+QString PreviewService::pythonDecoderLabel( const QVariantMap& result )
+{
+    if ( result.value( "backend" ) != "python_decoder" )
+        return {};
+    const auto decoder = result.value( "decoder" ).toString();
+    const auto pack = PreviewDecoderSettings::instance().pythonDecoderPack( decoder );
+    return pack.isEmpty() ? decoder : QStringLiteral( "%1 (%2)" ).arg( decoder, pack );
+}
+
 QString PreviewService::tooltipHtml( const QVariantMap& result )
 {
     const auto assembly = result.value( "assembly" ).toMap();
@@ -834,8 +843,7 @@ QString PreviewService::tooltipHtml( const QVariantMap& result )
     if ( result.value( "backend" ) == "tshark_lua" )
         html = "<b>TShark / Lua</b><br>";
     else if ( result.value( "backend" ) == "python_decoder" )
-        html = "<b>Python decoder</b> " + result.value( "decoder" ).toString().toHtmlEscaped()
-               + "<br>";
+        html = "<b>Python decoder</b> " + pythonDecoderLabel( result ).toHtmlEscaped() + "<br>";
     else if ( result.value( "backend" ) == "json_preview"
               && ( result.value( "available" ).toBool()
                    || ( !result.value( "reason" ).toString().isEmpty()
