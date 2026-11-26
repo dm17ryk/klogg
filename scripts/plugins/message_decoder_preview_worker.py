@@ -43,10 +43,13 @@ REQUEST_LIMIT = 256 * 1024
 RESPONSE_LIMIT = 1024 * 1024
 RESPONSE_LIMIT_MIN = 128 * 1024
 RESPONSE_LIMIT_MAX = 4 * 1024 * 1024
-# Rows of a result: as many as the PDML nodes the worker accepts.
+# Rows of a result: a tree with more is cut at this many rows and says so.
 FIELD_LIMIT = 2048
 PAYLOAD_LIMIT = 64 * 1024
 PDML_LIMIT = 1024 * 1024
+# The PDML nodes the worker reads, transport metadata included: room for a tree well past the row
+# limit, so that one is cut and named instead of failing (field_limit). PDML_LIMIT still bounds it.
+PDML_NODE_LIMIT = 8192
 # Lua in a session profile: the user's 8 scripts and the configuration packs' files together
 # (at most 8 per pack), 32 in total (docs/plugin-repositories.md 4.3).
 USER_LUA_LIMIT = 8
@@ -675,7 +678,9 @@ class PreviewWorker:
             self.header_written = True
         write_before(self.engine.process.stdin, record, deadline)
         data = self.engine.packet(deadline)
-        packets = normalize_pdml(data, output_limit=PDML_LIMIT, node_limit=2048, depth_limit=32)
+        packets = normalize_pdml(
+            data, output_limit=PDML_LIMIT, node_limit=PDML_NODE_LIMIT, depth_limit=32
+        )
         if len(packets) != 1:
             raise ProofError("invalid_pdml")
         if fields_named(packets, "_ws.lua.error") or any(

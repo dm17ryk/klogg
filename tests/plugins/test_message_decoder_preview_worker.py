@@ -511,6 +511,33 @@ class NativePreviewTests(unittest.TestCase):
             )
         )
 
+    def test_a_tree_past_the_row_limit_is_cut_at_2048_rows_and_says_so(self):
+        # Review of #192: the PDML node limit counted the transport nodes too, so a tree of
+        # 2048 rows failed (field_limit) before the row limit could cut it.
+        script = Path(self.temp.name) / "rows_probe.lua"
+        script.write_text(
+            'local p = Proto("cilogg_rows", "CILogg rows probe")\n'
+            'local item = ProtoField.uint8("cilogg_rows.item", "Item")\n'
+            "p.fields = { item }\n"
+            "function p.dissector(tvb, pinfo, tree)\n"
+            "    local root = tree:add(p, tvb())\n"
+            "    for index = 1, 2100 do root:add(item, tvb(0, 1)) end\n"
+            "    return tvb:len()\n"
+            "end\n",
+            encoding="utf-8",
+        )
+        self.profile.update(lua=[str(script)], dissector="cilogg_rows", protocol="cilogg_rows")
+        result = self.evaluate(payloadBase64=base64.b64encode(b"\x07").decode())
+        self.assertTrue(result["available"], result["reason"])
+        self.assertTrue(result["limited"])
+        self.assertEqual(result["reason"], "rendered_field_limit")
+        self.assertEqual(len(result["fields"]), worker.FIELD_LIMIT)
+        self.assertEqual(
+            result["limit"],
+            {"name": "rows", "maximum": worker.FIELD_LIMIT, "shownRows": worker.FIELD_LIMIT,
+             "totalRows": 2101},
+        )
+
     def test_large_map_tree_fits_whole_and_names_a_smaller_limit(self):
         # Issue #183 on a real engine: a 4 KiB message whose information map has 256 entries
         # (769 rows, past the former 512 rows and 128 KiB) fits the defaults whole.
