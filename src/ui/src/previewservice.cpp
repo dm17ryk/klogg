@@ -437,6 +437,13 @@ public:
             stopReason_ = "configuration_changed";
         if ( stopReason_.isEmpty() && result.value( "state" ) == "completed"
              && elapsed_.elapsed() >= deadlineMs_ ) {
+            // Automatic mode: an engine result after the deadline gives way to the JSON fallback,
+            // as an engine still running at it does (#182).
+            if ( external_ && externalBackend_ == TsharkBackend && fallsBack() ) {
+                client()->cancel( id_, "timeout" );
+                fallBack( "timeout" );
+                return;
+            }
             stopReason_ = "timeout";
             LOG_DEBUG << "Preview delivery deadline expired id=" << id_
                       << " elapsed_ms=" << elapsed_.elapsed() << " deadline_ms=" << deadlineMs_
@@ -589,6 +596,12 @@ public:
         selectedPreviewName_ = result.value( "previewName" ).toString();
         const int remaining = request_.timeoutMs - static_cast<int>( elapsed_.elapsed() );
         if ( remaining <= 0 ) {
+            // A TShark route whose carrier came after the deadline: Automatic shows JSON (#182).
+            if ( !python && fallsBack() ) {
+                fallbackCarrier_ = carrierName.toString();
+                fallBack( "timeout" );
+                return;
+            }
             finish( failure( "timeout" ) );
             return;
         }
@@ -607,8 +620,12 @@ public:
                 return;
             if ( !name.isEmpty() )
                 response[ "previewName" ] = name;
+            // A channel ended by a cancellation or a settings change (the client's own reset can
+            // run before this request's stop) is not a decoder failure.
+            static const QStringList stops{ "cancelled", "configuration_changed" };
             const bool failed = python ? response.value( "reason" ) == notDispatched
-                                       : response.value( "state" ) != "completed";
+                                       : response.value( "state" ) != "completed"
+                                             && !stops.contains( response.value( "reason" ).toString() );
             if ( guard->fallsBack() && failed ) {
                 guard->fallBack( response.value( "reason" ).toString() );
                 return;
@@ -646,10 +663,12 @@ public:
 
 private:
     // Whether a failure now still falls back to JSON: Automatic mode, once, and not after a stop
-    // (cancellation, a configuration change or the request's own deadline).
+    // (cancellation, a configuration change or the request's own deadline) or with settings that
+    // changed since the request started.
     bool fallsBack() const
     {
-        return request_.decoder == "auto" && !fallback_ && stopReason_.isEmpty() && !completed_;
+        return request_.decoder == "auto" && !fallback_ && stopReason_.isEmpty() && !completed_
+               && snapshot_.revision == PreviewDecoderSettings::instance().revision();
     }
     // Automatic mode's JSON fallback (#182): the JSON preview of the same carrier, in what is left
     // of the request's budget and at least FallbackGraceMs, so a failure at the deadline still
