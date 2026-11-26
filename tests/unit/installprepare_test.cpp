@@ -406,6 +406,32 @@ TEST_CASE( "An update interrupted while deleting old copies is completed, not un
     REQUIRE( movedAsideFiles( root ).empty() );
 }
 
+TEST_CASE( "A rollback after the cleanup started completes it instead", "[installprepare]" )
+{
+    QTemporaryDir temporary;
+    REQUIRE( temporary.isValid() );
+    const auto root = nativePath( temporary.path() );
+    writeText( root / "cilogg.exe", "old executable" );
+    writeText( root / "Qt6Core.dll", "old library" );
+    std::vector<std::string> lines;
+    REQUIRE( prepare::runPrepare( root, {}, recorder( lines ) ) == prepare::PreparedExitCode );
+    writeText( root / "cilogg.exe", "new executable" );
+    writeText( root / "Qt6Core.dll", "new library" );
+    // The cleanup was stopped after marking the manifest and deleting the old cilogg.exe.
+    {
+        std::ofstream marker( root / prepare::ManifestFileName, std::ios::binary | std::ios::app );
+        marker << "\n#finishing\n";
+    }
+    REQUIRE( fs::remove( root / "cilogg.exe.cilogg-old" ) );
+
+    REQUIRE( prepare::runRollback( root, recorder( lines ) )
+             == prepare::FinishedInsteadExitCode );
+    REQUIRE( readText( root / "cilogg.exe" ) == "new executable" );
+    REQUIRE( readText( root / "Qt6Core.dll" ) == "new library" );
+    REQUIRE( movedAsideFiles( root ).empty() );
+    REQUIRE_FALSE( fs::exists( root / prepare::ManifestFileName ) );
+}
+
 #ifdef Q_OS_WIN
 TEST_CASE( "Another program's DLL in use in the same folder does not block the installation",
            "[installprepare]" )
@@ -416,6 +442,7 @@ TEST_CASE( "Another program's DLL in use in the same folder does not block the i
     writeText( root / "cilogg.exe", "old executable" );
     writeText( root / "other.dll", "another program's library" );
     std::vector<std::string> lines;
+    // Held without sharing delete or write: it can be neither moved nor overwritten.
     ExclusiveHandle other( root / "other.dll" );
     REQUIRE( other.isOpen() );
 

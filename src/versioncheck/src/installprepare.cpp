@@ -601,6 +601,17 @@ std::vector<fs::path> readLeftInPlace( const fs::path& manifestPath )
     return left;
 }
 
+// A manifest that exists but cannot be read (security software holding it) must be kept, not
+// treated as empty.
+bool canRead( const fs::path& manifestPath, const Log& log )
+{
+    std::ifstream file( manifestPath, std::ios::binary );
+    if ( file.is_open() )
+        return true;
+    log( "Cannot read " + toUtf8( manifestPath ) + "; it is kept for the next attempt" );
+    return false;
+}
+
 bool hasMarker( const fs::path& manifestPath, const char* marker )
 {
     std::ifstream file( manifestPath, std::ios::binary );
@@ -934,8 +945,10 @@ PrepareResult moveAside( const fs::path& directory, const Log& log,
     for ( const auto& [ file, error ] : failed ) {
         // A top-level DLL may belong to another program in the same folder: leave it where it is.
         // If it is one of CILogg's, writing the new one fails and the installation is undone.
+        // Only one the installer could not overwrite either: a DLL it could write would be
+        // replaced without a copy to restore.
         if ( file.parent_path() == directory && lowerExtension( file ) == ".dll"
-             && error != OutsideError ) {
+             && error != OutsideError && isInUse( file ) ) {
             log( "Left in place (" + error + "): " + toUtf8( file ) );
             result.leftInPlace.push_back( file );
             continue;
@@ -1107,6 +1120,8 @@ int runPrepare( const fs::path& directory, const fs::path& report, const Log& lo
         // An earlier installation stopped (for example, it was killed). Stopped while copying,
         // it is undone: the previous version is put back. Stopped while deleting the old copies,
         // the new version is complete and the cleanup is finished.
+        if ( !canRead( manifestPath, log ) )
+            return RollbackIncompleteExitCode;
         const auto earlier = readManifest( directory, manifestPath, log );
         if ( hasMarker( manifestPath, FinishingMarker ) ) {
             log( "Finishing an interrupted update of " + std::to_string( earlier.size() )
@@ -1200,6 +1215,8 @@ int runFinish( const fs::path& directory, const Log& log )
         log( "No files were moved aside" );
         return PreparedExitCode;
     }
+    if ( !canRead( manifestPath, log ) )
+        return ManifestFailedExitCode;
     {
         // On a line of its own, also after a line an interrupted pass left unfinished. Without
         // it, a later recovery would undo this installation: nothing is cleaned up then.
@@ -1230,6 +1247,20 @@ int runRollback( const fs::path& directory, const Log& log )
     if ( !fs::exists( manifestPath, error ) ) {
         log( "No files were moved aside" );
         return PreparedExitCode;
+    }
+    if ( !canRead( manifestPath, log ) )
+        return RollbackIncompleteExitCode;
+    if ( hasMarker( manifestPath, FinishingMarker ) ) {
+        // The cleanup had started (its helper was stopped): some old copies may be gone, so the
+        // new version can no longer be undone. Complete the cleanup instead.
+        log( "The update's cleanup had started; completing it instead of undoing the update" );
+        const auto notPutBack
+            = finish( directory, readManifest( directory, manifestPath, log ), log );
+        if ( notPutBack.empty() )
+            fs::remove( manifestPath, error );
+        else
+            writeManifest( manifestPath, notPutBack, FinishingMarker );
+        return FinishedInsteadExitCode;
     }
     const auto left = rollback( directory, readManifest( directory, manifestPath, log ), log,
                                 hasMarker( manifestPath, PreparedMarker ),

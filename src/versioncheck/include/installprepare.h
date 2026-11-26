@@ -39,6 +39,9 @@ inline constexpr int ManifestFailedExitCode = 4;
 inline constexpr int FinishIncompleteExitCode = 5;
 // The helper stopped on an unexpected error; files may have been moved aside already.
 inline constexpr int UnexpectedErrorExitCode = 6;
+// Asked to roll back an installation whose cleanup had already started ("#finishing"): it was
+// completed instead, since its old copies may be gone already. The new version is installed.
+inline constexpr int FinishedInsteadExitCode = 7;
 
 struct ProcessInfo {
     unsigned long pid = 0;

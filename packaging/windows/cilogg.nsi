@@ -94,6 +94,8 @@ Var CiloggRestoreFailed
 ; $INSTDIR as a command-line argument: "C:\." for a drive root, whose trailing backslash would
 ; escape the closing quote.
 Var CiloggDir
+; 1 when a rollback found the update's cleanup already started and completed it instead.
+Var CiloggFinishedInstead
 
 Function CiloggWriteLog
     Exch $0
@@ -202,7 +204,11 @@ Function CiloggRollback
         nsExec::ExecToLog '"$PLUGINSDIR\cilogg_updater.exe" --installer-rollback "$CiloggDir" --log "$CiloggLog"'
         Pop $0
         StrCpy $CiloggPrepared 0
-        ${If} $0 != 0
+        ${If} $0 == 7
+            ; FinishedInsteadExitCode: the new version is installed.
+            StrCpy $CiloggFinishedInstead 1
+            ${CiloggLog} "The update's cleanup had started; it was completed instead of undone"
+        ${ElseIf} $0 != 0
             StrCpy $CiloggRestoreFailed 1
             ${CiloggLog} "Some previous files could not be restored (result $0); run setup again"
         ${EndIf}
@@ -348,14 +354,22 @@ Section "-CILogg executable" ciloggexe
     ${EndIf}
     nsExec::ExecToLog '"$PLUGINSDIR\cilogg_updater.exe" --installer-finish "$CiloggDir" --log "$CiloggLog"'
     Pop $0
-    ; Only 0 (done) and the helper's FinishIncompleteExitCode 5 come after the manifest was marked
-    ; as finishing; other results (it did not start, wrong arguments, or 4: the mark could not be
-    ; written) leave a manifest a later run would take for an interrupted copy. Undo it now.
+    ; 0 (done), 5 (FinishIncompleteExitCode) and 6 (an unexpected error after the mark) leave the
+    ; new version installed. Otherwise the helper did not start, got wrong arguments, could not
+    ; write the finishing mark (4), or was stopped. The rollback undoes the installation, unless
+    ; the cleanup had already started: then it completes it instead.
     ${If} $0 == "error"
     ${OrIf} $0 == 1
     ${OrIf} $0 == 4
         ${CiloggLog} "The update could not be completed (result $0)"
         Call CiloggRollback
+        ${If} $CiloggFinishedInstead == 1
+            StrCpy $0 0
+        ${EndIf}
+    ${EndIf}
+    ${If} $0 == "error"
+    ${OrIf} $0 == 1
+    ${OrIf} $0 == 4
         ${If} $CiloggRestoreFailed == 1
             SetErrorLevel 4
             Abort "CILogg could not be updated, and the previous version could not be fully restored. Run setup again."
