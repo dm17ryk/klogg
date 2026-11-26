@@ -440,7 +440,8 @@ class ProcessTests(unittest.TestCase):
         for stream in ("stdout", "stderr"):
             with self.subTest(stream=stream):
                 child = self.child(
-                    "import sys,time; sys." + stream + '.buffer.write(b"x"*2000000); time.sleep(60)'
+                    "import sys,time; sys." + stream
+                    + '.buffer.write(b"x"*%d); time.sleep(60)' % (worker.PDML_LIMIT + 65536)
                 )
                 with self.assertRaisesRegex(wire.ProofError, "output_limit"):
                     child.packet(time.monotonic() + 5)

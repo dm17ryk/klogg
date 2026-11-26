@@ -825,11 +825,18 @@ QString PreviewService::limitText( const QVariantMap& result )
         return QStringLiteral( "%1: the row limit is %2." )
             .arg( rows )
             .arg( limit.value( "maximum" ).toLongLong() );
-    if ( limit.value( "name" ) == "bytes" )
-        return QStringLiteral( "%1: result limit %2 KiB, the whole result needs %3 KiB." )
+    if ( limit.value( "name" ) == "bytes" ) {
+        // A tree past the row limit was cut at its rows first: the bytes are those rows' bytes.
+        const auto whole = limit.value( "totalRows" ).toLongLong() > TsharkPreviewClient::FieldLimit
+                               ? QStringLiteral( "the first %1 rows need" )
+                                     .arg( TsharkPreviewClient::FieldLimit )
+                               : QStringLiteral( "the whole result needs" );
+        return QStringLiteral( "%1: result limit %2 KiB, %3 %4 KiB." )
             .arg( rows )
             .arg( limit.value( "maximum" ).toLongLong() / 1024 )
+            .arg( whole )
             .arg( ( limit.value( "neededBytes" ).toLongLong() + 1023 ) / 1024 );
+    }
     return {};
 }
 

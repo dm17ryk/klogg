@@ -779,6 +779,13 @@ TEST_CASE( "TShark results fit 2048 rows, take the request's result limit and na
                                                                  { "totalRows", 2400 } } } } )
            == "2048 of 2400 rows: the row limit is 2048." );
     CHECK( PreviewService::limitText( {} ).isEmpty() );
+    // A tree past the row limit and then the byte limit: the bytes are the first rows' (review).
+    CHECK( PreviewService::limitText( { { "limit", QVariantMap{ { "name", "bytes" },
+                                                                 { "maximum", 131072 },
+                                                                 { "shownRows", 300 },
+                                                                 { "totalRows", 5000 },
+                                                                 { "neededBytes", 921600 } } } } )
+           == "300 of 5000 rows: result limit 128 KiB, the first 2048 rows need 900 KiB." );
     TsharkPreviewClient::instance().reset();
 }
 

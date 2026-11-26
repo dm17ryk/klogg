@@ -46,9 +46,10 @@ RESPONSE_LIMIT_MAX = 4 * 1024 * 1024
 # Rows of a result: a tree with more is cut at this many rows and says so.
 FIELD_LIMIT = 2048
 PAYLOAD_LIMIT = 64 * 1024
-PDML_LIMIT = 1024 * 1024
-# The PDML nodes the worker reads, transport metadata included: room for a tree well past the row
-# limit, so that one is cut and named instead of failing (field_limit). PDML_LIMIT still bounds it.
+# The PDML the worker reads from TShark, in bytes and nodes (transport metadata included): room
+# for a tree well past the row limit, so that one is cut and named instead of failing. A tree past
+# these still fails (output_limit, field_limit); Automatic mode then shows the JSON preview.
+PDML_LIMIT = 4 * 1024 * 1024
 PDML_NODE_LIMIT = 8192
 # Lua in a session profile: the user's 8 scripts and the configuration packs' files together
 # (at most 8 per pack), 32 in total (docs/plugin-repositories.md 4.3).
