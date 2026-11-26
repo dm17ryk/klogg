@@ -2,12 +2,15 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
+#include <cstring>
 #include <fstream>
 #include <iterator>
 #include <map>
 #include <set>
 #include <sstream>
 #include <system_error>
+#include <thread>
 
 #include "updatefiles.h"
 
@@ -31,6 +34,23 @@ using update_files::RenameResult;
 // Moved-aside copies of one file that may coexist: each update while an old instance still runs
 // adds one, and the next update deletes those no process uses any more.
 constexpr int MaxMovedAsideCopies = 99;
+// Security software can hold a freshly written file for a moment.
+constexpr int MoveAttempts = 5;
+constexpr auto MoveRetryDelay = std::chrono::milliseconds( 200 );
+
+// The folders cilogg.nsi installs below the installation folder; its uninstaller removes each as a
+// whole. Files in any other folder belong to someone else and are never touched.
+constexpr const char* OwnedFolders[] = { "generic",      "iconengines",    "imageformats",
+                                         "networkinformation", "platforms", "plugin-sdk",
+                                         "plugins",      "python_runtime", "sqldrivers",
+                                         "styles",       "tls",            "translations" };
+// The documents cilogg.nsi writes next to cilogg.exe (lower case).
+constexpr const char* OwnedDocuments[] = { "copying",       "documentation.html", "documentation.md",
+                                           "mcp.md",        "notice",             "plugin-sdk.md",
+                                           "readme.md" };
+
+constexpr char OutsideError[]
+    = "a folder on the way is a link or a junction, or the path is outside the installation folder";
 
 std::string lowerAscii( std::string text )
 {
@@ -233,71 +253,176 @@ ProcessInfo queryProcess( DWORD pid, const std::map<DWORD, ProcessEntry>& proces
     return info;
 }
 
-// Every file below `directory`; reparse points (links, junctions) are neither followed nor
-// listed, so an elevated installer never acts outside the installation folder.
-void collectFiles( const fs::path& directory, std::vector<fs::path>& files )
+// The files and folders directly in `directory`. Reparse points (links, junctions) are left out:
+// they are neither followed nor touched, so the elevated installer stays in the folder.
+struct Listing {
+    std::vector<fs::path> files;
+    std::vector<fs::path> folders;
+};
+
+Listing listDirectory( const fs::path& directory )
 {
+    Listing listing;
     WIN32_FIND_DATAW data{};
     const auto pattern = directory / L"*";
     const auto find = FindFirstFileExW( pattern.c_str(), FindExInfoBasic, &data,
                                         FindExSearchNameMatch, nullptr, FIND_FIRST_EX_LARGE_FETCH );
     if ( find == INVALID_HANDLE_VALUE )
-        return;
+        return listing;
     do {
         const std::wstring name = data.cFileName;
         if ( name == L"." || name == L".."
              || ( data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT ) )
             continue;
-        const auto path = directory / name;
         if ( data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY )
-            collectFiles( path, files );
+            listing.folders.push_back( directory / name );
         else
-            files.push_back( path );
+            listing.files.push_back( directory / name );
     } while ( FindNextFileW( find, &data ) );
     FindClose( find );
+    return listing;
 }
 
-// Deletes `file`, or, while a process still uses it, asks Windows to delete it at the next
-// restart (administrators only). True when it is gone now.
-bool deleteOrSchedule( const fs::path& file, const Log& log )
+// A folder that cannot be inspected counts as a link: nothing is done through it.
+bool isLinkOrJunction( const fs::path& path )
+{
+    const auto attributes = GetFileAttributesW( path.c_str() );
+    return attributes == INVALID_FILE_ATTRIBUTES
+           || ( attributes & FILE_ATTRIBUTE_REPARSE_POINT ) != 0;
+}
+
+// True when `file` is gone.
+bool removeFile( const fs::path& file, std::string* error )
 {
     if ( DeleteFileW( file.c_str() ) )
         return true;
-    const auto error = GetLastError();
-    if ( error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND )
+    const auto code = GetLastError();
+    if ( code == ERROR_FILE_NOT_FOUND || code == ERROR_PATH_NOT_FOUND )
         return true;
-    if ( MoveFileExW( file.c_str(), nullptr, MOVEFILE_DELAY_UNTIL_REBOOT ) )
-        log( "Still in use, deleted at the next restart or update: " + toUtf8( file ) );
-    else
-        log( "Still in use, deleted by the next update: " + toUtf8( file ) + " ("
-             + systemErrorText( GetLastError() ) + ")" );
+    if ( error )
+        *error = systemErrorText( code );
     return false;
 }
-#else
-void collectFiles( const fs::path& directory, std::vector<fs::path>& files )
+
+// Asks Windows to delete `file` at the next restart (administrators only).
+bool deleteAtRestart( const fs::path& file )
 {
+    return MoveFileExW( file.c_str(), nullptr, MOVEFILE_DELAY_UNTIL_REBOOT ) != FALSE;
+}
+#else
+struct Listing {
+    std::vector<fs::path> files;
+    std::vector<fs::path> folders;
+};
+
+Listing listDirectory( const fs::path& directory )
+{
+    Listing listing;
     std::error_code error;
-    fs::recursive_directory_iterator it( directory, fs::directory_options::skip_permission_denied,
-                                         error );
-    for ( ; !error && it != fs::recursive_directory_iterator(); it.increment( error ) ) {
-        if ( it->is_symlink( error ) ) {
-            it.disable_recursion_pending();
+    for ( fs::directory_iterator it( directory, error ), end; !error && it != end;
+          it.increment( error ) ) {
+        std::error_code status;
+        if ( it->is_symlink( status ) )
             continue;
-        }
-        if ( it->is_regular_file( error ) )
-            files.push_back( it->path() );
+        if ( it->is_directory( status ) )
+            listing.folders.push_back( it->path() );
+        else if ( it->is_regular_file( status ) )
+            listing.files.push_back( it->path() );
     }
+    return listing;
 }
 
-bool deleteOrSchedule( const fs::path& file, const Log& log )
+bool isLinkOrJunction( const fs::path& path )
 {
     std::error_code error;
-    fs::remove( file, error );
-    if ( error )
-        log( "Cannot delete " + toUtf8( file ) + ": " + error.message() );
-    return !error;
+    const auto status = fs::symlink_status( path, error );
+    return error || fs::is_symlink( status );
+}
+
+bool removeFile( const fs::path& file, std::string* error )
+{
+    std::error_code code;
+    fs::remove( file, code );
+    if ( code && error )
+        *error = code.message();
+    return !code;
+}
+
+bool deleteAtRestart( const fs::path& )
+{
+    return false;
 }
 #endif
+
+void collectFiles( const fs::path& directory, std::vector<fs::path>& files )
+{
+    const auto listing = listDirectory( directory );
+    files.insert( files.end(), listing.files.begin(), listing.files.end() );
+    for ( const auto& folder : listing.folders )
+        collectFiles( folder, files );
+}
+
+std::string lowerName( const fs::path& path )
+{
+    return lowerAscii( toUtf8( path.filename() ) );
+}
+
+std::string lowerExtension( const fs::path& path )
+{
+    return lowerAscii( toUtf8( path.extension() ) );
+}
+
+template <std::size_t Size>
+bool listed( const char* const ( &names )[ Size ], const std::string& name )
+{
+    return std::any_of( std::begin( names ), std::end( names ),
+                        [ &name ]( const char* entry ) { return name == entry; } );
+}
+
+bool isCiloggExecutable( const fs::path& file )
+{
+    return lowerName( file ).rfind( "cilogg", 0 ) == 0 && lowerExtension( file ) == ".exe";
+}
+
+// The top-level files cilogg.nsi installs: its executables, the uninstaller, the DLLs (its
+// uninstaller deletes every DLL there too) and its documents.
+bool isOwnedTopLevelFile( const fs::path& file )
+{
+    const auto extension = lowerExtension( file );
+    if ( extension == ".dll" )
+        return true;
+    if ( extension == ".exe" )
+        return isCiloggExecutable( file ) || lowerName( file ) == "uninstall.exe";
+    return listed( OwnedDocuments, lowerName( file ) );
+}
+
+// The files of the CILogg installation in `directory`: the top-level files cilogg.nsi installs,
+// the files earlier updates moved aside there, and everything in the folders it installs.
+std::vector<fs::path> installationFiles( const fs::path& directory )
+{
+    const auto top = listDirectory( directory );
+    std::vector<fs::path> files;
+    for ( const auto& file : top.files ) {
+        if ( isOwnedTopLevelFile( file ) || isMovedAside( file ) )
+            files.push_back( file );
+    }
+    for ( const auto& folder : top.folders ) {
+        if ( listed( OwnedFolders, lowerName( folder ) ) )
+            collectFiles( folder, files );
+    }
+    return files;
+}
+
+// Whether `directory` holds a CILogg installation, or what an interrupted update of one left. A
+// first installation into a folder holding anything else moves nothing there.
+bool holdsInstallation( const fs::path& directory )
+{
+    const auto manifest = lowerAscii( ManifestFileName );
+    const auto files = listDirectory( directory ).files;
+    return std::any_of( files.begin(), files.end(), [ &manifest ]( const fs::path& file ) {
+        return isCiloggExecutable( file ) || isMovedAside( file ) || lowerName( file ) == manifest;
+    } );
+}
 
 bool liesInsideDirectory( const fs::path& path, const fs::path& directory )
 {
@@ -311,8 +436,55 @@ bool liesInsideDirectory( const fs::path& path, const fs::path& directory )
 #endif
 }
 
+// True when `path` lies below `directory` and no folder between them is a link or a junction, so
+// renaming or deleting `path` stays inside the installation folder. Checked right before acting:
+// a folder could have been replaced since the files were listed.
+bool staysInside( const fs::path& path, const fs::path& directory )
+{
+    if ( !liesInsideDirectory( path, directory ) )
+        return false;
+    for ( auto folder = path.parent_path(); liesInsideDirectory( folder, directory );
+          folder = folder.parent_path() ) {
+        if ( isLinkOrJunction( folder ) )
+            return false;
+        if ( folder == folder.parent_path() )
+            break;
+    }
+    return true;
+}
+
+RenameResult renameInside( const fs::path& from, const fs::path& to, const fs::path& directory,
+                           std::string* error )
+{
+    if ( !staysInside( from, directory ) || !staysInside( to, directory ) ) {
+        if ( error )
+            *error = OutsideError;
+        return RenameResult::Failed;
+    }
+    return update_files::renameNoReplace( from, to, error );
+}
+
+// Deletes `file`, or, while a process still uses it, asks Windows to delete it at the next
+// restart and leaves it for the next update. True when it is gone now.
+bool deleteOrSchedule( const fs::path& file, const fs::path& directory, const Log& log )
+{
+    if ( !staysInside( file, directory ) ) {
+        log( "Not deleted (" + std::string( OutsideError ) + "): " + toUtf8( file ) );
+        return false;
+    }
+    std::string error;
+    if ( removeFile( file, &error ) )
+        return true;
+    if ( deleteAtRestart( file ) )
+        log( "Still in use, deleted at the next restart or update: " + toUtf8( file ) );
+    else
+        log( "Still in use, deleted by the next update: " + toUtf8( file ) + " (" + error + ")" );
+    return false;
+}
+
 // Renames `original` to the first free "<name>[.<n>].cilogg-old" next to it.
-RenameResult moveToFreeName( const fs::path& original, fs::path* movedTo, std::string* error )
+RenameResult moveToFreeName( const fs::path& original, const fs::path& directory, fs::path* movedTo,
+                             std::string* error )
 {
     for ( int copy = 1; copy <= MaxMovedAsideCopies; ++copy ) {
         auto name = original.filename();
@@ -320,7 +492,7 @@ RenameResult moveToFreeName( const fs::path& original, fs::path* movedTo, std::s
             name += "." + std::to_string( copy );
         name += MovedAsideSuffix;
         const auto target = original.parent_path() / name;
-        const auto result = update_files::renameNoReplace( original, target, error );
+        const auto result = renameInside( original, target, directory, error );
         if ( result == RenameResult::DestinationExists )
             continue;
         if ( result == RenameResult::Renamed )
@@ -349,6 +521,13 @@ std::vector<MovedFile> readManifest( const fs::path& directory, const fs::path& 
         trusted.push_back( moved );
     }
     return trusted;
+}
+
+void writeManifest( const fs::path& path, const std::vector<MovedFile>& entries )
+{
+    std::ofstream file( path, std::ios::binary | std::ios::trunc );
+    for ( const auto& entry : entries )
+        file << formatManifestLine( entry ) << "\n";
 }
 
 void writeReport( const fs::path& report, const std::vector<fs::path>& blocked,
@@ -549,24 +728,55 @@ bool isInUse( const fs::path& file )
 
 std::size_t removeMovedAside( const fs::path& directory, const Log& log )
 {
-    std::vector<fs::path> files;
-    collectFiles( directory, files );
     std::size_t removed = 0;
+    std::size_t restored = 0;
     std::size_t remaining = 0;
-    for ( const auto& file : files ) {
+    const auto suffixLength = std::strlen( MovedAsideSuffix );
+    for ( const auto& file : installationFiles( directory ) ) {
         if ( !isMovedAside( file ) )
             continue;
+        const auto fileName = toUtf8( file.filename() );
+        const auto stem = fileName.substr( 0, fileName.size() - suffixLength );
+        const auto dot = stem.find_last_of( '.' );
+        const bool counted = dot != std::string::npos && dot + 1 < stem.size()
+                             && std::all_of( stem.begin() + static_cast<std::ptrdiff_t>( dot + 1 ),
+                                             stem.end(), []( char character ) {
+                                                 return std::isdigit(
+                                                            static_cast<unsigned char>( character ) )
+                                                        != 0;
+                                             } );
+        const auto original = file.parent_path() / fromUtf8( stem );
         std::error_code error;
-        if ( fs::remove( file, error ) ) {
+        const bool replaced
+            = fs::exists( original, error )
+              || ( counted
+                   && fs::exists( file.parent_path() / fromUtf8( stem.substr( 0, dot ) ), error ) );
+        if ( !replaced ) {
+            // The only copy of a file an update could not put back: never delete it.
+            std::string renameError;
+            if ( !counted
+                 && renameInside( file, original, directory, &renameError )
+                        == RenameResult::Renamed ) {
+                ++restored;
+                log( "Put back " + toUtf8( original ) );
+            }
+            else {
+                ++remaining;
+                log( "Kept " + toUtf8( file ) + ": its original is missing"
+                     + ( renameError.empty() ? std::string{} : " (" + renameError + ")" ) );
+            }
+            continue;
+        }
+        std::string deleteError;
+        if ( staysInside( file, directory ) && removeFile( file, &deleteError ) )
             ++removed;
-        }
-        else if ( error ) {
+        else
             ++remaining;
-        }
     }
-    if ( removed > 0 || remaining > 0 )
+    if ( removed > 0 || restored > 0 || remaining > 0 )
         log( "Files moved aside by earlier updates: " + std::to_string( removed ) + " deleted, "
-             + std::to_string( remaining ) + " still in use" );
+             + std::to_string( restored ) + " put back, " + std::to_string( remaining )
+             + " kept" );
     return remaining;
 }
 
@@ -574,15 +784,17 @@ PrepareResult moveAside( const fs::path& directory, const Log& log,
                          const std::function<void( const MovedFile& )>& onMoved )
 {
     PrepareResult result;
-    std::vector<fs::path> files;
-    collectFiles( directory, files );
+    if ( !holdsInstallation( directory ) ) {
+        log( "No CILogg installation in " + toUtf8( directory ) + "; nothing is moved aside" );
+        return result;
+    }
     std::vector<fs::path> executables;
     std::vector<fs::path> libraries;
     std::vector<fs::path> others;
-    for ( const auto& file : files ) {
-        if ( isMovedAside( file ) || file.filename() == fs::path( ManifestFileName ) )
+    for ( const auto& file : installationFiles( directory ) ) {
+        if ( isMovedAside( file ) )
             continue;
-        if ( lowerAscii( toUtf8( file.extension() ) ) == ".exe" )
+        if ( lowerExtension( file ) == ".exe" )
             executables.push_back( file );
         else if ( isExecutableImage( file ) )
             libraries.push_back( file );
@@ -596,7 +808,14 @@ PrepareResult moveAside( const fs::path& directory, const Log& log,
     for ( const auto& file : ordered ) {
         fs::path movedTo;
         std::string error;
-        const auto status = moveToFreeName( file, &movedTo, &error );
+        auto status = RenameResult::Failed;
+        for ( int attempt = 1; attempt <= MoveAttempts; ++attempt ) {
+            status = moveToFreeName( file, directory, &movedTo, &error );
+            if ( status != RenameResult::Failed || error == OutsideError
+                 || attempt == MoveAttempts )
+                break;
+            std::this_thread::sleep_for( MoveRetryDelay );
+        }
         if ( status == RenameResult::Renamed ) {
             result.moved.push_back( { file, movedTo } );
             if ( onMoved )
@@ -611,15 +830,19 @@ PrepareResult moveAside( const fs::path& directory, const Log& log,
     return result;
 }
 
-void finish( const std::vector<MovedFile>& moved, const Log& log )
+std::vector<MovedFile> finish( const fs::path& directory, const std::vector<MovedFile>& moved,
+                               const Log& log )
 {
+    std::vector<MovedFile> notPutBack;
     std::size_t deleted = 0;
     std::size_t kept = 0;
     std::size_t restored = 0;
     for ( const auto& file : moved ) {
         std::error_code error;
+        if ( !fs::exists( file.movedTo, error ) )
+            continue; // handled by an earlier pass
         if ( fs::exists( file.original, error ) ) {
-            if ( deleteOrSchedule( file.movedTo, log ) )
+            if ( deleteOrSchedule( file.movedTo, directory, log ) )
                 ++deleted;
             else
                 ++kept;
@@ -628,38 +851,50 @@ void finish( const std::vector<MovedFile>& moved, const Log& log )
         // The installation did not ship this file (an optional component, or one a newer
         // version no longer has): keep the previous one, as an in-place copy would have.
         std::string renameError;
-        if ( update_files::renameNoReplace( file.movedTo, file.original, &renameError )
+        if ( renameInside( file.movedTo, file.original, directory, &renameError )
              == RenameResult::Renamed ) {
             ++restored;
             log( "Not replaced, kept the previous file: " + toUtf8( file.original ) );
         }
         else {
             log( "Cannot put back " + toUtf8( file.original ) + ": " + renameError );
+            notPutBack.push_back( file );
         }
     }
     log( "Replaced files: " + std::to_string( deleted ) + " old copies deleted, "
          + std::to_string( kept ) + " still in use, " + std::to_string( restored )
-         + " not replaced and kept" );
+         + " not replaced and kept, " + std::to_string( notPutBack.size() )
+         + " not put back" );
+    return notPutBack;
 }
 
-bool rollback( const std::vector<MovedFile>& moved, const Log& log )
+bool rollback( const fs::path& directory, const std::vector<MovedFile>& moved, const Log& log )
 {
     bool complete = true;
     for ( auto file = moved.rbegin(); file != moved.rend(); ++file ) {
         std::error_code error;
+        if ( !fs::exists( file->movedTo, error ) ) {
+            // Restored by an earlier pass, unless the original is gone too.
+            if ( !fs::exists( file->original, error ) ) {
+                log( "Lost: " + toUtf8( file->original ) );
+                complete = false;
+            }
+            continue;
+        }
         if ( fs::exists( file->original, error ) ) {
             // A new file was (partly) installed in its place: move it aside as well.
             fs::path newCopy;
             std::string moveError;
-            if ( moveToFreeName( file->original, &newCopy, &moveError ) != RenameResult::Renamed ) {
+            if ( moveToFreeName( file->original, directory, &newCopy, &moveError )
+                 != RenameResult::Renamed ) {
                 log( "Cannot remove the new " + toUtf8( file->original ) + ": " + moveError );
                 complete = false;
                 continue;
             }
-            deleteOrSchedule( newCopy, log );
+            deleteOrSchedule( newCopy, directory, log );
         }
         std::string renameError;
-        if ( update_files::renameNoReplace( file->movedTo, file->original, &renameError )
+        if ( renameInside( file->movedTo, file->original, directory, &renameError )
              != RenameResult::Renamed ) {
             log( "Cannot restore " + toUtf8( file->original ) + ": " + renameError );
             complete = false;
@@ -681,11 +916,20 @@ int runPrepare( const fs::path& directory, const fs::path& report, const Log& lo
     }
     const auto manifestPath = directory / ManifestFileName;
     if ( fs::exists( manifestPath, error ) ) {
-        // An earlier installation stopped between moving files aside and finishing.
+        // An earlier installation stopped before it finished or restored the previous files
+        // (for example, it was killed): put the previous version back first.
         const auto earlier = readManifest( directory, manifestPath, log );
-        log( "Completing an interrupted update of " + std::to_string( earlier.size() ) + " files" );
-        finish( earlier, log );
+        log( "Restoring " + std::to_string( earlier.size() )
+             + " files an interrupted update moved aside" );
+        if ( !rollback( directory, earlier, log ) ) {
+            log( "Kept " + toUtf8( manifestPath ) + "; run setup again" );
+            return RollbackIncompleteExitCode;
+        }
         fs::remove( manifestPath, error );
+    }
+    if ( !holdsInstallation( directory ) ) {
+        log( "No CILogg installation in " + toUtf8( directory ) + "; nothing is moved aside" );
+        return PreparedExitCode;
     }
     removeMovedAside( directory, log );
     for ( const auto& process : processesRunningFrom( directory ) )
@@ -718,13 +962,14 @@ int runPrepare( const fs::path& directory, const fs::path& report, const Log& lo
     else {
         log( "Cannot record the moved files in " + toUtf8( manifestPath ) );
     }
-    const bool restored = rollback( result.moved, log );
+    const bool restored = rollback( directory, result.moved, log );
     manifest.close();
-    if ( restored )
-        fs::remove( manifestPath, error );
-    else
-        log( "Kept " + toUtf8( manifestPath ) + "; the next update completes it" );
     writeReport( report, result.blocked, blockers, log );
+    if ( !restored ) {
+        log( "Kept " + toUtf8( manifestPath ) + "; run setup again" );
+        return RollbackIncompleteExitCode;
+    }
+    fs::remove( manifestPath, error );
     return result.blocked.empty() ? ManifestFailedExitCode : BlockedExitCode;
 }
 
@@ -736,9 +981,15 @@ int runFinish( const fs::path& directory, const Log& log )
         log( "No files were moved aside" );
         return PreparedExitCode;
     }
-    finish( readManifest( directory, manifestPath, log ), log );
-    fs::remove( manifestPath, error );
-    return PreparedExitCode;
+    const auto notPutBack = finish( directory, readManifest( directory, manifestPath, log ), log );
+    if ( notPutBack.empty() ) {
+        fs::remove( manifestPath, error );
+        return PreparedExitCode;
+    }
+    // Only what still has to be put back stays recorded: the next update restores it first.
+    writeManifest( manifestPath, notPutBack );
+    log( "Kept " + toUtf8( manifestPath ) + "; the next update puts these files back" );
+    return FinishIncompleteExitCode;
 }
 
 int runRollback( const fs::path& directory, const Log& log )
@@ -749,8 +1000,8 @@ int runRollback( const fs::path& directory, const Log& log )
         log( "No files were moved aside" );
         return PreparedExitCode;
     }
-    if ( !rollback( readManifest( directory, manifestPath, log ), log ) ) {
-        log( "Kept " + toUtf8( manifestPath ) + "; the next update completes it" );
+    if ( !rollback( directory, readManifest( directory, manifestPath, log ), log ) ) {
+        log( "Kept " + toUtf8( manifestPath ) + "; run setup again" );
         return RollbackIncompleteExitCode;
     }
     fs::remove( manifestPath, error );

@@ -39,9 +39,12 @@ then run setup from that binary: the registration uses its absolute path.
 Updating CILogg on Windows never closes running MCP servers. The installer moves
 the files they use aside (`*.cilogg-old`, deleted once no process uses them) and
 installs the new version next to them, so each server keeps the version it started
-with until its client restarts it. Processes started from other folders are never
-touched. If another program keeps a CILogg file open, the update stops before
-replacing anything, and the next CILogg start names that program and its parent.
+with until its client restarts it. Such a server may still load Qt plugins or Python
+modules later, which then come from the new version: restart it from its client
+after an update. Processes started from other folders are never touched. If another
+program keeps a CILogg file open, the update stops before replacing anything, and
+the next CILogg start names that program and its parent. The installer writes
+`cilogg-installer.log` into the installation folder.
 
 ## Any MCP client
 

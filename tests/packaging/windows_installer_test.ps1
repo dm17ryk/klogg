@@ -152,16 +152,21 @@ function Build-Installer {
     return $outFile
 }
 
-function Invoke-Installer([string]$setup, [string]$name) {
-    $log = Join-Path $workDirectory "$name-installer.log"
-    $report = Join-Path $workDirectory "$name-report.txt"
+function Invoke-Installer([string]$setup, [string]$name, [string]$directory = $installDirectory) {
     # The arguments cilogg_updater passes; /D= comes last and unquoted.
-    $arguments = "/S /CILOGGLOG=`"$log`" /CILOGGREPORT=`"$report`" /D=$installDirectory"
+    $arguments = "/S /D=$directory"
     $started = [DateTime]::UtcNow
     $process = Start-Process -FilePath $setup -ArgumentList $arguments -PassThru -WindowStyle Hidden
     if (!$process.WaitForExit(900000)) { throw "$name installer timed out" }
     $process.Refresh()
     $seconds = [int]([DateTime]::UtcNow - $started).TotalSeconds
+    # The installer writes its log and report into the installation folder; keep a copy per run.
+    $log = Join-Path $workDirectory "$name-installer.log"
+    $report = Join-Path $workDirectory "$name-report.txt"
+    foreach ($pair in @(@('cilogg-installer.log', $log), @('cilogg-installer-report.txt', $report))) {
+        $source = Join-Path $directory $pair[0]
+        if (Test-Path -LiteralPath $source) { Copy-Item -LiteralPath $source -Destination $pair[1] -Force }
+    }
     Write-Host "$name installer exit $($process.ExitCode) after $seconds s; log $log"
     return [pscustomobject]@{
         ExitCode = $process.ExitCode
@@ -196,11 +201,15 @@ try {
     if ((Get-FileHash -LiteralPath $installedExe).Hash -ne $expectedHash) { throw 'First installation wrote a different cilogg.exe' }
     $results.Add([pscustomobject]@{ case = 'first-install'; exitCode = $first.ExitCode })
 
-    # 2. Update while MCP servers run from the folder and keep being restarted, and while a
-    #    cilogg.exe from another folder runs.
+    # 2. Update while MCP servers run from the folder and keep being restarted, while a
+    #    cilogg.exe from another folder runs, and while another program installed into the same
+    #    folder runs.
     $otherExe = Join-Path $otherDirectory 'cilogg.exe'
     Copy-Item -LiteralPath $helperExe -Destination $otherExe
     $other = Start-Owned $otherExe 'sleep'
+    $foreignExe = Join-Path $installDirectory 'tool.exe'
+    Copy-Item -LiteralPath $helperExe -Destination $foreignExe
+    $foreign = Start-Owned $foreignExe 'sleep'
     $stable = @()
     for ($index = 0; $index -lt $StableServers; $index++) {
         $stable += Start-Owned $installedExe 'mcp serve' -KeepInputOpen
@@ -214,6 +223,10 @@ try {
     if ($update.ExitCode -ne 0) { throw "Update failed with exit $($update.ExitCode)`n$($update.Log)`n$($update.Report)" }
     Assert-Running $stable 'An MCP server started before the update'
     Assert-Running @($other, $supervisor) 'A process outside the installation folder'
+    Assert-Running @($foreign) 'Another program in the installation folder'
+    if (!(Test-Path -LiteralPath $foreignExe) -or (Test-Path -LiteralPath "$foreignExe.cilogg-old")) {
+        throw "The installer moved another program's file"
+    }
     if ((Get-FileHash -LiteralPath $installedExe).Hash -ne $expectedHash) { throw 'The update did not install cilogg.exe' }
     # The servers kept running from the files moved aside, which wait until no process uses them.
     if (@(Get-MovedAside).Count -eq 0) { throw 'No file in use was moved aside' }
@@ -245,7 +258,23 @@ try {
     Assert-Running $stable 'An MCP server'
     $results.Add([pscustomobject]@{ case = 'blocked-by-held-file'; exitCode = $blocked.ExitCode })
 
-    # 4. Once the old servers exit, the next update deletes what was moved aside.
+    # 4. A new file that cannot be written (a folder in its place): the previous version is put
+    #    back before setup ends.
+    $noticePath = Join-Path $installDirectory 'NOTICE'
+    Remove-Item -LiteralPath $noticePath -Force
+    New-Item -ItemType Directory -Path $noticePath | Out-Null
+    $copyFailed = Invoke-Installer $setup 'copy-failed'
+    Remove-Item -LiteralPath $noticePath -Force
+    if ($copyFailed.ExitCode -ne 3) { throw "A failed copy should end with exit 3, got $($copyFailed.ExitCode)`n$($copyFailed.Log)" }
+    if (!(Test-Path -LiteralPath $installedExe) -or (Get-FileHash -LiteralPath $installedExe).Hash -ne $hashBefore) {
+        throw "A failed copy did not restore cilogg.exe`n$($copyFailed.Log)"
+    }
+    if (Test-Path -LiteralPath (Join-Path $installDirectory 'cilogg-update-moves.txt')) { throw 'A failed copy left its manifest' }
+    if (!$copyFailed.Log.Contains('Restored ')) { throw "The installer log does not show the restore`n$($copyFailed.Log)" }
+    Assert-Running $stable 'An MCP server'
+    $results.Add([pscustomobject]@{ case = 'copy-failed-restored'; exitCode = $copyFailed.ExitCode })
+
+    # 5. Once the old servers exit, the next update deletes what was moved aside.
     New-Item -ItemType File -Path $stopFile -Force | Out-Null
     if (!$supervisor.WaitForExit(30000)) { throw 'The supervisor did not stop' }
     foreach ($process in $stable) { $process.Kill(); $null = $process.WaitForExit(10000) }
@@ -254,6 +283,23 @@ try {
     if (@(Get-MovedAside).Count -ne 0) { throw "Files moved aside were not deleted: $(@(Get-MovedAside).FullName -join ', ')" }
     Assert-Running @($other) 'A process outside the installation folder'
     $results.Add([pscustomobject]@{ case = 'cleanup-after-exit'; exitCode = $again.ExitCode })
+
+    # 6. A first installation into a folder another program uses moves none of its files.
+    $sharedDirectory = Join-Path $workDirectory 'Shared tools'
+    New-Item -ItemType Directory -Path (Join-Path $sharedDirectory 'plugins') -Force | Out-Null
+    $sharedExe = Join-Path $sharedDirectory 'tool.exe'
+    Copy-Item -LiteralPath $helperExe -Destination $sharedExe
+    $sharedLibrary = Join-Path $sharedDirectory 'plugins\tool-plugin.dll'
+    Set-Content -LiteralPath $sharedLibrary -Value 'another program' -Encoding ascii
+    $shared = Start-Owned $sharedExe 'sleep'
+    $sharedInstall = Invoke-Installer $setup 'shared-folder' $sharedDirectory
+    if ($sharedInstall.ExitCode -ne 0) { throw "Installing into a shared folder failed with exit $($sharedInstall.ExitCode)`n$($sharedInstall.Log)" }
+    Assert-Running @($shared) 'Another program in the shared folder'
+    if ((Get-Content -LiteralPath $sharedLibrary -Raw).Trim() -ne 'another program') { throw "The installer changed another program's file" }
+    if (@(Get-ChildItem -LiteralPath $sharedDirectory -Recurse -File -Filter '*.cilogg-old').Count -ne 0) {
+        throw 'A first installation moved files aside'
+    }
+    $results.Add([pscustomobject]@{ case = 'first-install-into-shared-folder'; exitCode = $sharedInstall.ExitCode })
 
     foreach ($result in $results) { Write-Output "PASS: $($result.case) $($result | ConvertTo-Json -Compress)" }
 } finally {

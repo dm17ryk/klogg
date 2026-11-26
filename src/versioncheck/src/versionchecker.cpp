@@ -1329,9 +1329,18 @@ QString VersionChecker::describeInstallResult( int code, const QString& phase )
             return tr( "The installer completed, but the new version did not start." );
         case 1:
             return tr( "The installer was cancelled." );
-        case 2:
+        case protocol::InstallerFilesInUseExitCode:
             return tr( "The installer stopped before replacing any files, for example because "
                        "files in the CILogg folder were in use and could not be replaced." );
+        case protocol::InstallerCopyFailedExitCode:
+            return tr( "The installer could not write the new files, so it restored the "
+                       "previous version." );
+        case protocol::InstallerRestoreIncompleteExitCode:
+            return tr( "The installer could not write the new files, and it could not restore "
+                       "every file of the previous version. Run the installer again." );
+        case protocol::InstallerPrepareFailedExitCode:
+            return tr( "The installer could not prepare the CILogg folder and stopped before "
+                       "replacing any files." );
         default:
             return tr( "The installer failed with exit code %1." ).arg( code );
         }

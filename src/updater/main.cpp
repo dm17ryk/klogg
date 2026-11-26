@@ -287,14 +287,11 @@ int runElevated( const fs::path& executable, const std::wstring& parameters )
     }
 }
 
-fs::path installerLogPath( const Arguments& args )
+// The installer writes its log and report into the installation folder; the log is copied here,
+// next to the helper's own log.
+fs::path installerLogCopyPath( const Arguments& args )
 {
     return args.log.parent_path() / cilogg::update_protocol::InstallerLogFileName;
-}
-
-fs::path installerReportPath( const Arguments& args )
-{
-    return args.log.parent_path() / cilogg::update_protocol::InstallerReportFileName;
 }
 
 // The installer moves the files of running instances aside instead of closing them, so these
@@ -308,11 +305,30 @@ void logRunningInstances( const fs::path& installDir )
         log( "  " + cilogg::install_prepare::describeProcess( process ) );
 }
 
-// After a failed installer: keeps the processes its report names for install-result.txt.
-void collectInstallerReport( const Arguments& args )
+// Copies the installer's log next to the helper log, so both are found in one place.
+void copyInstallerLog( const Arguments& args, const fs::path& installDir )
 {
-    resultInstallerLog = installerLogPath( args ).u8string();
-    std::ifstream report( installerReportPath( args ), std::ios::binary );
+    const auto source = installDir / cilogg::update_protocol::InstallerLogFileName;
+    std::error_code error;
+    if ( !fs::is_regular_file( source, error ) ) {
+        log( "The installer wrote no log in " + installDir.u8string() );
+        return;
+    }
+    fs::copy_file( source, installerLogCopyPath( args ), fs::copy_options::overwrite_existing,
+                   error );
+    if ( error ) {
+        log( "Could not copy the installer log: " + error.message() );
+        return;
+    }
+    resultInstallerLog = installerLogCopyPath( args ).u8string();
+    log( "Installer log: " + resultInstallerLog );
+}
+
+// After a failed installer: keeps the processes its report names for install-result.txt.
+void collectInstallerReport( const fs::path& installDir )
+{
+    std::ifstream report( installDir / cilogg::update_protocol::InstallerReportFileName,
+                          std::ios::binary );
     const auto blockerPrefix = std::string( cilogg::update_protocol::BlockerKey ) + "=";
     std::string line;
     while ( std::getline( report, line ) ) {
@@ -610,18 +626,15 @@ int installSystemPackage( const Arguments& args )
     namespace protocol = cilogg::update_protocol;
     const auto installDir = args.current.parent_path();
     logRunningInstances( installDir );
-    std::error_code ignored;
-    fs::remove( installerReportPath( args ), ignored );
     // NSIS requires /D to be last and unquoted, even when the path contains spaces.
-    const auto parameters = L"/S " + std::wstring( protocol::InstallerLogOptionWide )
-                            + quote( installerLogPath( args ) ) + L" "
-                            + protocol::InstallerReportOptionWide
-                            + quote( installerReportPath( args ) ) + L" /D=" + installDir.wstring();
-    log( "Launching NSIS setup with visible UAC; install directory=" + installDir.u8string()
-         + "; installer log=" + installerLogPath( args ).u8string() );
+    const auto parameters = L"/S /D=" + installDir.wstring();
+    log( "Launching NSIS setup with visible UAC; install directory=" + installDir.u8string() );
     const auto code = runElevated( args.staged, parameters );
-    if ( code != 0 && resultPhase == protocol::InstallerPhase )
-        collectInstallerReport( args );
+    if ( resultPhase == protocol::InstallerPhase ) {
+        copyInstallerLog( args, installDir );
+        if ( code != 0 )
+            collectInstallerReport( installDir );
+    }
     return code;
 #else
     if ( args.mode != "deb" && args.mode != "rpm" ) {
@@ -686,7 +699,12 @@ int runTransaction( const Arguments& args, bool* relaunchPrevious )
         const auto code = installSystemPackage( args );
         log( "System installer completed with exit code " + std::to_string( code ) );
         if ( code != 0 ) {
-            *relaunchPrevious = true;
+            // After an incomplete restore the previous version may not start either; the
+            // report asks for setup to be run again.
+            *relaunchPrevious
+                = args.mode != "windows-setup"
+                  || resultPhase != cilogg::update_protocol::InstallerPhase
+                  || code != cilogg::update_protocol::InstallerRestoreIncompleteExitCode;
             return code;
         }
         // Installed: a failure from here on is the restart of CILogg, not the installer.

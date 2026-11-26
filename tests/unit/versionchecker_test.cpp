@@ -645,7 +645,15 @@ TEST_CASE( "The helper retries only transient installer launch failures", "[upda
     // The same numbers returned by a running installer mean something else.
     REQUIRE( VersionChecker::describeInstallResult( 2, installer ).contains( "stopped before" ) );
     REQUIRE( VersionChecker::describeInstallResult( 2, installer ).contains( "in use" ) );
-    REQUIRE( VersionChecker::describeInstallResult( 5, installer ).contains( "exit code 5" ) );
+    REQUIRE( VersionChecker::describeInstallResult( 7, installer ).contains( "exit code 7" ) );
+    REQUIRE( VersionChecker::describeInstallResult( protocol::InstallerCopyFailedExitCode, installer )
+                 .contains( "restored the previous version" ) );
+    REQUIRE( VersionChecker::describeInstallResult( protocol::InstallerRestoreIncompleteExitCode,
+                                                    installer )
+                 .contains( "Run the installer again" ) );
+    REQUIRE( VersionChecker::describeInstallResult( protocol::InstallerPrepareFailedExitCode,
+                                                    installer )
+                 .contains( "could not prepare" ) );
     REQUIRE( VersionChecker::describeInstallResult( protocol::PackageVerificationFailedExitCode,
                                                     launch )
                  .contains( "verification" ) );

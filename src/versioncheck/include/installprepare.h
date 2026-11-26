@@ -19,8 +19,8 @@ namespace cilogg::install_prepare {
 // Suffix of a file moved aside during an update. It is deleted once no process uses it: at the
 // end of that update, by the next update, or at the next restart of Windows.
 inline constexpr char MovedAsideSuffix[] = ".cilogg-old";
-// Inside the installation folder (writable only by administrators for a per-machine install),
-// so the elevated installer never acts on a list another user could have edited.
+// The record of the files moved aside. It lives inside the installation folder (writable only by
+// administrators for a per-machine install), and every entry must lie inside that folder.
 inline constexpr char ManifestFileName[] = "cilogg-update-moves.txt";
 
 // Exit codes of the installer modes.
@@ -28,10 +28,13 @@ inline constexpr int PreparedExitCode = 0;
 inline constexpr int UsageExitCode = 1;
 // A file could not be moved aside; nothing was changed.
 inline constexpr int BlockedExitCode = 2;
-// The previous files could not all be restored after a failed installation.
+// Some previous files could not be restored; the manifest is kept for the next attempt.
 inline constexpr int RollbackIncompleteExitCode = 3;
 // The manifest could not be written; nothing was changed.
 inline constexpr int ManifestFailedExitCode = 4;
+// Installed, but some files the installation did not replace could not be put back; the
+// manifest keeps them for the next update, which puts them back first.
+inline constexpr int FinishIncompleteExitCode = 5;
 
 struct ProcessInfo {
     unsigned long pid = 0;
@@ -82,8 +85,8 @@ std::vector<ProcessInfo> processesUsing( const std::vector<std::filesystem::path
 // executable, a loaded DLL, or a file another process opened without sharing write access.
 bool isInUse( const std::filesystem::path& file );
 
-// Deletes files moved aside by earlier updates below `directory` that are no longer in use.
-// Returns how many are still in use.
+// Deletes files moved aside by earlier updates in the installation in `directory` once no process
+// uses them, and puts back one whose original is missing. Returns how many are kept.
 std::size_t removeMovedAside( const std::filesystem::path& directory, const Log& log );
 
 struct PrepareResult {
@@ -92,27 +95,35 @@ struct PrepareResult {
     std::vector<std::filesystem::path> blocked;
 };
 
-// Moves aside every executable image below `directory` and every other file that is in use:
-// first the .exe files (so nothing can start from a half-replaced folder), then the DLLs, then
-// the rest. Reparse points (links, junctions) are never followed or moved, nor are files an
-// earlier update moved aside. `onMoved` sees each move as it happens, so a manifest can be
-// written before the next one. A blocked file does not stop the pass: every blocked file is
-// reported.
+// Moves aside the files of the CILogg installation in `directory` that a process may use while it
+// is replaced: every executable image, and every other file that is in use. First the .exe files
+// (so nothing can start from a half-replaced folder), then the DLLs, then the rest.
+//
+// Only CILogg's files are considered: the top-level files cilogg.nsi installs (its executables,
+// the uninstaller, the DLLs and its documents) and the folders it installs. A folder that holds
+// no CILogg installation is left alone. Links and junctions are never followed, and every rename
+// first checks that no folder on the way is one. `onMoved` sees each move as it happens, so a
+// manifest can be written before the next one. A blocked file does not stop the pass: every
+// blocked file is reported.
 PrepareResult moveAside( const std::filesystem::path& directory, const Log& log,
                          const std::function<void( const MovedFile& )>& onMoved = {} );
 
 // After the new files were copied. An original the installation replaced is deleted, or, while
 // a process still uses it, left for the next update and scheduled for deletion at the next
-// restart (administrators only). An original it did not replace is put back.
-void finish( const std::vector<MovedFile>& moved, const Log& log );
+// restart (administrators only). An original it did not replace is put back. Returns the files
+// that could not be put back. Entries an earlier pass handled are skipped.
+std::vector<MovedFile> finish( const std::filesystem::path& directory,
+                               const std::vector<MovedFile>& moved, const Log& log );
 
 // After a failed copy: puts every original back, moving a partly installed new file aside.
-// False when an original could not be restored.
-bool rollback( const std::vector<MovedFile>& moved, const Log& log );
+// Entries an earlier pass restored are skipped. False when an original could not be restored.
+bool rollback( const std::filesystem::path& directory, const std::vector<MovedFile>& moved,
+               const Log& log );
 
-// The installer modes of cilogg_updater: "prepare" moves files aside and records them in the
-// manifest (a report lists the blocking processes when it fails), "finish" and "rollback" read
-// the manifest, which they verify against `directory`, and delete it.
+// The installer modes of cilogg_updater. "prepare" first restores what an interrupted earlier
+// update left (from its manifest), then moves files aside and records them in the manifest; when
+// a file is blocked, a report lists it and the processes using it. "finish" and "rollback" read
+// the manifest, which they check against `directory`, and delete it once nothing is left to do.
 int runPrepare( const std::filesystem::path& directory, const std::filesystem::path& report,
                 const Log& log );
 int runFinish( const std::filesystem::path& directory, const Log& log );

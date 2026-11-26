@@ -79,15 +79,18 @@ the COPYING and NOTICE files.$\r$\n$\r$\n$_CLICK"
 # Languages
 !insertmacro MUI_LANGUAGE "English"
 
-; Installer log (UTF-16LE). The update helper runs setup silently, which discards DetailPrint,
-; and passes /CILOGGLOG= so the log lands next to its own; other installs log to $TEMP.
+; Installer log (UTF-16LE) in the installation folder: the update helper runs setup silently,
+; which discards DetailPrint, and copies this log next to its own. Like the report, it is written
+; only inside $INSTDIR, which only administrators can write for a per-machine install.
 Var CiloggLog
-; Where the files that blocked the installation and their processes are listed (/CILOGGREPORT=).
+; The files that blocked the installation and the processes using them.
 Var CiloggReport
 ; 1 once files in $INSTDIR were moved aside: a failure from then on puts them back.
 Var CiloggPrepared
 ; 1 when a new file could not be written.
 Var CiloggCopyFailed
+; 1 when the previous files could not all be put back after a failure.
+Var CiloggRestoreFailed
 
 Function CiloggWriteLog
     Exch $0
@@ -116,19 +119,13 @@ FunctionEnd
 !macroend
 !define CiloggLog "!insertmacro CiloggLog"
 
-Function .onInit
-    ${GetParameters} $R0
-    ClearErrors
-    ${GetOptions} $R0 "/CILOGGLOG=" $CiloggLog
-    ${If} ${Errors}
-    ${OrIf} $CiloggLog == ""
-        StrCpy $CiloggLog "$TEMP\cilogg-installer.log"
-    ${EndIf}
-    ClearErrors
-    ${GetOptions} $R0 "/CILOGGREPORT=" $CiloggReport
-    ${If} ${Errors}
-        StrCpy $CiloggReport ""
-    ${EndIf}
+Function CiloggStartLog
+    CreateDirectory "$INSTDIR"
+    ; Names shared with cilogg_updater (update_protocol::InstallerLogFileName and
+    ; InstallerReportFileName).
+    StrCpy $CiloggLog "$INSTDIR\cilogg-installer.log"
+    StrCpy $CiloggReport "$INSTDIR\cilogg-installer-report.txt"
+    Delete "$CiloggLog"
     ${GetTime} "" "L" $0 $1 $2 $3 $4 $5 $6
     ${CiloggLog} "CILogg ${VERSION} setup started $2-$1-$0 $4:$5:$6"
 FunctionEnd
@@ -139,25 +136,62 @@ FunctionEnd
 ; old copy; nothing outside $INSTDIR is touched. The helper is this installer's own copy, run
 ; from its temporary folder.
 Function CiloggPrepareInstallDirectory
+    Call CiloggStartLog
     ${CiloggLog} "CILogg installation directory: $INSTDIR"
     InitPluginsDir
     File "/oname=$PLUGINSDIR\cilogg_updater.exe" release\cilogg_updater.exe
     nsExec::ExecToLog '"$PLUGINSDIR\cilogg_updater.exe" --installer-prepare "$INSTDIR" --log "$CiloggLog" --report "$CiloggReport"'
     Pop $0
-    ${If} $0 != 0
-        ${CiloggLog} "Setup cancelled before replacing files: files in $INSTDIR are in use and could not be moved aside (result $0)"
+    ${If} $0 == 0
+        StrCpy $CiloggPrepared 1
+        Return
+    ${EndIf}
+    ${If} $0 == 2
+        ; Exit codes: update_protocol::Installer*ExitCode.
+        ${CiloggLog} "Setup cancelled before replacing files: files in $INSTDIR are in use and could not be moved aside"
         SetErrorLevel 2
         Abort "Some CILogg files are in use and cannot be replaced. Installation cancelled before replacing files."
     ${EndIf}
-    StrCpy $CiloggPrepared 1
+    ${If} $0 == 3
+        ; Files were moved aside and not all of them could be put back: try once more.
+        StrCpy $CiloggPrepared 1
+        Call CiloggRollback
+        ${If} $CiloggRestoreFailed == 1
+            SetErrorLevel 4
+        ${Else}
+            SetErrorLevel 2
+        ${EndIf}
+        Abort "Some CILogg files are in use and cannot be replaced. Installation cancelled."
+    ${EndIf}
+    ${CiloggLog} "Setup cancelled before replacing files: the installation folder could not be prepared (result $0)"
+    SetErrorLevel 5
+    Abort "The CILogg folder could not be prepared. Installation cancelled before replacing files."
 FunctionEnd
 
-Function .onInstFailed
+; Puts the moved-aside previous files back (once).
+Function CiloggRollback
     ${If} $CiloggPrepared == 1
-        ${CiloggLog} "Installation failed; restoring the previous files"
+        ${CiloggLog} "Restoring the previous files"
         nsExec::ExecToLog '"$PLUGINSDIR\cilogg_updater.exe" --installer-rollback "$INSTDIR" --log "$CiloggLog"'
         Pop $0
-        ${CiloggLog} "Restore result: $0"
+        StrCpy $CiloggPrepared 0
+        ${If} $0 != 0
+            StrCpy $CiloggRestoreFailed 1
+            ${CiloggLog} "Some previous files could not be restored (result $0); run setup again"
+        ${EndIf}
+    ${EndIf}
+FunctionEnd
+
+; Also after NSIS itself stopped the installation (a file it could not write, in GUI mode once
+; the user closes the page).
+Function .onInstFailed
+    ${If} $CiloggPrepared == 1
+        Call CiloggRollback
+        ${If} $CiloggRestoreFailed == 1
+            SetErrorLevel 4
+        ${Else}
+            SetErrorLevel 3
+        ${EndIf}
     ${EndIf}
     ${CiloggLog} "CILogg ${VERSION} setup failed"
 FunctionEnd
@@ -302,20 +336,31 @@ SectionEnd
 ; this installation did not replace are put back.
 Section "-CILogg executable" ciloggexe
     SetOutPath $INSTDIR
-    ClearErrors
-    File release\cilogg.exe
-    ${If} ${Errors}
-        StrCpy $CiloggCopyFailed 1
+    ${If} $CiloggCopyFailed != 1
+        ; Only into a complete folder.
+        ClearErrors
+        File release\cilogg.exe
+        ${If} ${Errors}
+            StrCpy $CiloggCopyFailed 1
+        ${EndIf}
     ${EndIf}
     ${If} $CiloggCopyFailed == 1
         ${CiloggLog} "Copying the new files into $INSTDIR failed"
-        SetErrorLevel 2
+        Call CiloggRollback
+        ${If} $CiloggRestoreFailed == 1
+            SetErrorLevel 4
+            Abort "CILogg files could not be written, and the previous version could not be fully restored. Run setup again."
+        ${EndIf}
+        SetErrorLevel 3
         Abort "CILogg files could not be written. The previous version was restored."
     ${EndIf}
     nsExec::ExecToLog '"$PLUGINSDIR\cilogg_updater.exe" --installer-finish "$INSTDIR" --log "$CiloggLog"'
     Pop $0
     StrCpy $CiloggPrepared 0
-    ${CiloggLog} "CILogg ${VERSION} installed in $INSTDIR (cleanup result $0)"
+    ${If} $0 != 0
+        ${CiloggLog} "Some files this installation did not replace could not be put back (result $0); the next update puts them back"
+    ${EndIf}
+    ${CiloggLog} "CILogg ${VERSION} installed in $INSTDIR"
 SectionEnd
 
 # Descriptions
@@ -344,6 +389,8 @@ Section "Uninstall"
     ; Files an update moved aside while a process used them, and its record.
     Delete /REBOOTOK "$INSTDIR\*.cilogg-old"
     Delete "$INSTDIR\cilogg-update-moves.txt"
+    Delete "$INSTDIR\cilogg-installer.log"
+    Delete "$INSTDIR\cilogg-installer-report.txt"
     Delete "$INSTDIR\README.md"
     Delete "$INSTDIR\COPYING"
     Delete "$INSTDIR\NOTICE"
