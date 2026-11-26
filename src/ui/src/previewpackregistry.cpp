@@ -31,7 +31,7 @@ using cilogg::plugins::validatePackManifest;
 // (the literal becomes `""`), so a docstring or a comment that shows code binds nothing. Only a
 // new logical line starts a line: inside brackets and after a backslash a line continues its
 // statement (its newline becomes a space), so a keyword argument at the start of a line is not
-// taken for an assignment.
+// taken for an assignment; a top-level semicolon starts a line of its own.
 QString pythonCode( const QString& text )
 {
     QString code;
@@ -65,6 +65,24 @@ QString pythonCode( const QString& text )
                         || c == QLatin1Char( '}' ) )
                       && depth > 0 ) {
                 --depth;
+            }
+            // A semicolon at the top level starts a new statement, except in the one-line body of
+            // a compound statement (`def f(): x = 1; decode = x` binds nothing at the top).
+            if ( c == QLatin1Char( ';' ) && depth == 0 ) {
+                static const QRegularExpression compound( QStringLiteral(
+                    R"(^(?:async[ \t]+)?(?:def|class|if|elif|else|for|while|with|try|except|finally|match|case)\b)" ) );
+                if ( !compound.match( code.mid( code.lastIndexOf( QLatin1Char( '\n' ) ) + 1 ) )
+                          .hasMatch() ) {
+                    code += QLatin1Char( '\n' );
+                    ++at;
+                    // The next statement starts here: no indentation before it.
+                    while ( at < size
+                            && ( text[ at ] == QLatin1Char( ' ' )
+                                 || text[ at ] == QLatin1Char( '\t' ) ) ) {
+                        ++at;
+                    }
+                    continue;
+                }
             }
             code += c == QLatin1Char( '\n' ) && depth > 0 ? QChar( QLatin1Char( ' ' ) ) : c;
             ++at;

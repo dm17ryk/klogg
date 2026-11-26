@@ -530,6 +530,10 @@ TEST_CASE( "Only the modules that define decode() are offered as decoders", "[pa
         // Real ones after a bracket and a backslash that continue a statement over lines.
         { "afterbrackets", "ITEMS = (\n    1,\n)\ndecode = None\n" },
         { "continued", "VALUE = 1 + \\\n    2\ndecode = None\n" },
+        // Statements after a semicolon at the top level, but not the body of a one-line def.
+        { "semicolon", "VERSION = 1; from .plain import decode\n" },
+        { "semicolonassign", "VERSION = 1; decode = None\n" },
+        { "onelinebody", "def helper(): value = 1; decode = value\n" },
         // Lines that end with a lone carriage return, which Python takes as a newline too.
         { "cr", "import struct\rdef decode(payload, context):\r    return None\r" },
         // A UTF-8 byte order mark before the first statement, as Python reads it.
@@ -560,7 +564,7 @@ TEST_CASE( "Only the modules that define decode() are offered as decoders", "[pa
     CHECK( entries
            == QStringList{ "afterbrackets", "annotated", "assigned", "asynchronous", "bom",
                            "continued", "cr", "crlf", "escaped", "imported", "parenthesized",
-                           "plain", "rebound" } );
+                           "plain", "rebound", "semicolon", "semicolonassign" } );
 }
 
 TEST_CASE( "A pack lists at most 32 Python decoders", "[packpython][E16]" )

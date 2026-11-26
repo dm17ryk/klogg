@@ -1577,6 +1577,14 @@
           "P2 (fixed): a module starting with a UTF-8 byte order mark hid its first-line decode(); the scan drops it (and takes a lone carriage return as a newline)"
         ],
         "result": "fixed in the commit after adca616d"
+      },
+      {
+        "head": "c431ce23",
+        "reviewer": "Codex review bot",
+        "findings": [
+          "P2 (fixed): a binding after a top-level semicolon was not found; a top-level semicolon now starts a statement (not in a one-line compound body)"
+        ],
+        "result": "fixed in the commit after c431ce23"
       }
     ]
   }

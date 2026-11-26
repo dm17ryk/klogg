@@ -749,7 +749,10 @@ that its pack is not enabled, and a preview's tooltip and status name the decode
 (`PreviewService::pythonDecoderLabel`). The menu offers the modules that bind `decode` at their top
 level (`def` or `async def decode(`, `decode =`, or an import that binds the name), kept in
 `PreviewDecoderPacks::pythonEntries`; the helper modules a pack lists so the worker copies them are
-left out, and a module that binds the name some other way can still be routed by typing its target. The CLI, native MCP and Python report the same pack fields
+left out. The check reads the module's statements (not its strings, comments, bracketed
+continuation lines or one-line compound bodies) and never runs it, so a module that binds the name
+some other way (a star import, a tuple assignment, a binding inside `if` or `try`) is not listed;
+such a decoder can still be routed by typing its target. The CLI, native MCP and Python report the same pack fields
 (`pythonDecoders`, `pythonDecodersActive`) and `hostFeatures`.
 
 ### 4.5 Actions, responses, highlighters and filters
