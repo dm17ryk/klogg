@@ -23,10 +23,25 @@ case "$channel" in
   *) echo "Unknown release channel: $channel" >&2; exit 2 ;;
 esac
 
-if ! git ls-remote --exit-code --heads origin "$branch" > /dev/null; then
-  echo "::error::$branch is not a branch on origin; latest.json is only kept on branches."
-  exit 1
-fi
+# git ls-remote --exit-code exits with 2 when the branch does not exist; any other
+# failure (for example the network) is retried, so it is not reported as a missing branch.
+for ((check = 1; ; check++)); do
+  remote_status=0
+  git ls-remote --exit-code --heads origin "$branch" > /dev/null || remote_status=$?
+  if ((remote_status == 0)); then
+    break
+  fi
+  if ((remote_status == 2)); then
+    echo "::error::$branch is not a branch on origin; latest.json is only kept on branches."
+    exit 1
+  fi
+  if ((check >= attempts)); then
+    echo "::error::Could not reach origin to check $branch (git ls-remote exited with $remote_status)."
+    exit 1
+  fi
+  echo "::warning::Could not reach origin to check $branch (attempt $check of $attempts); trying again."
+  sleep $((delay * check))
+done
 
 # Records the release in latest.json and commits it. Returns 0 after committing
 # and 1 when latest.json needs no change; exits the script on errors (set -e

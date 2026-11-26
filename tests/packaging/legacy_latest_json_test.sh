@@ -12,6 +12,14 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 
 git_as_ci() { git -c user.name=ci -c user.email=ci@example.invalid "$@"; }
 
+# 0. The release workflow runs this script for master only.
+workflow="$repo_root/.github/workflows/ci-release.yml"
+grep -qF 'bash ./scripts/publish_legacy_latest_json.sh "$RELEASE_CHANNEL" "$CILOGG_VERSION" master' "$workflow" \
+  || fail "ci-release.yml does not run publish_legacy_latest_json.sh for master"
+grep -qF 'if [ "$GITHUB_REF" != "refs/heads/master" ]; then' "$workflow" \
+  || fail "ci-release.yml lost the master-only guard for latest.json"
+echo "PASS: the release workflow updates latest.json through this script, for master only"
+
 # A bare "origin" whose master holds latest.json, and a shallow clone like
 # actions/checkout makes.
 new_origin() {
@@ -122,3 +130,15 @@ grep -q "Could not push latest.json to master after 2 attempts" "$workdir/reject
   || { cat "$workdir/rejecting.log"; fail "unclear attempt-limit error"; }
 remote_latest rejecting | grep -q '"ci": "26.04.2.1"' || fail "remote latest.json changed"
 echo "PASS: a push rejected every time stops after the attempt limit"
+
+# 9. An unreachable origin is reported as such, not as a missing branch.
+new_origin unreachable
+git -C "$workdir/unreachable-job" remote set-url origin "file://$workdir/no-such-origin"
+if (cd "$workdir/unreachable-job" && CILOGG_PUSH_ATTEMPTS=2 bash "$script" ci 26.04.2.1462 master) \
+    > "$workdir/unreachable.log" 2>&1; then
+  fail "an unreachable origin passed"
+fi
+grep -q "Could not reach origin to check master" "$workdir/unreachable.log" \
+  || { cat "$workdir/unreachable.log"; fail "unclear unreachable-origin error"; }
+! grep -q "not a branch" "$workdir/unreachable.log" || fail "an unreachable origin was reported as a missing branch"
+echo "PASS: an unreachable origin is retried and reported, not mistaken for a missing branch"
