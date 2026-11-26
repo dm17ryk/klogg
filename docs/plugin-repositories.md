@@ -866,8 +866,9 @@ does and then as CILogg reads the user's (`ActionsConfigParser`, `validateAction
 `validateResponseDefinition`; a parser warning counts, as it means a value read otherwise than
 written): a file that fails costs only its own items (`Contribution::warnings`), and enabling or
 updating the pack is refused with the reason. What a pack's response (or a step that runs a pack
-action) schedules for later runs only while the packs' items are the same
-(`ActionsManager::packGeneration`), so disabling, updating or removing a pack stops it. `ActionsManager::
+action) schedules for later, and a pack action's own delayed send and repeats, run only while the
+packs' items are the same (`ActionsManager::packGeneration`), so disabling, updating or removing a
+pack stops them. `ActionsManager::
 setPackItems` gives every item its run-time id (`PackItemIdBase` = 1,000,000 and up, kept under
 `PackActions/<pack-id>/actions|responses/<local-id>` in the settings with `PackActions/nextId`),
 points a pack response's links at its own pack's run-time ids, and sets whether it is on from

@@ -1837,6 +1837,15 @@ TEST_CASE( "Pack actions and responses join the user's with run-time ids, respon
     CHECK( actions.packResponses().first().response.id == boot );
     CHECK( !actions.packResponses().first().response.enabled );
     CHECK( actions.resolvePackAction( "a.pack/7" ) == status );
+    // So does removing a package whose manifest no longer reads (independent review of #176).
+    writeActionPack( root.path(), "b.pack", PackActionsJson );
+    writeFile( QDir( root.path() ).filePath( "plugins/b.pack/plugin.json" ),
+               R"({ "id": "b.pack", "kind": "config-pack" })" );
+    PersistentInfo::getSettings( app_settings{} ).setValue( "PackActions/b.pack/on/3", true );
+    manager.discover();
+    REQUIRE( manager.manage( "remove", "b.pack", {} ).ok() );
+    CHECK_FALSE(
+        PersistentInfo::getSettings( app_settings{} ).contains( "PackActions/b.pack/on/3" ) );
 
     // A pack's items are not changed as the user's (copy them, or edit the pack's item), and the
     // packs' id range is not the user's.

@@ -386,6 +386,11 @@ bool sendActionDefinition( StreamSession* session, const ActionDefinition& reque
     const auto repeatInterval = qMax( 0, action.parameters.repeatInterval );
     const auto sessionName = session->sourceDisplayName();
     const auto parameterNames = QStringList( parameters.keys() );
+    // A configuration pack's action (E16c3): its later sends (the initial delay, the repeats) go
+    // out only while the packs are as they were, so disabling, updating or removing the pack
+    // stops them.
+    const bool packAction = action.id >= PackItemIdBase;
+    const auto packGeneration = ActionsManager::instance().packGeneration();
     LOG_DEBUG << "Scheduling action id=" << action.id << ", repeats=" << repeatCount
               << ", encoded_bytes=" << encoded.bytes.size() << ", automatic=" << automatic
               << ", generation=" << generation << ( sensitive ? ", sensitive payload" : "" );
@@ -432,7 +437,7 @@ bool sendActionDefinition( StreamSession* session, const ActionDefinition& reque
             delayMs, safeSession.data(),
             [ safeSession, actionId = action.id, actionName = action.name, stepIndex,
               bytes = encoded.bytes, observableBytes, sensitive, repeatIndex = index, generation,
-              automatic, sessionName, parameterNames
+              automatic, sessionName, parameterNames, packAction, packGeneration
 #ifdef KLOGG_SHARED_SERIAL_WRITER
               ,
               writeStamp
@@ -442,7 +447,9 @@ bool sendActionDefinition( StreamSession* session, const ActionDefinition& reque
                     journalActionSend( sessionName, actionId, actionName, automatic, bytes.size(),
                                        outcome, parameterNames );
                 };
-                if ( !actionContextIsCurrent( safeSession, generation, automatic ) ) {
+                if ( !actionContextIsCurrent( safeSession, generation, automatic )
+                     || ( packAction
+                          && ActionsManager::instance().packGeneration() != packGeneration ) ) {
                     LOG_WARNING << "Skipping delayed action id=" << actionId
                                 << " because its execution context changed";
                     journal( QStringLiteral( "cancelled" ) );

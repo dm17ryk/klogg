@@ -1083,6 +1083,9 @@ void ActionsResponsesWindow::editSelectedAction()
         return;
     }
 
+    // The id, not the row: the model is refilled while the dialog is open (an edit elsewhere, a
+    // configuration pack enabled or updated).
+    const auto actionId = action->id;
     ActionEditDialog dialog( this );
     dialog.setAction( *action );
     if ( dialog.exec() != QDialog::Accepted ) {
@@ -1090,7 +1093,7 @@ void ActionsResponsesWindow::editSelectedAction()
     }
 
     QString errorMessage;
-    if ( !ActionsManager::instance().updateAction( action->id, dialog.action(), &errorMessage ) ) {
+    if ( !ActionsManager::instance().updateAction( actionId, dialog.action(), &errorMessage ) ) {
         QMessageBox::warning( this, tr( "Edit Action" ), errorMessage );
     }
 }
@@ -1190,6 +1193,8 @@ void ActionsResponsesWindow::editSelectedResponse()
         return;
     }
 
+    // The id, not the row: the model is refilled while the dialog is open.
+    const auto responseId = response->id;
     ResponseEditDialog dialog( this );
     dialog.setResponse( *response, linkableActions() );
     if ( dialog.exec() != QDialog::Accepted ) {
@@ -1197,7 +1202,8 @@ void ActionsResponsesWindow::editSelectedResponse()
     }
 
     QString errorMessage;
-    if ( !ActionsManager::instance().updateResponse( response->id, dialog.response(), &errorMessage ) ) {
+    if ( !ActionsManager::instance().updateResponse( responseId, dialog.response(),
+                                                     &errorMessage ) ) {
         QMessageBox::warning( this, tr( "Edit Response" ), errorMessage );
     }
 }

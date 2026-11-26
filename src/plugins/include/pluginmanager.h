@@ -123,8 +123,9 @@ public:
     using PackCheck = std::function<QString( const QString& id, const QString& directory,
                                              const QJsonObject& manifest )>;
     void setPackCheck( PackCheck check );
-    // Called with a configuration pack's ID once it is removed (E16c3: the application forgets
-    // the user's state of its items, so a later install starts them as new).
+    // Called with the ID of each removed package, configuration packs included (also one whose
+    // manifest no longer reads): E16c3, the application forgets the user's state of a pack's
+    // items, so a later install starts them as new.
     using PackRemoved = std::function<void( const QString& id )>;
     void setPackRemoved( PackRemoved removed );
     // The plugin.json of an installed plugin as read, without the `get_plugins` fields; empty

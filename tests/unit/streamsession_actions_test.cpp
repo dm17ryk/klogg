@@ -755,6 +755,40 @@ TEST_CASE( "Delayed work of a pack's response stops when the packs change",
     settings.remove( "PackActions" );
 }
 
+TEST_CASE( "A pack action's later sends stop when the packs change",
+           "[serial][session][actions][actionruntime][E16]" )
+{
+    // E16c3 (independent review of #176): its repeats (and a delayed first send) are scheduled in
+    // sendActionDefinition, apart from the response's steps.
+    ScopedActionsState restore;
+    auto& settings = PersistentInfo::getSettings( app_settings{} );
+    settings.remove( "PackActions" );
+    const auto change = GENERATE( false, true );
+    CAPTURE( change );
+    auto& manager = ActionsManager::instance();
+    auto action = testAction( 1 );
+    action.parameters.repeat = true;
+    action.parameters.repeatCount = 3;
+    action.parameters.repeatInterval = 20;
+    manager.setPackItems( { { "a.pack", "Pack A", { action }, {} } } );
+    REQUIRE( manager.packActions().size() == 1 );
+    const auto packAction = manager.packActions().first().action;
+    StreamSession session( settingsFor( QStringLiteral( "TEST_PACK_REPEATS" ) ) );
+    StreamSessionTestAccess::openConnection( session );
+    QSignalSpy dispatched( &session, &StreamSession::actionSent );
+    QString error;
+    REQUIRE(
+        sendActionDefinition( &session, packAction, ActionSendOrigin::Manual, {}, -1, &error ) );
+    CHECK( dispatched.size() == 1 );
+    if ( change ) {
+        manager.setPackItems( {} );
+    }
+    REQUIRE( waitForActionTimers() );
+    CHECK( dispatched.size() == ( change ? 1 : 3 ) );
+    manager.setPackItems( {} );
+    settings.remove( "PackActions" );
+}
+
 TEST_CASE( "A response that cannot run every step sends nothing, its inline action included",
            "[serial][session][actions][actionruntime][E16]" )
 {
