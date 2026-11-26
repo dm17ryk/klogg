@@ -239,24 +239,11 @@ jobs:
       env:
         RELEASE_CHANNEL: ${{ github.event.inputs.channel }}
       shell: bash
+      # master can move while this job runs; the script rebases and retries the push (#178).
       run: |
-        python3 - <<'PY'
-        import json, os
-        from pathlib import Path
-        path = Path("latest.json")
-        data = json.loads(path.read_text(encoding="utf-8"))
-        channel = os.environ["RELEASE_CHANNEL"]
-        version = os.environ["CILOGG_VERSION"]
-        tag = ("v" if channel == "stable" else "continuous-") + version
-        data[channel] = version
-        data[channel + "_url"] = f"https://github.com/dm17ryk/klogg/releases/tag/{tag}"
-        path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-        PY
         git config user.name github-actions
         git config user.email github-actions@github.com
-        git add latest.json
-        git diff --cached --quiet || git commit -m "chore: update legacy release metadata [skip ci]"
-        git push
+        bash ./scripts/publish_legacy_latest_json.sh "$RELEASE_CHANNEL" "$CILOGG_VERSION" "$GITHUB_REF_NAME"
 
     - name: Discord notification
       if: ${{ env.DISCORD_NEW_VERSIONS_WEBHOOK != '' }}
