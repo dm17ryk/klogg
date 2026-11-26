@@ -1553,6 +1553,14 @@
           "P2 (fixed): decoders of packs with the same name looked alike; the menu adds the pack's ID and the tooltip shows the route target"
         ],
         "result": "fixed in the commit after c71f9212"
+      },
+      {
+        "head": "eb920aa0",
+        "reviewer": "Codex review bot",
+        "findings": [
+          "P2 (fixed): text in a docstring or string counted as a decode() binding; the scan now ignores strings and comments"
+        ],
+        "result": "fixed in the commit after eb920aa0"
       }
     ]
   }

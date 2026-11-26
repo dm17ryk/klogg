@@ -520,6 +520,14 @@ TEST_CASE( "Only the modules that define decode() are offered as decoders", "[pa
           "class Codec:\n    def decode(self, payload, context):\n        return None\n" },
         { "nested", "def outer():\n    def decode(payload, context):\n        return None\n" },
         { "lookalike", "def decode_all(payload):\n    return None\ndecoded = 1\n# def decode(\n" },
+        // Text in strings and comments binds nothing.
+        { "docstring", "\"\"\"Example:\n\ndef decode(payload, context):\n    return None\n\"\"\"\n"
+                       "MARKER = 1\n" },
+        { "quoted", "EXAMPLE = '''\ndecode = None\nfrom .plain import decode\n'''\n" },
+        { "commented", "from .plain import other  # not decode\n" },
+        // A real one after a string with an escaped quote and a quote inside a comment.
+        { "escaped",
+          "TEXT = \"a \\\" b\" # it's\ndef decode(payload, context):\n    return None\n" },
     };
     QJsonArray decoders;
     for ( auto module = modules.cbegin(); module != modules.cend(); ++module ) {
@@ -540,7 +548,7 @@ TEST_CASE( "Only the modules that define decode() are offered as decoders", "[pa
     auto entries = pack.pythonEntries;
     entries.sort();
     CHECK( entries
-           == QStringList{ "annotated", "assigned", "asynchronous", "crlf", "imported",
+           == QStringList{ "annotated", "assigned", "asynchronous", "crlf", "escaped", "imported",
                            "parenthesized", "plain", "rebound" } );
 }
 

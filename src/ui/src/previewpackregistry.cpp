@@ -27,12 +27,63 @@ using cilogg::plugins::PackContent;
 using cilogg::plugins::validatePackFiles;
 using cilogg::plugins::validatePackManifest;
 
-// What makes a pack's contribution current: its version and the time its manifest was written,
-// so an update (or a reinstall of the same version) is read again.
+// A Python module's source without its comments and with each string literal's contents left out
+// (the literal becomes `""`), its newlines kept, so a docstring or a comment that shows code binds
+// nothing.
+QString pythonCode( const QString& text )
+{
+    QString code;
+    code.reserve( text.size() );
+    const auto size = text.size();
+    const auto closes = [ &text, size ]( qsizetype at, QChar quote, bool triple ) {
+        return text[ at ] == quote
+               && ( !triple
+                    || ( at + 2 < size && text[ at + 1 ] == quote && text[ at + 2 ] == quote ) );
+    };
+    for ( qsizetype at = 0; at < size; ) {
+        const auto c = text[ at ];
+        if ( c == QLatin1Char( '#' ) ) {
+            while ( at < size && text[ at ] != QLatin1Char( '\n' ) ) {
+                ++at;
+            }
+            continue;
+        }
+        if ( c != QLatin1Char( '\'' ) && c != QLatin1Char( '"' ) ) {
+            code += c;
+            ++at;
+            continue;
+        }
+        const bool triple = at + 2 < size && text[ at + 1 ] == c && text[ at + 2 ] == c;
+        const qsizetype length = triple ? 3 : 1;
+        at += length;
+        while ( at < size ) {
+            if ( text[ at ] == QLatin1Char( '\\' ) ) {
+                at += 2;
+                continue;
+            }
+            if ( closes( at, c, triple ) ) {
+                at += length;
+                break;
+            }
+            if ( text[ at ] == QLatin1Char( '\n' ) ) {
+                // A string on one line that does not close ends there.
+                if ( !triple ) {
+                    break;
+                }
+                code += QLatin1Char( '\n' );
+            }
+            ++at;
+        }
+        code += QStringLiteral( "\"\"" );
+    }
+    return code;
+}
+
 // Whether a pack's Python module binds `decode` at its top level (E16b): `def` or `async def
-// decode(`, `decode =` (annotated too) or an import that binds the name. Preview Decoder Settings
-// offers these modules as decoders and leaves out the helpers a pack lists so the worker copies
-// them; a module that binds the name otherwise can still be routed by typing its target.
+// decode(`, `decode =` (annotated too) or an import that binds the name, outside strings and
+// comments. Preview Decoder Settings offers these modules as decoders and leaves out the helpers a
+// pack lists so the worker copies them; a module that binds the name otherwise can still be routed
+// by typing its target.
 bool bindsDecode( const QString& path )
 {
     QFile file( path );
@@ -41,22 +92,21 @@ bool bindsDecode( const QString& path )
     }
     auto text = QString::fromUtf8( file.read( cilogg::plugins::MaxPackFileBytes ) );
     text.replace( QStringLiteral( "\r\n" ), QStringLiteral( "\n" ) );
+    const auto code = pythonCode( text );
     static const QRegularExpression definition(
         QStringLiteral(
             R"(^(?:async[ \t]+)?def[ \t]+decode[ \t]*\(|^decode[ \t]*(?::[^=\n]*)?=(?!=))" ),
         QRegularExpression::MultilineOption );
-    if ( definition.match( text ).hasMatch() ) {
+    if ( definition.match( code ).hasMatch() ) {
         return true;
     }
     // `import a as decode` or `from m import x, y as decode`, also in parentheses over lines.
     static const QRegularExpression imports(
         QStringLiteral( R"(^(?:from[ \t]+[\w.]+[ \t]+)?import[ \t]+(\([^)]*\)|[^\n]*))" ),
         QRegularExpression::MultilineOption );
-    static const QRegularExpression comment( QStringLiteral( "#[^\n]*" ) );
-    auto match = imports.globalMatch( text );
+    auto match = imports.globalMatch( code );
     while ( match.hasNext() ) {
         auto names = match.next().captured( 1 );
-        names.remove( comment );
         names.remove( QLatin1Char( '(' ) );
         names.remove( QLatin1Char( ')' ) );
         for ( const auto& item : names.split( QLatin1Char( ',' ) ) ) {
@@ -72,6 +122,8 @@ bool bindsDecode( const QString& path )
     return false;
 }
 
+// What makes a pack's contribution current: its version and the time its manifest was written,
+// so an update (or a reinstall of the same version) is read again.
 QString contributionKey( const QString& directory, const QJsonObject& manifest )
 {
     const QFileInfo file( QDir( directory ).filePath( "plugin.json" ) );
