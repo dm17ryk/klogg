@@ -158,28 +158,51 @@ QString FilteredView::matchedByText( LineNumber index ) const
     return lineAnnotation( index, logFilteredData_->getLineString( index ) );
 }
 
-QString FilteredView::lineAnnotation( LineNumber lineNumber, const QString& lineText ) const
+QString FilteredView::matchedByToolTip( LineNumber index ) const
+{
+    if ( index >= logFilteredData_->getNbLine() ) {
+        return {};
+    }
+    return lineAnnotationToolTip( index, logFilteredData_->getLineString( index ) );
+}
+
+const FilteredView::CachedAnnotation* FilteredView::matchAnnotation( LineNumber lineNumber,
+                                                                     const QString& lineText ) const
 {
     using LineTypeFlags = LogFilteredData::LineTypeFlags;
     const auto type = logFilteredData_->lineTypeByIndex( lineNumber );
-    // A marked line is the user's own: it says "mark" even when the search matches it too.
-    if ( type.testFlag( LineTypeFlags::Mark ) ) {
-        return tr( "mark" );
-    }
     // Context lines around a match are not selected by any filter.
-    if ( !type.testFlag( LineTypeFlags::Match ) || !matchLabeler_ || matchLabeler_->isEmpty() ) {
-        return {};
+    if ( type.testFlag( LineTypeFlags::Mark ) || !type.testFlag( LineTypeFlags::Match )
+         || !matchLabeler_ || matchLabeler_->isEmpty() ) {
+        return nullptr;
     }
     const auto sourceLine = logFilteredData_->getMatchingLineNumber( lineNumber ).get();
     const auto textHash = static_cast<std::size_t>( qHash( lineText ) );
     if ( const auto cached = annotationCache_.constFind( sourceLine );
          cached != annotationCache_.cend() && cached->textHash == textHash
          && cached->textSize == lineText.size() ) {
-        return cached->label;
+        return &cached.value();
     }
     requestAnnotation( sourceLine, lineText, textHash );
+    return nullptr;
+}
+
+QString FilteredView::lineAnnotation( LineNumber lineNumber, const QString& lineText ) const
+{
+    // A marked line is the user's own: it says "mark" even when the search matches it too.
+    if ( logFilteredData_->lineTypeByIndex( lineNumber )
+             .testFlag( LogFilteredData::LineTypeFlags::Mark ) ) {
+        return tr( "mark" );
+    }
     // Blank until the labelling thread answers; the view is repainted then.
-    return {};
+    const auto* annotation = matchAnnotation( lineNumber, lineText );
+    return annotation != nullptr ? annotation->label : QString{};
+}
+
+QString FilteredView::lineAnnotationToolTip( LineNumber lineNumber, const QString& lineText ) const
+{
+    const auto* annotation = matchAnnotation( lineNumber, lineText );
+    return annotation != nullptr ? annotation->toolTip : QString{};
 }
 
 void FilteredView::requestAnnotation( quint64 sourceLine, const QString& lineText,
@@ -204,14 +227,14 @@ void FilteredView::requestAnnotation( quint64 sourceLine, const QString& lineTex
         if ( currentGeneration->load() != requestGeneration ) {
             return;
         }
-        const auto lineLabel = labeler->label( lineText );
+        const auto annotation = labeler->annotate( lineText );
         const auto textSize = lineText.size();
         QMetaObject::invokeMethod(
             pool,
-            [ target, requestGeneration, sourceLine, textHash, textSize, lineLabel ] {
+            [ target, requestGeneration, sourceLine, textHash, textSize, annotation ] {
                 if ( target ) {
                     target->storeAnnotation( requestGeneration, sourceLine, textHash, textSize,
-                                             lineLabel );
+                                             annotation );
                 }
             },
             Qt::QueuedConnection );
@@ -220,7 +243,7 @@ void FilteredView::requestAnnotation( quint64 sourceLine, const QString& lineTex
 
 void FilteredView::storeAnnotation( quint64 labelerGeneration, quint64 sourceLine,
                                     std::size_t textHash, qsizetype textSize,
-                                    const QString& label )
+                                    const MatchLabeler::Annotation& annotation )
 {
     if ( labelerGeneration != labelerGeneration_->load() ) {
         LOG_DEBUG << "Dropping the label of line " << sourceLine << " from a replaced labeler";
@@ -233,7 +256,8 @@ void FilteredView::storeAnnotation( quint64 labelerGeneration, quint64 sourceLin
     if ( annotationCache_.size() >= MaxCachedAnnotations ) {
         annotationCache_.clear();
     }
-    annotationCache_.insert( sourceLine, { textHash, textSize, label } );
+    annotationCache_.insert( sourceLine,
+                             { textHash, textSize, annotation.text, annotation.toolTip } );
     // Coalesced with the other labels that arrive before the next paint.
     forceRefresh();
 }

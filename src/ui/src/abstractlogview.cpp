@@ -2013,7 +2013,7 @@ int AbstractLogView::textAreaWidthPx() const
     return viewport()->width() - leftMarginPx_ - annotationAreaWidthPx();
 }
 
-QString AbstractLogView::elidedAnnotationAt( const QPoint& position ) const
+QString AbstractLogView::annotationToolTipAt( const QPoint& position ) const
 {
     if ( rightMarginPx_ <= 0 || annotationTextWidthPx_ <= 0 || charHeight_ <= 0
          || position.x() < viewport()->width() - rightMarginPx_ ) {
@@ -2023,7 +2023,11 @@ QString AbstractLogView::elidedAnnotationAt( const QPoint& position ) const
     if ( !row || *row >= logData_->getNbLine() ) {
         return {};
     }
-    const auto annotation = lineAnnotation( *row, logData_->getLineString( *row ) );
+    const auto lineText = logData_->getLineString( *row );
+    if ( auto toolTip = lineAnnotationToolTip( *row, lineText ); !toolTip.isEmpty() ) {
+        return toolTip;
+    }
+    const auto annotation = lineAnnotation( *row, lineText );
     const QFontMetrics metrics( font() );
     if ( annotation.isEmpty()
          || metrics.horizontalAdvance( annotation ) <= annotationTextWidthPx_ ) {

@@ -74,9 +74,9 @@ bool AbstractLogView::viewportEvent( QEvent* event )
     if ( event->type() == QEvent::ToolTip ) {
         auto* help = static_cast<QHelpEvent*>( event );
         if ( rightMarginPx_ > 0 && help->pos().x() >= viewport()->width() - rightMarginPx_ ) {
-            // The annotation column: its label in full when the column cuts it short.
+            // The annotation column: the tooltip of the line's annotation.
             clearLinePreview();
-            if ( const auto annotation = elidedAnnotationAt( help->pos() );
+            if ( const auto annotation = annotationToolTipAt( help->pos() );
                  !annotation.isEmpty() ) {
                 QToolTip::showText( help->globalPos(), annotation, viewport() );
             }
