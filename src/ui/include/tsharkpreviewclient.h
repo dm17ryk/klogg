@@ -6,8 +6,14 @@
 // message_decoder_preview_worker.py on the shared supervised worker transport.
 class TsharkPreviewClient : public PreviewWorkerClient {
 public:
-    // A result's rows, as many as the PDML nodes the worker accepts (#183).
+    // A result's rows (#183).
     static constexpr int FieldLimit = 2048;
+    // What the worker reads of TShark's output (#183): past these the whole preview fails
+    // (`field_limit`, `output_limit`). Mirrors PDML_NODE_LIMIT, PDML_LIMIT and STDERR_LIMIT in
+    // message_decoder_preview_worker.py.
+    static constexpr int PdmlItemLimit = 8192;
+    static constexpr int PdmlByteLimit = 4 * 1024 * 1024;
+    static constexpr int DiagnosticByteLimit = 64 * 1024;
     // The result body limits a request may choose (#183), in bytes; 1 MiB unless it chooses.
     static constexpr int ResultLimitMin = 128 * 1024;
     static constexpr int ResultLimitDefault = 1024 * 1024;

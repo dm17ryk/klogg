@@ -821,6 +821,19 @@ QString PreviewService::limitText( const QVariantMap& result )
 {
     if ( !result.value( "limited" ).toBool() )
         return {};
+    // TShark's output past what the worker reads fails the whole preview (#183 review).
+    if ( result.value( "backend" ) == "tshark_lua" && result.value( "state" ) == "failed" ) {
+        if ( result.value( "reason" ) == "field_limit" )
+            return QStringLiteral( "TShark's tree passed the worker's limit of %1 items." )
+                .arg( TsharkPreviewClient::PdmlItemLimit );
+        if ( result.value( "reason" ) == "output_limit" )
+            return QStringLiteral(
+                       "TShark's output passed the worker's limit: %1 MiB of PDML, %2 KiB of "
+                       "diagnostics." )
+                .arg( TsharkPreviewClient::PdmlByteLimit / ( 1024 * 1024 ) )
+                .arg( TsharkPreviewClient::DiagnosticByteLimit / 1024 );
+        return {};
+    }
     const auto limit = result.value( "limit" ).toMap();
     const auto rows = QStringLiteral( "%1 of %2 rows" )
                           .arg( limit.value( "shownRows" ).toLongLong() )

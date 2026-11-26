@@ -80,9 +80,11 @@ Assembly row numbers are explicitly one-based.
   user patterns. The worker uses a data-only tree and needs no GUI platform
   plugin. Default deadline is three seconds, configurable from 100 to 10,000 ms.
   Cancellation or timeout kills and reaps the child.
-- Workers retain up to 512 fields and 128 KiB response data, with an explicit
-  limit status. Tooltips show up to 20 fields; names and values are abbreviated
-  at 128 and 256 characters respectively.
+- This worker retains up to 512 fields and 128 KiB response data, with an explicit
+  limit status (TShark/Lua results have their own limits: see
+  [TShark preview](workbench/tshark-preview.md)). Tooltips show up to 20
+  fields; names and values are abbreviated at 128 and 256 characters
+  respectively.
 - Source reads use bounded snapshot reads before presentation transformations.
   Stateful encodings without decoder checkpoints and ambiguous generic
   UTF-16/32 random access report an unsupported-encoding reason.

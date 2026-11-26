@@ -789,7 +789,7 @@ TEST_CASE( "TShark results fit 2048 rows, take the request's result limit and na
                                         { "state", "failed" },
                                         { "reason", "output_limit" },
                                         { "limited", true } } )
-           == "TShark's output passed the worker's limit of 4 MiB." );
+           == "TShark's output passed the worker's limit: 4 MiB of PDML, 64 KiB of diagnostics." );
     CHECK( PreviewService::limitText( { { "limited", true },
                                         { "limit", QVariantMap{ { "name", "rows" },
                                                                  { "maximum", 2048 },

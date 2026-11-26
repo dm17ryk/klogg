@@ -25,22 +25,29 @@ bool validLimit( const QJsonObject& value )
     const auto limit = value.value( "limit" ).toObject();
     const bool bytes = limit.value( "name" ) == "bytes";
     const QStringList keys{ "name", "maximum", "shownRows", "totalRows" };
+    // The limit agrees with the result's reason (#183 review).
     if ( !value.value( "limit" ).isObject() || value.value( "state" ) != "completed"
          || !value.value( "limited" ).toBool()
          || ( !bytes && limit.value( "name" ) != "rows" )
+         || value.value( "reason" ) != ( bytes ? "response_limit" : "rendered_field_limit" )
          || limit.size() != keys.size() + ( bytes ? 1 : 0 ) )
         return false;
     for ( const auto& key : keys.mid( 1 ) )
         if ( !limit.contains( key ) )
             return false;
     const auto shown = limit.value( "shownRows" ).toDouble();
-    return integer( limit.value( "maximum" ), 1, TsharkPreviewClient::ResultLimitMax )
-           && integer( limit.value( "shownRows" ), 0, TsharkPreviewClient::FieldLimit )
-           && shown == static_cast<double>( value.value( "fields" ).toArray().size() )
-           && integer( limit.value( "totalRows" ), shown, 9007199254740991.0 )
-           && ( !bytes
-                || integer( limit.value( "neededBytes" ), limit.value( "maximum" ).toDouble(),
-                            9007199254740991.0 ) );
+    const auto maximum = limit.value( "maximum" ).toDouble();
+    // A cut shows fewer rows than the tree has. A row cut shows exactly the row limit; a byte
+    // cut has a limit a request may choose, and the result needed more than it.
+    const bool cut = integer( limit.value( "shownRows" ), 0, TsharkPreviewClient::FieldLimit )
+                     && shown == static_cast<double>( value.value( "fields" ).toArray().size() )
+                     && integer( limit.value( "totalRows" ), shown + 1, 9007199254740991.0 );
+    if ( !bytes )
+        return cut && maximum == TsharkPreviewClient::FieldLimit && shown == maximum;
+    return cut
+           && integer( limit.value( "maximum" ), TsharkPreviewClient::ResultLimitMin,
+                       TsharkPreviewClient::ResultLimitMax )
+           && integer( limit.value( "neededBytes" ), maximum + 1, 9007199254740991.0 );
 }
 bool validResponse( const QJsonObject& value, const QString& id )
 {
