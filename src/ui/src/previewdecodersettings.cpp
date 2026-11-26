@@ -277,6 +277,28 @@ PreviewDecoderPacks PreviewDecoderSettings::packs() const
 {
     return packs_;
 }
+QString PreviewDecoderSettings::pythonDecoderPack( const QString& decoder ) const
+{
+    const auto slash = decoder.indexOf( QLatin1Char( '/' ) );
+    if ( slash <= 0 ) {
+        return {};
+    }
+    const auto packId = decoder.left( slash );
+    const auto decoderId = decoder.mid( slash + 1 );
+    for ( const auto& value : packs_.python ) {
+        const auto pack = value.toMap();
+        if ( pack.value( "id" ).toString() != packId ) {
+            continue;
+        }
+        for ( const auto& listed : pack.value( "decoders" ).toList() ) {
+            if ( listed.toMap().value( "id" ).toString() == decoderId ) {
+                const auto name = packs_.pythonNames.value( packId ).toString();
+                return name.isEmpty() ? packId : name;
+            }
+        }
+    }
+    return {};
+}
 void PreviewDecoderSettings::setPacks( const PreviewDecoderPacks& packs )
 {
     if ( packs == packs_ )

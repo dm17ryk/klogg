@@ -166,6 +166,27 @@ class BuildCatalogTests(unittest.TestCase):
         self.assertEqual(entry["min_host_version"], "26.12")
         self.assertEqual(entry["license"], "Proprietary")
 
+    def test_python_decoder_pack_lists_its_code(self):
+        # E16b: the GUI asks about a pack's code from the entry's `contents` before an install,
+        # so a pack with Python decoders must list them (the public example pack included).
+        folder = self.root / "python-pack"
+        write(folder / "plugin.json", json.dumps({
+            "id": "org.example.python", "name": "Python", "version": "1.0.0",
+            "protocol_version": 1, "kind": "config-pack", "pack_format": 1,
+            "content": {"previews": "previews.json",
+                        "python_decoders": [{"id": "record", "module": "python/record.py"}]}}))
+        write(folder / "previews.json", "{}")
+        write(folder / "python/record.py", "def decode(payload, context):\n    return None\n")
+        example = ROOT / "plugins/examples/python-decoder-pack"
+        self.assertEqual(self.run_script("--package", folder, "--package", example,
+                                         "--catalog", self.root / "catalog",
+                                         "--base-url", "https://example.com"), 0)
+        entries = {entry["id"]: entry for entry in self.catalog()["plugins"]}
+        self.assertEqual(entries["org.example.python"]["contents"],
+                         ["previews", "python_decoders"])
+        self.assertEqual(entries["org.cilogg.example.python-decoder-pack"]["contents"],
+                         ["previews", "python_decoders"])
+
     def test_invalid_input_is_refused(self):
         bad = plugin(self.root / "bad", version="1.02.0")
         self.assertEqual(self.run_script("--package", bad, "--catalog", self.root / "c1",

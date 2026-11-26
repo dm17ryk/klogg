@@ -1,5 +1,6 @@
 """Self-tests of the E15a repository parity case (no CILogg build needed)."""
 
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -74,6 +75,27 @@ class E15HelperTests(unittest.TestCase):
         self.assertNotIn("pid", fields)
         self.assertIsNone(workbench_repositories.pack_fields([{"id": "other"}]))
         self.assertTrue((workbench_repositories.PACK_FOLDER / "plugin.json").is_file())
+
+    def test_python_pack_fields_read_the_compared_fields(self):
+        plugins = [{"id": workbench_repositories.PACK_ID, "pythonDecoders": 0},
+                   {"id": workbench_repositories.PYTHON_PACK_ID, "kind": "config-pack",
+                    "pythonDecoders": 2, "pythonDecodersActive": True, "pid": 1}]
+        fields = workbench_repositories.python_pack_fields(plugins)
+        self.assertEqual(set(fields), set(workbench_repositories.PYTHON_PACK_FIELDS))
+        self.assertEqual(fields["pythonDecoders"], 2)
+        self.assertNotIn("pid", fields)
+        self.assertIsNone(workbench_repositories.python_pack_fields([{"id": "other"}]))
+        manifest = json.loads((workbench_repositories.PYTHON_PACK_FOLDER / "plugin.json")
+                              .read_text(encoding="utf-8"))
+        self.assertEqual(manifest["id"], workbench_repositories.PYTHON_PACK_ID)
+        # The expected Installed tab text names the example's decoders in their order.
+        names = ", ".join(decoder["id"] for decoder in manifest["content"]["python_decoders"])
+        self.assertEqual(workbench_repositories.PYTHON_PACK_STATE, f"Python decoders: {names}")
+        expected = workbench_repositories.PYTHON_PACK_EXPECTED
+        self.assertEqual(expected["pythonDecoders"], len(manifest["content"]["python_decoders"]))
+        fixture = (Path(__file__).resolve().parents[2]
+                   / "test_data/workbench/python/e15a_repositories.py").read_text(encoding="utf-8")
+        self.assertIn('report["hostFeatures"]', fixture)
 
     def test_pack_preview_is_the_canonical_store_path(self):
         # packcanonical::encodeName: UTF-8 bytes outside [a-z0-9._-] become %XX.

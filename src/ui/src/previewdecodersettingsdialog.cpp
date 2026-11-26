@@ -2,6 +2,7 @@
 #include "previewdecodersettingsdialog.h"
 #include "log.h"
 #include "previewdecodersettings.h"
+#include <QAction>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
@@ -11,6 +12,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QMenu>
 #include <QPushButton>
 #include <QStandardPaths>
 #include <QTabWidget>
@@ -153,7 +155,7 @@ PreviewDecoderSettingsDialog::PreviewDecoderSettingsDialog( QWidget* parent )
              [ this ] { delete scripts_->takeItem( scripts_->currentRow() ); } );
     auto* tabs = new QTabWidget( this );
     const auto routeTable = [ this, tabs ]( const QString& name, const QString& title,
-                                            bool protocol ) {
+                                            bool protocol, QPushButton** addPython ) {
         auto* page = new QWidget( tabs );
         auto* box = new QVBoxLayout( page );
         auto* table = new QTableWidget( 0, protocol ? 4 : 3, page );
@@ -169,8 +171,17 @@ PreviewDecoderSettingsDialog::PreviewDecoderSettingsDialog( QWidget* parent )
         auto* row = new QHBoxLayout;
         auto* addRoute = new QPushButton( tr( "Add route" ), page );
         auto* removeRoute = new QPushButton( tr( "Remove route" ), page );
+        // E16b: a route to a Python decoder of an enabled pack, chosen by the pack's name.
+        auto* python = new QPushButton( tr( "Add Python decoder" ), page );
+        identity( python, name + QStringLiteral( "AddPython" ),
+                  tr( "Add a route to a configuration pack's Python decoder" ) );
+        auto* decoders = new QMenu( python );
+        decoders->setToolTipsVisible( true );
+        python->setMenu( decoders );
+        *addPython = python;
         row->addWidget( addRoute );
         row->addWidget( removeRoute );
+        row->addWidget( python );
         row->addStretch();
         box->addLayout( row );
         connect( addRoute, &QPushButton::clicked, this,
@@ -179,11 +190,31 @@ PreviewDecoderSettingsDialog::PreviewDecoderSettingsDialog( QWidget* parent )
             if ( table->currentRow() >= 0 )
                 table->removeRow( table->currentRow() );
         } );
+        connect( decoders, &QMenu::triggered, this, [ this, table, protocol ]( QAction* action ) {
+            // The new route waits for the preview or protocol it is for.
+            const int added = table->rowCount();
+            table->insertRow( added );
+            for ( int column = 0; column < ( protocol ? 4 : 3 ); ++column )
+                table->setItem(
+                    added, column,
+                    new QTableWidgetItem( column == 1 ? action->data().toString() : QString{} ) );
+            describeTarget( table->item( added, 1 ) );
+            table->setCurrentCell( added, 0 );
+        } );
+        connect( table, &QTableWidget::itemChanged, this, [ this ]( QTableWidgetItem* item ) {
+            if ( item->column() == 1 )
+                describeTarget( item );
+        } );
         tabs->addTab( page, title );
         return table;
     };
-    previewRoutes_ = routeTable( "decoderPreviewRoutes", tr( "Preview routes" ), false );
-    protocolRoutes_ = routeTable( "decoderProtocolRoutes", tr( "Assembly protocol routes" ), true );
+    previewRoutes_
+        = routeTable( "decoderPreviewRoutes", tr( "Preview routes" ), false, &previewAddPython_ );
+    protocolRoutes_ = routeTable( "decoderProtocolRoutes", tr( "Assembly protocol routes" ), true,
+                                  &protocolAddPython_ );
+    // The packs can change while the dialog is open: its menus and descriptions follow them.
+    connect( &PreviewDecoderSettings::instance(), &PreviewDecoderSettings::changed, this,
+             [ this ] { refreshPythonDecoders(); } );
     layout->addWidget( tabs, 1 );
     error_ = new QLabel( this );
     identity( error_, "decoderValidationError", tr( "Configuration validation" ) );
@@ -218,6 +249,57 @@ void PreviewDecoderSettingsDialog::reload()
         scripts_->addItem( value.toString() );
     populate( previewRoutes_, config.value( "previewRoutes" ).toMap(), false );
     populate( protocolRoutes_, config.value( "protocolRoutes" ).toMap(), true );
+    refreshPythonDecoders();
+}
+void PreviewDecoderSettingsDialog::refreshPythonDecoders()
+{
+    const auto packs = PreviewDecoderSettings::instance().packs();
+    for ( auto* button : { previewAddPython_, protocolAddPython_ } ) {
+        auto* menu = button->menu();
+        menu->clear();
+        for ( const auto& value : packs.python ) {
+            const auto pack = value.toMap();
+            const auto packId = pack.value( "id" ).toString();
+            const auto name = packs.pythonNames.value( packId, packId ).toString();
+            for ( const auto& listed : pack.value( "decoders" ).toList() ) {
+                const auto decoder = listed.toMap();
+                const auto decoderId = decoder.value( "id" ).toString();
+                auto* action = menu->addAction( tr( "%1: %2" ).arg( name, decoderId ) );
+                action->setData( PythonPrefix + packId + QLatin1Char( '/' ) + decoderId );
+                action->setToolTip( tr( "%1 in the pack \"%2\"" )
+                                        .arg( decoder.value( "module" ).toString(), name ) );
+            }
+        }
+        const bool any = !menu->isEmpty();
+        button->setEnabled( any );
+        button->setToolTip( any ? tr( "Route a preview or protocol to a Python decoder of an "
+                                      "enabled configuration pack." )
+                                : tr( "No enabled configuration pack has Python decoders." ) );
+    }
+    for ( auto* table : { previewRoutes_, protocolRoutes_ } ) {
+        for ( int row = 0; row < table->rowCount(); ++row )
+            describeTarget( table->item( row, 1 ) );
+    }
+}
+void PreviewDecoderSettingsDialog::describeTarget( QTableWidgetItem* item ) const
+{
+    if ( !item )
+        return;
+    const auto target = item->text().trimmed();
+    QString tip;
+    if ( target.startsWith( PythonPrefix ) ) {
+        const auto decoder = target.mid( PythonPrefix.size() );
+        const auto pack = PreviewDecoderSettings::instance().pythonDecoderPack( decoder );
+        tip = pack.isEmpty()
+                  ? tr( "Python decoder %1: its pack is not enabled (or has no such decoder), "
+                        "so the route does not apply." )
+                        .arg( decoder )
+                  : tr( "Python decoder \"%1\" of the pack \"%2\"." )
+                        .arg( decoder.mid( decoder.indexOf( QLatin1Char( '/' ) ) + 1 ), pack );
+    }
+    // Setting a tooltip changes the item, which calls this again: only a new text is set.
+    if ( item->toolTip() != tip )
+        item->setToolTip( tip );
 }
 bool PreviewDecoderSettingsDialog::apply()
 {

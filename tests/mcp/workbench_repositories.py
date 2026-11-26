@@ -74,6 +74,26 @@ def pack_fields(plugins, pack_id=PACK_ID):
     return None
 
 
+# E16b: the public example pack with Python decoders, installed from its folder.
+PYTHON_PACK_ID = "org.cilogg.example.python-decoder-pack"
+PYTHON_PACK_FOLDER = Path(__file__).resolve().parents[2] / "plugins/examples/python-decoder-pack"
+PYTHON_PACK_FIELDS = ("id", "kind", "version", "enabled", "error", "contents", "previews",
+                      "pythonDecoders", "pythonDecodersActive")
+PYTHON_PACK_EXPECTED = {"id": PYTHON_PACK_ID, "kind": "config-pack", "version": "1.0.0",
+                        "enabled": True, "error": "", "contents": ["previews", "python_decoders"],
+                        "previews": 1, "pythonDecoders": 2, "pythonDecodersActive": True}
+# The Installed tab names the pack's decoders.
+PYTHON_PACK_STATE = "Python decoders: record, common"
+
+
+def python_pack_fields(plugins):
+    """The get_plugins fields of the Python decoder pack that every surface must agree on."""
+    for plugin in plugins:
+        if plugin.get("id") == PYTHON_PACK_ID:
+            return {key: plugin.get(key) for key in PYTHON_PACK_FIELDS}
+    return None
+
+
 class Surfaces:
     def __init__(self, cli, command, artifacts):
         self.cli = cli
@@ -270,6 +290,23 @@ def exercise_repositories(cli, command, catalog, artifacts, run_python):
     compare_json("Configuration pack", pack_row[1], "$.pack.gui.kind")
     report["gui"].append({"objectName": "pluginManagerTable", "pack": pack_row[1]})
 
+    # E16b: a pack with Python decoders installs and enables the same way. Every surface reports
+    # its decoders, active while it is enabled, and the host feature they run on; the Installed
+    # tab names them.
+    python_installed = surfaces.finished(
+        surfaces.manage_cli("install", {"path": str(PYTHON_PACK_FOLDER)})["jobId"], False)
+    compare_json("completed", python_installed["state"], "$.pythonPack.install")
+    command("plugin_manage", {"plugin_operation": "enable", "plugin_id": PYTHON_PACK_ID})
+    for name, listing in (("cli", cli("get_plugins")), ("mcp", command("get_plugins", {}))):
+        compare_json(PYTHON_PACK_EXPECTED, python_pack_fields(listing["plugins"]),
+                     f"$.pythonPack.{name}")
+        compare_json(1, listing.get("hostFeatures", {}).get("python_decoders"),
+                     f"$.hostFeatures.{name}")
+    wait_until(lambda: any(row[0] == "Example Python decoder pack" and PYTHON_PACK_STATE in row[4]
+                           for row in (ui_object(command, "pluginManagerTable") or {}).get(
+                               "items", [])), 20, "gui_python_pack_state_missing")
+    report["gui"].append({"objectName": "pluginManagerTable", "pythonPack": PYTHON_PACK_STATE})
+
     # E16a2: pack items are edited in place through the same operations on every surface, and
     # the Installed tab shows the edit.
     files = surfaces.pack_cli("pack_files")["files"]
@@ -323,6 +360,9 @@ def exercise_repositories(cli, command, catalog, artifacts, run_python):
                  python["checkUpdates"], "$.python.checkUpdates")
     compare_json(expected_pack, pack_fields(python["plugins"]), "$.python.pack")
     compare_json(True, python["packRestartRefused"], "$.python.packRestartRefused")
+    compare_json(PYTHON_PACK_EXPECTED, python_pack_fields(python["plugins"]), "$.python.pythonPack")
+    compare_json(1, (python.get("hostFeatures") or {}).get("python_decoders"),
+                 "$.python.hostFeatures")
     # E16a2: Python sees the CLI's edit and resets the pack to its version as shipped.
     compare_json(PACK_EDITED, python["packEdits"], "$.python.packEdits")
     compare_json([], python["packEditsAfterReset"], "$.python.packEditsAfterReset")
@@ -331,6 +371,10 @@ def exercise_repositories(cli, command, catalog, artifacts, run_python):
     cli("plugin_manage", "--plugin-operation", "remove", "--plugin-id", PACK_ID)
     if pack_fields(cli("get_plugins")["plugins"]) is not None:
         raise ParityError("pack_not_removed")
+    command("plugin_manage", {"plugin_operation": "disable", "plugin_id": PYTHON_PACK_ID})
+    command("plugin_manage", {"plugin_operation": "remove", "plugin_id": PYTHON_PACK_ID})
+    if python_pack_fields(command("get_plugins", {})["plugins"]) is not None:
+        raise ParityError("python_pack_not_removed")
     # Clean up through the CLI; removed IDs are never given again.
     for repository in ("parity-python", "parity-cli", "parity-mcp"):
         surfaces.manage_cli("repository_remove", {"repository": repository})

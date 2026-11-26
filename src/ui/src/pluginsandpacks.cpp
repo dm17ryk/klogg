@@ -757,9 +757,26 @@ QString pythonDecodersState( const QVariantMap& plugin, const QVariantMap& hostF
     if ( !hostFeatures.contains( QStringLiteral( "python_decoders" ) ) ) {
         return tr( "Python decoders: requires a newer CILogg" );
     }
+    // E16b: the decoders by their IDs (the ones a route names), the first few of a long list.
+    constexpr int ShownDecoders = 4;
+    QStringList ids;
+    for ( const auto& decoder :
+          plugin.value( "content" ).toMap().value( "python_decoders" ).toList() ) {
+        const auto id = decoder.toMap().value( "id" ).toString();
+        if ( !id.isEmpty() ) {
+            ids.append( id );
+        }
+    }
+    auto listed = QString::number( count );
+    if ( !ids.isEmpty() ) {
+        listed = ids.mid( 0, ShownDecoders ).join( QStringLiteral( ", " ) );
+        if ( ids.size() > ShownDecoders ) {
+            listed += tr( ", … (%1 in all)" ).arg( ids.size() );
+        }
+    }
     return plugin.value( "pythonDecodersActive" ).toBool()
-               ? tr( "Python decoders: %1" ).arg( count )
-               : tr( "Python decoders: %1 (inactive)" ).arg( count );
+               ? tr( "Python decoders: %1" ).arg( listed )
+               : tr( "Python decoders: %1 (inactive)" ).arg( listed );
 }
 
 QStringList catalogContents( cilogg::plugins::PluginManager* manager, const QString& entryId )

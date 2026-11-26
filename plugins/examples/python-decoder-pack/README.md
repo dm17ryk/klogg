@@ -18,4 +18,8 @@ A configuration pack (`"kind": "config-pack"`) whose preview is decoded by a Pyt
 
 Install it from **Plugins > Plugins and Packs > Installed > Install Folder…** and enable it. The
 Python code runs on your computer with your permissions while the pack is enabled, so CILogg asks
-first. See `docs/plugin-repositories.md` section 4.4 and `docs/plugin-sdk.md`.
+first. The Installed tab then lists "Python decoders: record, common". To route a preview of your
+own to the decoder, use **Add Python decoder** in Preview Decoder Settings ("Example Python decoder
+pack: record"). **Pack Files…** on the Installed tab edits the modules in place, and an update
+merges your edits with the new version. See `docs/plugin-repositories.md` section 4.4 and
+`docs/plugin-sdk.md`.

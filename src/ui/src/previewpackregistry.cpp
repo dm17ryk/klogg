@@ -306,6 +306,8 @@ void PreviewPackRegistry::refresh()
         if ( !pack.pythonModules.isEmpty() ) {
             decoder.python.append( QVariantMap{
                 { "id", pack.id }, { "root", pack.root }, { "decoders", pack.pythonModules } } );
+            // E16b: shown with each of its decoders (Preview Decoder Settings, previews).
+            decoder.pythonNames.insert( pack.id, packLabel( pack ) );
         }
         // Between packs there is no precedence; the pack check refuses a shared route key, so
         // this keeps the first pack's route only if a check was bypassed.

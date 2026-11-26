@@ -21,11 +21,15 @@ struct PreviewDecoderPacks {
     // The packs' versions and file states: a new version whose Lua keeps its file names still
     // changes it, so sessions restart. Never sent to the worker.
     QString key;
+    // E16b: the name of each pack in `python` (pack ID -> name), for the places that show a
+    // pack's decoders. Never sent to the worker.
+    QVariantMap pythonNames;
 
     bool operator==( const PreviewDecoderPacks& other ) const
     {
         return lua == other.lua && python == other.python && previewRoutes == other.previewRoutes
-               && protocolRoutes == other.protocolRoutes && key == other.key;
+               && protocolRoutes == other.protocolRoutes && key == other.key
+               && pythonNames == other.pythonNames;
     }
 };
 
@@ -53,6 +57,9 @@ public:
     PreviewDecoderPacks packs() const;
     // Replaces the pack contributions; a change discards the warm TShark sessions.
     void setPacks( const PreviewDecoderPacks& packs );
+    // E16b: the name of the enabled pack whose Python decoder `decoder` ("<pack-id>/<decoder-id>")
+    // is, or an empty string when no enabled pack has that decoder.
+    QString pythonDecoderPack( const QString& decoder ) const;
 Q_SIGNALS:
     void changed();
 
