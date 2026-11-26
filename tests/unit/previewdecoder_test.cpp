@@ -638,7 +638,8 @@ TEST_CASE( "Native framed client rejects malformed output and recovers within bo
         { "version", "worker_protocol_error" },  { "attributes", "worker_protocol_error" },
         { "depth", "worker_protocol_error" },    { "count", "worker_protocol_error" },
         { "surplus", "worker_protocol_error" },  { "large", "result_limit" },
-        { "stderr", "diagnostic_limit" },        { "stall", "timeout" }
+        { "stderr", "diagnostic_limit" },        { "stall", "timeout" },
+        { "bad_limit", "worker_protocol_error" }
     };
     int counter = 0;
     const auto run = [ & ]( QObject* channel, int timeoutMs = 5000 ) {
@@ -721,6 +722,64 @@ TEST_CASE( "Native framed client rejects malformed output and recovers within bo
     cleanup.exec();
     CHECK( client.findChildren<QProcess*>().isEmpty() );
     client.reset();
+}
+
+TEST_CASE( "TShark results fit 2048 rows, take the request's result limit and name a cut-off",
+           "[previewdecoder]" )
+{
+    RestoreDecoder restore;
+    RestoreEnvironment python( "CILOGG_SCRIPT_PYTHON" ), mode( "CILOGG_PREVIEW_FIXTURE_MODE" ),
+        pid( "CILOGG_PREVIEW_FIXTURE_PID" );
+    qputenv( "CILOGG_SCRIPT_PYTHON", QByteArray( PREVIEW_DECODER_FIXTURE_PATH ) );
+    qputenv( "CILOGG_PREVIEW_FIXTURE_PID",
+             QByteArray::number( QCoreApplication::applicationPid() ) );
+    REQUIRE( PreviewDecoderSettings::instance().setConfiguration(
+        { { "enabled", true },
+          { "tshark", QCoreApplication::applicationFilePath() },
+          { "text2pcap", QCoreApplication::applicationFilePath() } } ) );
+    QObject channel;
+    auto request = directRequest( "0102", "hex" );
+    request.sessionOwner = &channel;
+    const auto run = [ & ]( const QByteArray& fixtureMode ) {
+        TsharkPreviewClient::instance().reset();
+        qputenv( "CILOGG_PREVIEW_FIXTURE_MODE", fixtureMode );
+        return PreviewService::evaluateAndWait( request );
+    };
+    // Issue #183: a large tree is no longer cut at 512 rows; 2048 is the row limit.
+    auto result = run( "rows" );
+    INFO( result.value( "reason" ).toString().toStdString() );
+    REQUIRE( result.value( "available" ).toBool() );
+    CHECK( result.value( "fields" ).toList().size() == 2048 );
+    // The worker gets the request's result limit: 1 MiB unless the request chooses.
+    CHECK( run( "result_limit" ).value( "fields" ).toList().value( 0 ).toMap().value( "columns" )
+               .toList()
+               .value( 1 )
+           == "1048576" );
+    request.resultLimitKiB = 4096;
+    CHECK( run( "result_limit" ).value( "fields" ).toList().value( 0 ).toMap().value( "columns" )
+               .toList()
+               .value( 1 )
+           == "4194304" );
+    for ( const int invalid : { 127, 4097 } ) {
+        request.resultLimitKiB = invalid;
+        CHECK( run( "result_limit" ).value( "reason" ) == "invalid_result_limit" );
+    }
+    request.resultLimitKiB = 1024;
+    // A result cut off at its limit says which limit and by how much.
+    result = run( "limited_bytes" );
+    REQUIRE( result.value( "available" ).toBool() );
+    CHECK( result.value( "limited" ).toBool() );
+    CHECK( result.value( "limit" ).toMap().value( "totalRows" ) == 769 );
+    CHECK( PreviewService::limitText( result )
+           == "1 of 769 rows: result limit 128 KiB, the whole result needs 262 KiB." );
+    CHECK( PreviewService::tooltipHtml( result ).contains( "the whole result needs 262 KiB" ) );
+    CHECK( PreviewService::limitText( { { "limit", QVariantMap{ { "name", "rows" },
+                                                                 { "maximum", 2048 },
+                                                                 { "shownRows", 2048 },
+                                                                 { "totalRows", 2400 } } } } )
+           == "2048 of 2400 rows: the row limit is 2048." );
+    CHECK( PreviewService::limitText( {} ).isEmpty() );
+    TsharkPreviewClient::instance().reset();
 }
 
 TEST_CASE( "Direct decoder display names never select colliding carrier routes",

@@ -38,7 +38,13 @@ from workbench_process import ProcessOwner
 
 LOG = logging.getLogger("cilogg.decoder.preview")
 REQUEST_LIMIT = 256 * 1024
-RESPONSE_LIMIT = 128 * 1024
+# The response body's limit (#183): 1 MiB unless the request chooses another within
+# [RESPONSE_LIMIT_MIN, RESPONSE_LIMIT_MAX], so a large assembled message fits whole.
+RESPONSE_LIMIT = 1024 * 1024
+RESPONSE_LIMIT_MIN = 128 * 1024
+RESPONSE_LIMIT_MAX = 4 * 1024 * 1024
+# Rows of a result: as many as the PDML nodes the worker accepts.
+FIELD_LIMIT = 2048
 PAYLOAD_LIMIT = 64 * 1024
 PDML_LIMIT = 1024 * 1024
 # Lua in a session profile: the user's 8 scripts and the configuration packs' files together
@@ -159,34 +165,49 @@ def encode_frame(value, limit=RESPONSE_LIMIT):
     return struct.pack(">I", len(data)) + data
 
 
-def _fit_response(response):
-    """Retain an exact preorder row prefix within the compact ASCII body cap."""
+def byte_limit(maximum, shown, total, needed):
+    """What a result cut off at its byte limit says about it (#183): the limit, the rows shown
+    and in the tree, and the bytes the whole result needed."""
+    return {"name": "bytes", "maximum": maximum, "shownRows": shown, "totalRows": total,
+            "neededBytes": needed}
+
+
+def _fit_response(response, limit=RESPONSE_LIMIT):
+    """Retain an exact preorder row prefix within the compact ASCII body cap `limit`."""
     total = len(response["fields"])
     try:
-        frame = encode_frame(response)
+        frame = encode_frame(response, limit)
     except ProofError:
+        needed = len(json.dumps(response, ensure_ascii=True, separators=(",", ":"),
+                                allow_nan=False))
+        # A tree already cut at the row limit counts its rows, not the rows rendered.
+        rows = response.get("limit", {}).get("totalRows", total)
         fitted = dict(response)
-        fitted.update(complete=False, limited=True, reason="response_limit", fields=[])
+        # The row count is a placeholder with the most digits it can have; the final count
+        # only shrinks the body.
+        fitted.update(complete=False, limited=True, reason="response_limit", fields=[],
+                      limit=byte_limit(limit, total, rows, needed))
         # Empty-array brackets and all final limited-result metadata are already
         # counted. A whole row replaces no brackets; only subsequent rows add a comma.
-        used = len(encode_frame(fitted)) - 4
+        used = len(encode_frame(fitted, limit)) - 4
         for field in response["fields"]:
             try:
-                size = len(encode_frame(field)) - 4
+                size = len(encode_frame(field, limit)) - 4
             except ProofError:
                 break  # No truncation or skipping of an oversized row.
             size += bool(fitted["fields"])
-            if used + size > RESPONSE_LIMIT:
+            if used + size > limit:
                 break
             fitted["fields"].append(field)
             used += size
-        frame = encode_frame(fitted)  # Authoritative final cap check.
+        fitted["limit"] = byte_limit(limit, len(fitted["fields"]), rows, needed)
+        frame = encode_frame(fitted, limit)  # Authoritative final cap check.
         result = fitted
     else:
         result = response
     LOG.debug(
         "preview_response_budget retained=%d total=%d bytes=%d cap=%d",
-        len(result["fields"]), total, len(frame) - 4, RESPONSE_LIMIT,
+        len(result["fields"]), total, len(frame) - 4, limit,
     )
     return result
 
@@ -262,14 +283,9 @@ def pack_loader(pack_id, files):
 
 
 def validate_request(value):
-    if type(value) is not dict or set(value) != {
-        "version",
-        "id",
-        "op",
-        "profile",
-        "payloadBase64",
-        "timeoutMs",
-    }:
+    keys = {"version", "id", "op", "profile", "payloadBase64", "timeoutMs"}
+    # `responseLimit`: the result's byte limit this request chooses (#183).
+    if type(value) is not dict or set(value) not in (keys, keys | {"responseLimit"}):
         raise ProofError("invalid_request")
     if type(value["version"]) is not int or value["version"] != 1:
         raise ProofError("unsupported_version")
@@ -278,6 +294,9 @@ def validate_request(value):
     if value["op"] != "evaluate" or type(value["op"]) is not str:
         raise ProofError("invalid_operation")
     if type(value["timeoutMs"]) is not int or not 1 <= value["timeoutMs"] <= 10000:
+        raise ProofError("invalid_limits")
+    limit = value.get("responseLimit", RESPONSE_LIMIT)
+    if type(limit) is not int or not RESPONSE_LIMIT_MIN <= limit <= RESPONSE_LIMIT_MAX:
         raise ProofError("invalid_limits")
     profile = value["profile"]
     base_keys = {"tshark", "text2pcap", "lua", "dissector", "protocol"}
@@ -338,16 +357,31 @@ def response_base(identity, profile):
     }
 
 
-def render_fields(packets):
+# Transport metadata, including synthetic capture timestamps, is not part of a result.
+TRANSPORT_NAMES = {"frame", "geninfo", "exported_pdu"}
+
+
+def count_rows(packets):
+    """The rows the tree has: what render_fields shows without its row limit (#183)."""
+
+    def count(node):
+        if node["attributes"].get("name") in TRANSPORT_NAMES:
+            return 0
+        return (node["kind"] != "packet") + sum(count(child) for child in node["children"])
+
+    return sum(count(packet) for packet in packets)
+
+
+def render_fields(packets, limit=FIELD_LIMIT):
     result = []
     limited = False
 
     def visit(node, depth):
         nonlocal limited
-        if node["attributes"].get("name") in {"frame", "geninfo", "exported_pdu"}:
-            return  # Transport metadata includes synthetic capture timestamps.
+        if node["attributes"].get("name") in TRANSPORT_NAMES:
+            return
         if node["kind"] != "packet":
-            if len(result) == 512:
+            if len(result) == limit:
                 limited = True
                 return
             attr = node["attributes"]
@@ -649,7 +683,8 @@ class PreviewWorker:
             for node in fields_named(packets, "_ws.expert.message")
         ):
             raise ProofError("lua_failure")
-        fields, limited = render_fields(packets)
+        tree = packets
+        fields, limited = render_fields(tree)
         if not fields:
             # Missing entrypoints can leave only the real engine's transport
             # envelope. This is absence of decoded output, not a protocol-name
@@ -674,11 +709,12 @@ class PreviewWorker:
                         selected.extend(selected_protocols(node["children"]))
                 return selected
 
-            selected = selected_protocols(packets)
-            if not selected:
+            tree = selected_protocols(packets)
+            if not tree:
                 LOG.warning("preview_protocol_not_found id=%s", request["id"])
                 raise ProofError("protocol_not_found")
-            fields, limited = render_fields(selected)
+            fields, limited = render_fields(tree)
+            selected = tree
             LOG.debug("preview_protocol_selected id=%s subtrees=%d", request["id"], len(selected))
         else:
             LOG.debug("preview_all_decoded_fields_selected id=%s", request["id"])
@@ -693,7 +729,11 @@ class PreviewWorker:
             enginePid=self.engine.process.pid,
             scriptSha256=self.script_hashes,
         )
-        response = _fit_response(response)
+        if limited:
+            # Which limit cut the tree, and by how much (#183).
+            response["limit"] = {"name": "rows", "maximum": FIELD_LIMIT,
+                                 "shownRows": len(fields), "totalRows": count_rows(tree)}
+        response = _fit_response(response, request.get("responseLimit", RESPONSE_LIMIT))
         remaining(deadline)
         LOG.info(
             "preview_evaluated id=%s pid=%d payload_bytes=%d fields=%d limited=%s",
@@ -748,7 +788,9 @@ def main(argv=None):
                     write_before(sys.stdout.buffer, encode_frame(response), time.monotonic() + 1)
                 return 1  # Fatal: host must reap/reset the entire channel group.
             write_before(
-                sys.stdout.buffer, encode_frame(response), started + request["timeoutMs"] / 1000
+                sys.stdout.buffer,
+                encode_frame(response, request.get("responseLimit", RESPONSE_LIMIT)),
+                started + request["timeoutMs"] / 1000,
             )
     finally:
         worker.close()

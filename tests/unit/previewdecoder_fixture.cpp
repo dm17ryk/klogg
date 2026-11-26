@@ -76,6 +76,9 @@ int main( int argc, char** argv )
                                 { "size", "1" } };
         if ( mode == "budget" )
             attributes[ "show" ] = QString::number( request.value( "timeoutMs" ).toInt() );
+        // The result limit the host asked for, in bytes (#183).
+        if ( mode == "result_limit" )
+            attributes[ "show" ] = QString::number( request.value( "responseLimit" ).toInt() );
         QJsonObject field{ { "id", "0/0" },
                            { "depth", 0 },
                            { "positionOrigin", "engine_data_source_unresolved" },
@@ -88,8 +91,9 @@ int main( int argc, char** argv )
         }
         if ( mode == "depth" )
             field[ "depth" ] = 33;
+        // "rows" fills the row limit (2048); "count" passes it (#183).
         QJsonArray fields;
-        for ( int i = 0; i < ( mode == "count" ? 513 : 1 ); ++i )
+        for ( int i = 0; i < ( mode == "count" ? 2049 : mode == "rows" ? 2048 : 1 ); ++i )
             fields.append( field );
         QJsonObject response{
             { "version", 1 },
@@ -121,6 +125,17 @@ int main( int argc, char** argv )
             response[ "scriptSha256" ] = QJsonArray{ "not-a-hash" };
         if ( mode == "hash_newline" )
             response[ "scriptSha256" ] = QJsonArray{ QString( 64, 'a' ) + "\n" };
+        // A result cut off at its byte limit names it (#183); "bad_limit" miscounts the rows.
+        if ( mode == "limited_bytes" || mode == "bad_limit" ) {
+            response[ "complete" ] = false;
+            response[ "limited" ] = true;
+            response[ "reason" ] = "response_limit";
+            response[ "limit" ] = QJsonObject{ { "name", "bytes" },
+                                               { "maximum", 131072 },
+                                               { "shownRows", mode == "bad_limit" ? 2 : 1 },
+                                               { "totalRows", 769 },
+                                               { "neededBytes", 268000 } };
+        }
         if ( mode == "reported_timeout" ) {
             response[ "state" ] = "failed";
             response[ "reason" ] = "timeout";
@@ -133,7 +148,7 @@ int main( int argc, char** argv )
             bytes += bytes;
         if ( mode == "large" ) {
             char prefix[ 4 ];
-            qToBigEndian<quint32>( 128 * 1024 + 1, prefix );
+            qToBigEndian<quint32>( 4 * 1024 * 1024 + 1, prefix );
             bytes = QByteArray( prefix, 4 );
         }
         if ( output.write( bytes ) != bytes.size() || !output.flush() )

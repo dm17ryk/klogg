@@ -598,7 +598,8 @@ public:
         profile[ "dissector" ] = route.value( "dissector" );
         profile[ "protocol" ] = route.value( "protocol" );
         TsharkPreviewClient::instance().evaluate( sessionOwner_, profile, payload, remaining, id_,
-                                                  std::move( delivered ) );
+                                                  std::move( delivered ),
+                                                  request_.resultLimitKiB * 1024 );
     }
 
 private:
@@ -656,6 +657,9 @@ QProcess* PreviewService::evaluate( QObject* owner, PreviewEvaluationRequest req
         invalid = "input_limit";
     else if ( request.timeoutMs < 100 || request.timeoutMs > 10000 )
         invalid = "invalid_timeout";
+    else if ( request.resultLimitKiB < TsharkPreviewClient::ResultLimitMin / 1024
+              || request.resultLimitKiB > TsharkPreviewClient::ResultLimitMax / 1024 )
+        invalid = "invalid_result_limit";
     else if ( request.decoder != "auto" && request.decoder != "json"
               && request.decoder != "tshark" )
         invalid = "invalid_decoder";
@@ -792,11 +796,33 @@ QString PreviewService::tooltipHtml( const QVariantMap& result )
                 + value.left( 256 ).toHtmlEscaped() + "</pre></td></tr>";
     }
     html += "</table>";
-    if ( result.value( "limited" ).toBool() )
+    if ( result.value( "limited" ).toBool() ) {
         html += "<br><b>Limited preview results.</b>";
+        const auto limit = limitText( result );
+        if ( !limit.isEmpty() )
+            html += " " + limit.toHtmlEscaped();
+    }
     if ( abbreviated )
         html += "<br>Preview abbreviated; use Send to Preview for the full view.";
     return html;
+}
+
+QString PreviewService::limitText( const QVariantMap& result )
+{
+    const auto limit = result.value( "limit" ).toMap();
+    const auto rows = QStringLiteral( "%1 of %2 rows" )
+                          .arg( limit.value( "shownRows" ).toLongLong() )
+                          .arg( limit.value( "totalRows" ).toLongLong() );
+    if ( limit.value( "name" ) == "rows" )
+        return QStringLiteral( "%1: the row limit is %2." )
+            .arg( rows )
+            .arg( limit.value( "maximum" ).toLongLong() );
+    if ( limit.value( "name" ) == "bytes" )
+        return QStringLiteral( "%1: result limit %2 KiB, the whole result needs %3 KiB." )
+            .arg( rows )
+            .arg( limit.value( "maximum" ).toLongLong() / 1024 )
+            .arg( ( limit.value( "neededBytes" ).toLongLong() + 1023 ) / 1024 );
+    return {};
 }
 
 int PreviewService::workerMain( int argc, char* argv[] )

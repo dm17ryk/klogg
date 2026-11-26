@@ -18,6 +18,30 @@ bool integer( const QJsonValue& value, double minimum, double maximum )
     return value.isDouble() && std::isfinite( number ) && std::floor( number ) == number
            && number >= minimum && number <= maximum;
 }
+// What a limited result says about its limit (#183): `rows` (the row limit) or `bytes` (the body
+// limit, with the bytes the whole result needed), its maximum, and the rows shown and in the tree.
+bool validLimit( const QJsonObject& value )
+{
+    const auto limit = value.value( "limit" ).toObject();
+    const bool bytes = limit.value( "name" ) == "bytes";
+    const QStringList keys{ "name", "maximum", "shownRows", "totalRows" };
+    if ( !value.value( "limit" ).isObject() || value.value( "state" ) != "completed"
+         || !value.value( "limited" ).toBool()
+         || ( !bytes && limit.value( "name" ) != "rows" )
+         || limit.size() != keys.size() + ( bytes ? 1 : 0 ) )
+        return false;
+    for ( const auto& key : keys.mid( 1 ) )
+        if ( !limit.contains( key ) )
+            return false;
+    const auto shown = limit.value( "shownRows" ).toDouble();
+    return integer( limit.value( "maximum" ), 1, TsharkPreviewClient::ResultLimitMax )
+           && integer( limit.value( "shownRows" ), 0, TsharkPreviewClient::FieldLimit )
+           && shown == static_cast<double>( value.value( "fields" ).toArray().size() )
+           && integer( limit.value( "totalRows" ), shown, 9007199254740991.0 )
+           && ( !bytes
+                || integer( limit.value( "neededBytes" ), limit.value( "maximum" ).toDouble(),
+                            9007199254740991.0 ) );
+}
 bool validResponse( const QJsonObject& value, const QString& id )
 {
     if ( !integer( value.value( "version" ), 1, 1 ) || value.value( "id" ) != id
@@ -55,10 +79,13 @@ bool validResponse( const QJsonObject& value, const QString& id )
                                "messageIntegrity",
                                "fields",
                                "enginePid",
-                               "scriptSha256" };
+                               "scriptSha256",
+                               "limit" };
     for ( auto item = value.begin(); item != value.end(); ++item )
         if ( !allowed.contains( item.key() ) )
             return false;
+    if ( value.contains( "limit" ) && !validLimit( value ) )
+        return false;
     if ( value.contains( "enginePid" )
          && !integer( value.value( "enginePid" ), 1, 9007199254740991.0 ) )
         return false; // Metadata only; never used to find/terminate a process.
@@ -75,7 +102,7 @@ bool validResponse( const QJsonObject& value, const QString& id )
     if ( !value.value( "fields" ).isArray() )
         return false;
     const auto fields = value.value( "fields" ).toArray();
-    if ( fields.size() > 512 || ( !completed && !fields.isEmpty() ) )
+    if ( fields.size() > TsharkPreviewClient::FieldLimit || ( !completed && !fields.isEmpty() ) )
         return false;
     int previousDepth = -1;
     for ( const auto& field : fields ) {
@@ -136,12 +163,16 @@ TsharkPreviewClient::TsharkPreviewClient( QObject* parent )
                                QStringLiteral( "message_decoder_wire.py" ),
                                QStringLiteral( "workbench_process.py" ) },
                              validResponse,
-                             {} } )
+                             {},
+                             ResultLimitMax } )
 {
 }
 void TsharkPreviewClient::evaluate( QObject* owner, const QVariantMap& profile,
                                     const QByteArray& payload, int timeoutMs, const QString& id,
-                                    Completion done )
+                                    Completion done, int resultLimit )
 {
-    submit( owner, { { "profile", profile } }, payload, timeoutMs, id, std::move( done ) );
+    submit( owner,
+            { { "profile", profile },
+              { "responseLimit", qBound( ResultLimitMin, resultLimit, ResultLimitMax ) } },
+            payload, timeoutMs, id, std::move( done ) );
 }

@@ -62,6 +62,16 @@ does not fall back. A completed processing result does not establish protocol
 integrity. Engine offsets refer to decoded buffers and have unresolved source
 mapping, not guaranteed positions in the original log.
 
+A TShark/Lua result holds up to 2048 rows (as many PDML items as the worker
+reads) and up to its result limit in bytes: 1 MiB, or what the pane's
+**Result limit** (128 to 4096 KiB) or a request's `resultLimitKiB` sets for one
+run. A result cut off at either limit is `limited` (`reason`
+`rendered_field_limit` or `response_limit`) and names it in `limit`: `name`
+(`rows` or `bytes`), `maximum`, `shownRows`, `totalRows` and, for bytes,
+`neededBytes`. The pane's status and the hover say the same, for example
+"390 of 769 rows: result limit 128 KiB, the whole result needs 263 KiB"; raise
+the result limit and run again to see the rest.
+
 The same configuration and preview service are available through Commander CLI
 and native MCP. Supply configuration directly, not inside a wrapper:
 

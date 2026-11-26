@@ -1543,6 +1543,16 @@ void PreviewMessageTab::buildUi()
     timeout_->setRange( 100, 10000 );
     timeout_->setValue( 3000 );
     timeout_->setSuffix( tr( " ms" ) );
+    // The largest TShark/Lua result for a run (#183): raise it to see the rest of a large tree.
+    resultLimit_ = new QSpinBox( this );
+    resultLimit_->setObjectName( "previewResultLimitKiB" );
+    resultLimit_->setAccessibleName( tr( "Largest TShark result in KiB" ) );
+    resultLimit_->setToolTip( tr( "The largest TShark / Lua result for a run. A result cut off "
+                                  "at it says so; raise it and run again to see the rest." ) );
+    resultLimit_->setRange( 128, 4096 );
+    resultLimit_->setSingleStep( 128 );
+    resultLimit_->setValue( 1024 );
+    resultLimit_->setSuffix( tr( " KiB" ) );
     run_ = new QPushButton( tr( "Run / retry" ), this );
     run_->setObjectName( "previewRun" );
     run_->setAccessibleName( tr( "Run preview" ) );
@@ -1552,6 +1562,7 @@ void PreviewMessageTab::buildUi()
     overrides->addWidget( dissector_, 1 );
     overrides->addWidget( inputEncoding_ );
     overrides->addWidget( timeout_ );
+    overrides->addWidget( resultLimit_ );
     overrides->addWidget( run_ );
     overrides->addWidget( cancel_ );
     status_ = new QLabel( this );
@@ -1602,6 +1613,8 @@ void PreviewMessageTab::buildUi()
     connect( inputEncoding_, QOverload<int>::of( &QComboBox::currentIndexChanged ), this,
              [ this ] { invalidateEvaluation(); } );
     connect( timeout_, QOverload<int>::of( &QSpinBox::valueChanged ), this,
+             [ this ] { invalidateEvaluation(); } );
+    connect( resultLimit_, QOverload<int>::of( &QSpinBox::valueChanged ), this,
              [ this ] { invalidateEvaluation(); } );
     connect( run_, &QPushButton::clicked, this,
              [ this ] { renderPreview( previewTypeCombo_->currentData().toString() ); } );
@@ -1761,6 +1774,7 @@ void PreviewMessageTab::renderPreview( const QString& previewName )
     request.assemblyProtocol = prepared_.assembly.value( "protocol" ).toString();
     request.sessionOwner = this;
     request.timeoutMs = timeout_->value();
+    request.resultLimitKiB = resultLimit_->value();
     if ( mode == "tshark" ) {
         request.dissector = dissector_->text();
         request.inputEncoding = inputEncoding_->currentData().toString();
@@ -1833,6 +1847,10 @@ void PreviewMessageTab::presentResult( const QVariantMap& result )
     const auto reason = result.value( "reason" ).toString();
     if ( !reason.isEmpty() )
         status += " - " + reason.left( 256 );
+    // Which limit cut the result and by how much (#183).
+    const auto limit = PreviewService::limitText( result );
+    if ( !limit.isEmpty() )
+        status += " (" + limit + ")";
     // A Python decoder names its decoder, and the place of a failure.
     if ( python )
         status += " - " + result.value( "decoder" ).toString().left( 256 );
