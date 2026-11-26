@@ -432,7 +432,10 @@ PreviewDecoderSettingsDialog::~PreviewDecoderSettingsDialog()
     for ( auto* process : findChildren<QProcess*>( Qt::FindDirectChildrenOnly ) ) {
         process->disconnect( this );
         process->kill();
-        process->waitForFinished( TsharkListTimeoutMs );
+        if ( process->state() != QProcess::NotRunning
+             && !process->waitForFinished( TsharkListTimeoutMs ) ) {
+            LOG_WARNING << "Preview decoder settings: a TShark did not end when killed";
+        }
         delete process;
     }
 }

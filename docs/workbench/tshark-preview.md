@@ -97,7 +97,8 @@ declared names** puts those names into the routes and applies again. When OK
 shows new warnings, the dialog stays open; press OK again to close it. When OK
 is pressed while TShark is still listing its protocols, the dialog waits for
 the list, then closes, or stays open if the list brings new warnings. When the
-list stops coming (TShark is disabled meanwhile), it decides at once.
+list stops coming (TShark is disabled meanwhile, or replaced by one already
+listed), it decides at once.
 
 Example: a synthetic Lua file `C:\lua\my_proto.lua` declares one dissector.
 
