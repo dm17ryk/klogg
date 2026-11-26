@@ -125,16 +125,18 @@ int main( int argc, char** argv )
             response[ "scriptSha256" ] = QJsonArray{ "not-a-hash" };
         if ( mode == "hash_newline" )
             response[ "scriptSha256" ] = QJsonArray{ QString( 64, 'a' ) + "\n" };
-        // A result cut off at its byte limit names it (#183); "bad_limit" miscounts the rows.
-        if ( mode == "limited_bytes" || mode == "bad_limit" ) {
+        // A result cut off at its byte limit names it (#183); "bad_limit" miscounts the rows and
+        // "unnamed_limit" names none.
+        if ( mode == "limited_bytes" || mode == "bad_limit" || mode == "unnamed_limit" ) {
             response[ "complete" ] = false;
             response[ "limited" ] = true;
             response[ "reason" ] = "response_limit";
-            response[ "limit" ] = QJsonObject{ { "name", "bytes" },
-                                               { "maximum", 131072 },
-                                               { "shownRows", mode == "bad_limit" ? 2 : 1 },
-                                               { "totalRows", 769 },
-                                               { "neededBytes", 268000 } };
+            if ( mode != "unnamed_limit" )
+                response[ "limit" ] = QJsonObject{ { "name", "bytes" },
+                                                   { "maximum", 131072 },
+                                                   { "shownRows", mode == "bad_limit" ? 2 : 1 },
+                                                   { "totalRows", 769 },
+                                                   { "neededBytes", 268000 } };
         }
         if ( mode == "reported_timeout" ) {
             response[ "state" ] = "failed";

@@ -639,7 +639,7 @@ TEST_CASE( "Native framed client rejects malformed output and recovers within bo
         { "depth", "worker_protocol_error" },    { "count", "worker_protocol_error" },
         { "surplus", "worker_protocol_error" },  { "large", "result_limit" },
         { "stderr", "diagnostic_limit" },        { "stall", "timeout" },
-        { "bad_limit", "worker_protocol_error" }
+        { "bad_limit", "worker_protocol_error" }, { "unnamed_limit", "worker_protocol_error" }
     };
     int counter = 0;
     const auto run = [ & ]( QObject* channel, int timeoutMs = 5000 ) {
@@ -1086,7 +1086,8 @@ TEST_CASE( "Overdue successful delivery times out and retires only its owned cha
     RestoreEnvironment python( "CILOGG_SCRIPT_PYTHON" ), mode( "CILOGG_PREVIEW_FIXTURE_MODE" ),
         pid( "CILOGG_PREVIEW_FIXTURE_PID" );
     qputenv( "CILOGG_SCRIPT_PYTHON", QByteArray( PREVIEW_DECODER_FIXTURE_PATH ) );
-    qputenv( "CILOGG_PREVIEW_FIXTURE_MODE", "valid" );
+    // A result cut off at its limit: after the deadline it keeps no limit either (#183 review).
+    qputenv( "CILOGG_PREVIEW_FIXTURE_MODE", "limited_bytes" );
     qputenv( "CILOGG_PREVIEW_FIXTURE_PID",
              QByteArray::number( QCoreApplication::applicationPid() ) );
     REQUIRE( PreviewDecoderSettings::instance().setConfiguration(
@@ -1098,7 +1099,7 @@ TEST_CASE( "Overdue successful delivery times out and retires only its owned cha
     QObject channel;
     auto request = directRequest( "0102", "hex" );
     request.sessionOwner = &channel;
-    REQUIRE( PreviewService::evaluateAndWait( request ).value( "available" ).toBool() );
+    REQUIRE( PreviewService::evaluateAndWait( request ).value( "limit" ).toMap().size() == 5 );
     const auto processes = client.findChildren<QProcess*>();
     REQUIRE( processes.size() == 1 );
     QPointer<QProcess> worker = processes.front();
@@ -1149,6 +1150,8 @@ TEST_CASE( "Overdue successful delivery times out and retires only its owned cha
     CHECK_FALSE( result.value( "complete" ).toBool() );
     CHECK_FALSE( result.value( "limited" ).toBool() );
     CHECK( result.value( "fields" ).toList().isEmpty() );
+    CHECK_FALSE( result.contains( "limit" ) );
+    CHECK( PreviewService::limitText( result ).isEmpty() );
     CHECK_FALSE( result.contains( "fallbackReason" ) );
     CHECK_FALSE( result.contains( "id" ) );
     CHECK( result.value( "enginePid" ).toLongLong() == QCoreApplication::applicationPid() );
