@@ -773,14 +773,22 @@ TEST_CASE( "TShark results fit 2048 rows, take the request's result limit and na
     CHECK( PreviewService::limitText( result )
            == "1 of 769 rows: result limit 128 KiB, the whole result needs 262 KiB." );
     CHECK( PreviewService::tooltipHtml( result ).contains( "the whole result needs 262 KiB" ) );
-    CHECK( PreviewService::limitText( { { "limit", QVariantMap{ { "name", "rows" },
+    CHECK( PreviewService::limitText( { { "limited", true },
+                                        { "limit", QVariantMap{ { "name", "rows" },
                                                                  { "maximum", 2048 },
                                                                  { "shownRows", 2048 },
                                                                  { "totalRows", 2400 } } } } )
            == "2048 of 2400 rows: the row limit is 2048." );
     CHECK( PreviewService::limitText( {} ).isEmpty() );
+    // Only a result still cut off names its limit (review).
+    CHECK( PreviewService::limitText( { { "limit", QVariantMap{ { "name", "rows" },
+                                                                 { "maximum", 2048 },
+                                                                 { "shownRows", 2048 },
+                                                                 { "totalRows", 2400 } } } } )
+               .isEmpty() );
     // A tree past the row limit and then the byte limit: the bytes are the first rows' (review).
-    CHECK( PreviewService::limitText( { { "limit", QVariantMap{ { "name", "bytes" },
+    CHECK( PreviewService::limitText( { { "limited", true },
+                                        { "limit", QVariantMap{ { "name", "bytes" },
                                                                  { "maximum", 131072 },
                                                                  { "shownRows", 300 },
                                                                  { "totalRows", 5000 },

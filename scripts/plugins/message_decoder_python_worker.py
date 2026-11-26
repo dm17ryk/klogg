@@ -527,9 +527,8 @@ class DecoderSession:
             messageCompleteness=completeness,
             messageIntegrity=integrity,
         )
-        response = _fit_response(response, RESPONSE_LIMIT)
         # The result contract of MD03b names no limit; the reason says it was cut off.
-        response.pop("limit", None)
+        response = _fit_response(response, RESPONSE_LIMIT, describe_limit=False)
         LOG.info(
             "python_decoder_evaluated id=%s decoder=%s payload_bytes=%d fields=%d limited=%s",
             request["id"],

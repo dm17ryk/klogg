@@ -84,7 +84,9 @@ bool validResponse( const QJsonObject& value, const QString& id )
     for ( auto item = value.begin(); item != value.end(); ++item )
         if ( !allowed.contains( item.key() ) )
             return false;
-    if ( value.contains( "limit" ) && !validLimit( value ) )
+    // A completed result cut off names its limit; a failure never does (#183).
+    if ( value.contains( "limit" ) ? !validLimit( value )
+                                   : completed && value.value( "limited" ).toBool() )
         return false;
     if ( value.contains( "enginePid" )
          && !integer( value.value( "enginePid" ), 1, 9007199254740991.0 ) )

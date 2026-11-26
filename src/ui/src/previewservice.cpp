@@ -419,6 +419,8 @@ public:
             const auto stopped = failure( stopReason_ );
             for ( auto item = stopped.cbegin(); item != stopped.cend(); ++item )
                 result[ item.key() ] = item.value();
+            // A stopped result shows no rows, so no limit cut them (#183).
+            result.remove( "limit" );
         }
         if ( engine == TsharkBackend || engine == PythonBackend ) {
             const bool python = engine == PythonBackend;
@@ -817,6 +819,8 @@ QString PreviewService::tooltipHtml( const QVariantMap& result )
 
 QString PreviewService::limitText( const QVariantMap& result )
 {
+    if ( !result.value( "limited" ).toBool() )
+        return {};
     const auto limit = result.value( "limit" ).toMap();
     const auto rows = QStringLiteral( "%1 of %2 rows" )
                           .arg( limit.value( "shownRows" ).toLongLong() )

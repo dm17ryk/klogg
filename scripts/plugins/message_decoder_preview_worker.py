@@ -176,8 +176,10 @@ def byte_limit(maximum, shown, total, needed):
             "neededBytes": needed}
 
 
-def _fit_response(response, limit=RESPONSE_LIMIT):
-    """Retain an exact preorder row prefix within the compact ASCII body cap `limit`."""
+def _fit_response(response, limit=RESPONSE_LIMIT, describe_limit=True):
+    """Retain an exact preorder row prefix within the compact ASCII body cap `limit`. With
+    `describe_limit`, a cut result names its limit (#183); a result contract without that
+    object (a Python decoder's) budgets none of its bytes."""
     total = len(response["fields"])
     try:
         frame = encode_frame(response, limit)
@@ -187,10 +189,12 @@ def _fit_response(response, limit=RESPONSE_LIMIT):
         # A tree already cut at the row limit counts its rows, not the rows rendered.
         rows = response.get("limit", {}).get("totalRows", total)
         fitted = dict(response)
-        # The row count is a placeholder with the most digits it can have; the final count
-        # only shrinks the body.
-        fitted.update(complete=False, limited=True, reason="response_limit", fields=[],
-                      limit=byte_limit(limit, total, rows, needed))
+        fitted.pop("limit", None)
+        fitted.update(complete=False, limited=True, reason="response_limit", fields=[])
+        if describe_limit:
+            # The row count is a placeholder with the most digits it can have; the final count
+            # only shrinks the body.
+            fitted["limit"] = byte_limit(limit, total, rows, needed)
         # Empty-array brackets and all final limited-result metadata are already
         # counted. A whole row replaces no brackets; only subsequent rows add a comma.
         used = len(encode_frame(fitted, limit)) - 4
@@ -204,7 +208,8 @@ def _fit_response(response, limit=RESPONSE_LIMIT):
                 break
             fitted["fields"].append(field)
             used += size
-        fitted["limit"] = byte_limit(limit, len(fitted["fields"]), rows, needed)
+        if describe_limit:
+            fitted["limit"] = byte_limit(limit, len(fitted["fields"]), rows, needed)
         frame = encode_frame(fitted, limit)  # Authoritative final cap check.
         result = fitted
     else:
