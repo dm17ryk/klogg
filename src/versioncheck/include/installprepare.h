@@ -42,6 +42,9 @@ inline constexpr int UnexpectedErrorExitCode = 6;
 // Asked to roll back an installation whose cleanup had already started ("#finishing"): it was
 // completed instead, since its old copies may be gone already. The new version is installed.
 inline constexpr int FinishedInsteadExitCode = 7;
+// As FinishedInsteadExitCode, but files that installation did not replace could not be put back;
+// the manifest keeps them for the next update.
+inline constexpr int FinishedInsteadIncompleteExitCode = 8;
 
 struct ProcessInfo {
     unsigned long pid = 0;

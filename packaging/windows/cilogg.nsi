@@ -96,6 +96,8 @@ Var CiloggRestoreFailed
 Var CiloggDir
 ; 1 when a rollback found the update's cleanup already started and completed it instead.
 Var CiloggFinishedInstead
+; 1 when that completed cleanup could not put back every file it did not replace.
+Var CiloggNotPutBack
 
 Function CiloggWriteLog
     Exch $0
@@ -164,14 +166,21 @@ Function CiloggPrepareInstallDirectory
         Abort "Some CILogg files are in use and cannot be replaced. Installation cancelled before replacing files."
     ${EndIf}
     ${If} $0 == 3
-        ; Files were moved aside and not all of them could be put back: try once more.
+        ; Files were moved aside (by this run or an interrupted earlier one, as recorded in
+        ; cilogg-update-moves.txt) and not all of them could be put back: try once more.
         StrCpy $CiloggPrepared 1
         Call CiloggRollback
-        ${If} $CiloggRestoreFailed == 1
-            SetErrorLevel 4
-        ${Else}
-            SetErrorLevel 2
+        ${If} $CiloggFinishedInstead == 1
+            ${CiloggLog} "An earlier update's cleanup was completed; run setup again"
+            SetErrorLevel 5
+            Abort "An earlier CILogg update was completed first. Run setup again."
         ${EndIf}
+        ${If} $CiloggRestoreFailed == 1
+            ${CiloggLog} "Files recorded in $INSTDIR\cilogg-update-moves.txt could not be put back; close the programs using CILogg files and run setup again"
+            SetErrorLevel 4
+            Abort "Some CILogg files could not be put back. Close the programs using CILogg files, then run setup again."
+        ${EndIf}
+        SetErrorLevel 2
         Abort "Some CILogg files are in use and cannot be replaced. Installation cancelled."
     ${EndIf}
     ${If} $0 == "error"
@@ -205,8 +214,12 @@ Function CiloggRollback
         Pop $0
         StrCpy $CiloggPrepared 0
         ${If} $0 == 7
-            ; FinishedInsteadExitCode: the new version is installed.
+        ${OrIf} $0 == 8
+            ; FinishedInsteadExitCode (8: with files not put back): the new version is installed.
             StrCpy $CiloggFinishedInstead 1
+            ${If} $0 == 8
+                StrCpy $CiloggNotPutBack 1
+            ${EndIf}
             ${CiloggLog} "The update's cleanup had started; it was completed instead of undone"
         ${ElseIf} $0 != 0
             StrCpy $CiloggRestoreFailed 1
@@ -354,22 +367,23 @@ Section "-CILogg executable" ciloggexe
     ${EndIf}
     nsExec::ExecToLog '"$PLUGINSDIR\cilogg_updater.exe" --installer-finish "$CiloggDir" --log "$CiloggLog"'
     Pop $0
-    ; 0 (done), 5 (FinishIncompleteExitCode) and 6 (an unexpected error after the mark) leave the
-    ; new version installed. Otherwise the helper did not start, got wrong arguments, could not
-    ; write the finishing mark (4), or was stopped. The rollback undoes the installation, unless
-    ; the cleanup had already started: then it completes it instead.
-    ${If} $0 == "error"
-    ${OrIf} $0 == 1
-    ${OrIf} $0 == 4
+    ; 0 (done) and 5 (FinishIncompleteExitCode) leave the new version installed. Any other result
+    ; (the helper did not start, was stopped, could not write the finishing mark, or failed) goes
+    ; through the rollback: it undoes the installation, or, when the cleanup had already started,
+    ; completes it instead.
+    ${If} $0 != 0
+    ${AndIf} $0 != 5
         ${CiloggLog} "The update could not be completed (result $0)"
         Call CiloggRollback
         ${If} $CiloggFinishedInstead == 1
             StrCpy $0 0
+            ${If} $CiloggNotPutBack == 1
+                StrCpy $0 5
+            ${EndIf}
         ${EndIf}
     ${EndIf}
-    ${If} $0 == "error"
-    ${OrIf} $0 == 1
-    ${OrIf} $0 == 4
+    ${If} $0 != 0
+    ${AndIf} $0 != 5
         ${If} $CiloggRestoreFailed == 1
             SetErrorLevel 4
             Abort "CILogg could not be updated, and the previous version could not be fully restored. Run setup again."

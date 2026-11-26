@@ -1019,12 +1019,17 @@ std::vector<MovedFile> finish( const fs::path& directory, const std::vector<Move
 }
 
 namespace {
-bool samePath( const fs::path& left, const fs::path& right )
+// Equal for every spelling of one path: case, 8.3 short names, relative parts. A manifest may
+// come from an earlier run that named the folder differently.
+fs::path::string_type pathKey( const fs::path& path )
 {
 #ifdef _WIN32
-    return sameText( left.lexically_normal().wstring(), right.lexically_normal().wstring() );
+    auto key = normalized( path );
+    if ( !key.empty() )
+        CharUpperBuffW( key.data(), static_cast<DWORD>( key.size() ) );
+    return key;
 #else
-    return left.lexically_normal() == right.lexically_normal();
+    return path.lexically_normal().native();
 #endif
 }
 
@@ -1033,16 +1038,29 @@ bool samePath( const fs::path& left, const fs::path& right )
 std::size_t removeNewFiles( const fs::path& directory, const std::vector<MovedFile>& moved,
                             const std::vector<fs::path>& leftInPlace, const Log& log )
 {
-    std::size_t removed = 0;
+    std::set<fs::path::string_type> known;
+    for ( const auto& entry : moved )
+        known.insert( pathKey( entry.original ) );
+    for ( const auto& path : leftInPlace )
+        known.insert( pathKey( path ) );
+    std::vector<fs::path> added;
+    std::size_t matched = 0;
     for ( const auto& file : installationFiles( directory ) ) {
         if ( isMovedAside( file ) )
             continue;
-        const auto known = [ &file ]( const fs::path& path ) { return samePath( path, file ); };
-        if ( std::any_of( leftInPlace.begin(), leftInPlace.end(), known )
-             || std::any_of( moved.begin(), moved.end(), [ &known ]( const MovedFile& entry ) {
-                    return known( entry.original );
-                } ) )
-            continue;
+        if ( known.count( pathKey( file ) ) > 0 )
+            ++matched;
+        else
+            added.push_back( file );
+    }
+    // The record must describe this folder: when none of its files is found here, it cannot tell
+    // added files from previous ones, so nothing is removed.
+    if ( matched == 0 && !moved.empty() ) {
+        log( "The record matches no file of " + toUtf8( directory ) + "; no file is removed" );
+        return 0;
+    }
+    std::size_t removed = 0;
+    for ( const auto& file : added ) {
         fs::path newCopy;
         std::string error;
         if ( moveToFreeName( file, directory, &newCopy, &error ) != RenameResult::Renamed ) {
@@ -1256,11 +1274,13 @@ int runRollback( const fs::path& directory, const Log& log )
         log( "The update's cleanup had started; completing it instead of undoing the update" );
         const auto notPutBack
             = finish( directory, readManifest( directory, manifestPath, log ), log );
-        if ( notPutBack.empty() )
+        if ( notPutBack.empty() ) {
             fs::remove( manifestPath, error );
-        else
-            writeManifest( manifestPath, notPutBack, FinishingMarker );
-        return FinishedInsteadExitCode;
+            return FinishedInsteadExitCode;
+        }
+        writeManifest( manifestPath, notPutBack, FinishingMarker );
+        log( "Kept " + toUtf8( manifestPath ) + "; the next update puts these files back" );
+        return FinishedInsteadIncompleteExitCode;
     }
     const auto left = rollback( directory, readManifest( directory, manifestPath, log ), log,
                                 hasMarker( manifestPath, PreparedMarker ),

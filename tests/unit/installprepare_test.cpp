@@ -432,6 +432,31 @@ TEST_CASE( "A rollback after the cleanup started completes it instead", "[instal
     REQUIRE_FALSE( fs::exists( root / prepare::ManifestFileName ) );
 }
 
+TEST_CASE( "A record from a run that named the folder differently is recovered safely",
+           "[installprepare]" )
+{
+    QTemporaryDir temporary;
+    REQUIRE( temporary.isValid() );
+    const auto root = nativePath( temporary.path() ) / "app";
+    writeText( root / "cilogg.exe", "old executable" );
+    writeText( root / "plugins" / "kept.json", "old plugin" );
+    std::vector<std::string> lines;
+    // The earlier run spelled the folder with "." and ".." parts (or an 8.3 name).
+    const auto otherSpelling = root / "plugins" / ".." / "." ;
+    REQUIRE( prepare::runPrepare( otherSpelling, {}, recorder( lines ) )
+             == prepare::PreparedExitCode );
+    writeText( root / "cilogg.exe", "new executable" );
+    writeText( root / "plugins" / "added.json", "only in the new version" );
+
+    // A later run recovers it under the plain spelling: the previous files are back, and only
+    // the added file is removed.
+    REQUIRE( prepare::runRollback( root, recorder( lines ) ) == prepare::PreparedExitCode );
+    REQUIRE( readText( root / "cilogg.exe" ) == "old executable" );
+    REQUIRE( readText( root / "plugins" / "kept.json" ) == "old plugin" );
+    REQUIRE_FALSE( fs::exists( root / "plugins" / "added.json" ) );
+    REQUIRE( movedAsideFiles( root ).empty() );
+}
+
 #ifdef Q_OS_WIN
 TEST_CASE( "Another program's DLL in use in the same folder does not block the installation",
            "[installprepare]" )
