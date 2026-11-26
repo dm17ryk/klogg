@@ -17,10 +17,11 @@
 namespace cilogg::install_prepare {
 
 // Suffix of a file moved aside during an update. It is deleted once no process uses it: at the
-// end of that update, by the next update, or at the next restart of Windows.
+// end of that update or by the next one.
 inline constexpr char MovedAsideSuffix[] = ".cilogg-old";
-// The record of the files moved aside. It lives inside the installation folder (writable only by
-// administrators for a per-machine install), and every entry must lie inside that folder.
+// The record of the files moved aside. It lives inside the installation folder, and every entry
+// must lie inside that folder. In Program Files only administrators can change it; whoever can
+// write a custom installation folder controls the installer's writes there anyway.
 inline constexpr char ManifestFileName[] = "cilogg-update-moves.txt";
 
 // Exit codes of the installer modes.
@@ -103,15 +104,15 @@ struct PrepareResult {
 // the uninstaller, the DLLs and its documents) and the folders it installs. A folder that holds
 // no CILogg installation is left alone. Links and junctions are never followed, and every rename
 // first checks that no folder on the way is one. `onMoved` sees each move as it happens, so a
-// manifest can be written before the next one. A blocked file does not stop the pass: every
-// blocked file is reported.
+// manifest can be written before the next one. Files that cannot be moved are tried again after
+// a pause; a top-level DLL that still cannot be moved is left in place (it may be another
+// program's). A blocked file does not stop the pass: every blocked file is reported.
 PrepareResult moveAside( const std::filesystem::path& directory, const Log& log,
                          const std::function<void( const MovedFile& )>& onMoved = {} );
 
 // After the new files were copied. An original the installation replaced is deleted, or, while
-// a process still uses it, left for the next update and scheduled for deletion at the next
-// restart (administrators only). An original it did not replace is put back. Returns the files
-// that could not be put back. Entries an earlier pass handled are skipped.
+// a process still uses it, left for the next update. An original it did not replace is put back.
+// Returns the files that could not be put back. Entries an earlier pass handled are skipped.
 std::vector<MovedFile> finish( const std::filesystem::path& directory,
                                const std::vector<MovedFile>& moved, const Log& log );
 

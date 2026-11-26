@@ -305,12 +305,22 @@ void logRunningInstances( const fs::path& installDir )
         log( "  " + cilogg::install_prepare::describeProcess( process ) );
 }
 
+// True when `file` was written by the installer run that started at `started`, not left by an
+// earlier one.
+bool writtenSince( const fs::path& file, fs::file_time_type started )
+{
+    std::error_code error;
+    const auto written = fs::last_write_time( file, error );
+    return !error && written + std::chrono::seconds( 2 ) >= started;
+}
+
 // Copies the installer's log next to the helper log, so both are found in one place.
-void copyInstallerLog( const Arguments& args, const fs::path& installDir )
+void copyInstallerLog( const Arguments& args, const fs::path& installDir,
+                       fs::file_time_type started )
 {
     const auto source = installDir / cilogg::update_protocol::InstallerLogFileName;
     std::error_code error;
-    if ( !fs::is_regular_file( source, error ) ) {
+    if ( !fs::is_regular_file( source, error ) || !writtenSince( source, started ) ) {
         log( "The installer wrote no log in " + installDir.u8string() );
         return;
     }
@@ -325,10 +335,12 @@ void copyInstallerLog( const Arguments& args, const fs::path& installDir )
 }
 
 // After a failed installer: keeps the processes its report names for install-result.txt.
-void collectInstallerReport( const fs::path& installDir )
+void collectInstallerReport( const fs::path& installDir, fs::file_time_type started )
 {
-    std::ifstream report( installDir / cilogg::update_protocol::InstallerReportFileName,
-                          std::ios::binary );
+    const auto path = installDir / cilogg::update_protocol::InstallerReportFileName;
+    if ( !writtenSince( path, started ) )
+        return;
+    std::ifstream report( path, std::ios::binary );
     const auto blockerPrefix = std::string( cilogg::update_protocol::BlockerKey ) + "=";
     std::string line;
     while ( std::getline( report, line ) ) {
@@ -629,11 +641,12 @@ int installSystemPackage( const Arguments& args )
     // NSIS requires /D to be last and unquoted, even when the path contains spaces.
     const auto parameters = L"/S /D=" + installDir.wstring();
     log( "Launching NSIS setup with visible UAC; install directory=" + installDir.u8string() );
+    const auto started = fs::file_time_type::clock::now();
     const auto code = runElevated( args.staged, parameters );
     if ( resultPhase == protocol::InstallerPhase ) {
-        copyInstallerLog( args, installDir );
+        copyInstallerLog( args, installDir, started );
         if ( code != 0 )
-            collectInstallerReport( installDir );
+            collectInstallerReport( installDir, started );
     }
     return code;
 #else

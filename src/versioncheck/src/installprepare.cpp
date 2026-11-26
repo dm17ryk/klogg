@@ -34,9 +34,13 @@ using update_files::RenameResult;
 // Moved-aside copies of one file that may coexist: each update while an old instance still runs
 // adds one, and the next update deletes those no process uses any more.
 constexpr int MaxMovedAsideCopies = 99;
-// Security software can hold a freshly written file for a moment.
-constexpr int MoveAttempts = 5;
-constexpr auto MoveRetryDelay = std::chrono::milliseconds( 200 );
+// Security software can hold a freshly written file for a moment: files that could not be moved
+// are tried again after a pause, all together.
+constexpr int MoveRetryRounds = 3;
+constexpr auto MoveRetryDelay = std::chrono::milliseconds( 500 );
+// Appended to the manifest before the old copies are deleted: an update interrupted after it is
+// completed by the next one, an update interrupted before it is undone.
+constexpr char FinishingMarker[] = "#finishing";
 
 // The folders cilogg.nsi installs below the installation folder; its uninstaller removes each as a
 // whole. Files in any other folder belong to someone else and are never touched.
@@ -304,11 +308,6 @@ bool removeFile( const fs::path& file, std::string* error )
     return false;
 }
 
-// Asks Windows to delete `file` at the next restart (administrators only).
-bool deleteAtRestart( const fs::path& file )
-{
-    return MoveFileExW( file.c_str(), nullptr, MOVEFILE_DELAY_UNTIL_REBOOT ) != FALSE;
-}
 #else
 struct Listing {
     std::vector<fs::path> files;
@@ -348,10 +347,6 @@ bool removeFile( const fs::path& file, std::string* error )
     return !code;
 }
 
-bool deleteAtRestart( const fs::path& )
-{
-    return false;
-}
 #endif
 
 void collectFiles( const fs::path& directory, std::vector<fs::path>& files )
@@ -464,8 +459,9 @@ RenameResult renameInside( const fs::path& from, const fs::path& to, const fs::p
     return update_files::renameNoReplace( from, to, error );
 }
 
-// Deletes `file`, or, while a process still uses it, asks Windows to delete it at the next
-// restart and leaves it for the next update. True when it is gone now.
+// Deletes `file` unless a process still uses it; the next update deletes it then. (No deletion at
+// restart is scheduled: moved-aside names are reused, and a later update could leave its only
+// copy of a file under the same name.) True when it is gone now.
 bool deleteOrSchedule( const fs::path& file, const fs::path& directory, const Log& log )
 {
     if ( !staysInside( file, directory ) ) {
@@ -475,10 +471,7 @@ bool deleteOrSchedule( const fs::path& file, const fs::path& directory, const Lo
     std::string error;
     if ( removeFile( file, &error ) )
         return true;
-    if ( deleteAtRestart( file ) )
-        log( "Still in use, deleted at the next restart or update: " + toUtf8( file ) );
-    else
-        log( "Still in use, deleted by the next update: " + toUtf8( file ) + " (" + error + ")" );
+    log( "Still in use, deleted by the next update: " + toUtf8( file ) + " (" + error + ")" );
     return false;
 }
 
@@ -521,6 +514,19 @@ std::vector<MovedFile> readManifest( const fs::path& directory, const fs::path& 
         trusted.push_back( moved );
     }
     return trusted;
+}
+
+bool isFinishing( const fs::path& manifestPath )
+{
+    std::ifstream file( manifestPath, std::ios::binary );
+    std::string line;
+    while ( std::getline( file, line ) ) {
+        if ( !line.empty() && line.back() == '\r' )
+            line.pop_back();
+        if ( line == FinishingMarker )
+            return true;
+    }
+    return false;
 }
 
 void writeManifest( const fs::path& path, const std::vector<MovedFile>& entries )
@@ -805,25 +811,48 @@ PrepareResult moveAside( const fs::path& directory, const Log& log,
     ordered.insert( ordered.end(), libraries.begin(), libraries.end() );
     ordered.insert( ordered.end(), others.begin(), others.end() );
 
-    for ( const auto& file : ordered ) {
-        fs::path movedTo;
-        std::string error;
-        auto status = RenameResult::Failed;
-        for ( int attempt = 1; attempt <= MoveAttempts; ++attempt ) {
-            status = moveToFreeName( file, directory, &movedTo, &error );
-            if ( status != RenameResult::Failed || error == OutsideError
-                 || attempt == MoveAttempts )
-                break;
-            std::this_thread::sleep_for( MoveRetryDelay );
+    std::vector<std::pair<fs::path, std::string>> failed;
+    const auto moveAll = [ & ]( const std::vector<fs::path>& files ) {
+        failed.clear();
+        for ( const auto& file : files ) {
+            fs::path movedTo;
+            std::string error;
+            const auto status = moveToFreeName( file, directory, &movedTo, &error );
+            if ( status == RenameResult::Renamed ) {
+                result.moved.push_back( { file, movedTo } );
+                if ( onMoved )
+                    onMoved( result.moved.back() );
+            }
+            else if ( status != RenameResult::SourceMissing ) {
+                failed.emplace_back( file, error );
+            }
         }
-        if ( status == RenameResult::Renamed ) {
-            result.moved.push_back( { file, movedTo } );
-            if ( onMoved )
-                onMoved( result.moved.back() );
+    };
+    moveAll( ordered );
+    for ( int round = 1; round <= MoveRetryRounds && !failed.empty(); ++round ) {
+        std::vector<fs::path> again;
+        for ( const auto& entry : failed ) {
+            if ( entry.second != OutsideError )
+                again.push_back( entry.first );
+        }
+        if ( again.empty() )
+            break;
+        std::this_thread::sleep_for( MoveRetryDelay );
+        auto outside = failed;
+        moveAll( again );
+        for ( const auto& entry : outside ) {
+            if ( entry.second == OutsideError )
+                failed.push_back( entry );
+        }
+    }
+    for ( const auto& [ file, error ] : failed ) {
+        // A top-level DLL may belong to another program in the same folder: leave it where it is.
+        // If it is one of CILogg's, writing the new one fails and the installation is undone.
+        if ( file.parent_path() == directory && lowerExtension( file ) == ".dll"
+             && error != OutsideError ) {
+            log( "Left in place (" + error + "): " + toUtf8( file ) );
             continue;
         }
-        if ( status == RenameResult::SourceMissing )
-            continue;
         log( "Cannot move aside " + toUtf8( file ) + ": " + error );
         result.blocked.push_back( file );
     }
@@ -916,14 +945,27 @@ int runPrepare( const fs::path& directory, const fs::path& report, const Log& lo
     }
     const auto manifestPath = directory / ManifestFileName;
     if ( fs::exists( manifestPath, error ) ) {
-        // An earlier installation stopped before it finished or restored the previous files
-        // (for example, it was killed): put the previous version back first.
+        // An earlier installation stopped (for example, it was killed). Stopped while copying,
+        // it is undone: the previous version is put back. Stopped while deleting the old copies,
+        // the new version is complete and the cleanup is finished.
         const auto earlier = readManifest( directory, manifestPath, log );
-        log( "Restoring " + std::to_string( earlier.size() )
-             + " files an interrupted update moved aside" );
-        if ( !rollback( directory, earlier, log ) ) {
-            log( "Kept " + toUtf8( manifestPath ) + "; run setup again" );
-            return RollbackIncompleteExitCode;
+        if ( isFinishing( manifestPath ) ) {
+            log( "Finishing an interrupted update of " + std::to_string( earlier.size() )
+                 + " files" );
+            const auto notPutBack = finish( directory, earlier, log );
+            if ( !notPutBack.empty() ) {
+                writeManifest( manifestPath, notPutBack );
+                log( "Kept " + toUtf8( manifestPath ) + "; run setup again" );
+                return RollbackIncompleteExitCode;
+            }
+        }
+        else {
+            log( "Restoring " + std::to_string( earlier.size() )
+                 + " files an interrupted update moved aside" );
+            if ( !rollback( directory, earlier, log ) ) {
+                log( "Kept " + toUtf8( manifestPath ) + "; run setup again" );
+                return RollbackIncompleteExitCode;
+            }
         }
         fs::remove( manifestPath, error );
     }
@@ -980,6 +1022,10 @@ int runFinish( const fs::path& directory, const Log& log )
     if ( !fs::exists( manifestPath, error ) ) {
         log( "No files were moved aside" );
         return PreparedExitCode;
+    }
+    {
+        std::ofstream marker( manifestPath, std::ios::binary | std::ios::app );
+        marker << FinishingMarker << "\n";
     }
     const auto notPutBack = finish( directory, readManifest( directory, manifestPath, log ), log );
     if ( notPutBack.empty() ) {

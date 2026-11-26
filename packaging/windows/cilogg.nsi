@@ -81,7 +81,7 @@ the COPYING and NOTICE files.$\r$\n$\r$\n$_CLICK"
 
 ; Installer log (UTF-16LE) in the installation folder: the update helper runs setup silently,
 ; which discards DetailPrint, and copies this log next to its own. Like the report, it is written
-; only inside $INSTDIR, which only administrators can write for a per-machine install.
+; into $INSTDIR, where setup copies its files anyway, never into the user's profile.
 Var CiloggLog
 ; The files that blocked the installation and the processes using them.
 Var CiloggReport
@@ -91,6 +91,9 @@ Var CiloggPrepared
 Var CiloggCopyFailed
 ; 1 when the previous files could not all be put back after a failure.
 Var CiloggRestoreFailed
+; $INSTDIR as a command-line argument: "C:\." for a drive root, whose trailing backslash would
+; escape the closing quote.
+Var CiloggDir
 
 Function CiloggWriteLog
     Exch $0
@@ -126,6 +129,12 @@ Function CiloggStartLog
     StrCpy $CiloggLog "$INSTDIR\cilogg-installer.log"
     StrCpy $CiloggReport "$INSTDIR\cilogg-installer-report.txt"
     Delete "$CiloggLog"
+    Delete "$CiloggReport"
+    StrCpy $CiloggDir "$INSTDIR"
+    StrCpy $0 "$INSTDIR" 1 -1
+    ${If} $0 == "\"
+        StrCpy $CiloggDir "$INSTDIR."
+    ${EndIf}
     ${GetTime} "" "L" $0 $1 $2 $3 $4 $5 $6
     ${CiloggLog} "CILogg ${VERSION} setup started $2-$1-$0 $4:$5:$6"
 FunctionEnd
@@ -140,7 +149,7 @@ Function CiloggPrepareInstallDirectory
     ${CiloggLog} "CILogg installation directory: $INSTDIR"
     InitPluginsDir
     File "/oname=$PLUGINSDIR\cilogg_updater.exe" release\cilogg_updater.exe
-    nsExec::ExecToLog '"$PLUGINSDIR\cilogg_updater.exe" --installer-prepare "$INSTDIR" --log "$CiloggLog" --report "$CiloggReport"'
+    nsExec::ExecToLog '"$PLUGINSDIR\cilogg_updater.exe" --installer-prepare "$CiloggDir" --log "$CiloggLog" --report "$CiloggReport"'
     Pop $0
     ${If} $0 == 0
         StrCpy $CiloggPrepared 1
@@ -163,6 +172,13 @@ Function CiloggPrepareInstallDirectory
         ${EndIf}
         Abort "Some CILogg files are in use and cannot be replaced. Installation cancelled."
     ${EndIf}
+    ${If} $0 == "error"
+        ${If} ${FileExists} "$PLUGINSDIR\cilogg_updater.exe"
+            ${CiloggLog} "Setup could not start $PLUGINSDIR\cilogg_updater.exe"
+        ${Else}
+            ${CiloggLog} "Setup could not unpack $PLUGINSDIR\cilogg_updater.exe"
+        ${EndIf}
+    ${EndIf}
     ${CiloggLog} "Setup cancelled before replacing files: the installation folder could not be prepared (result $0)"
     SetErrorLevel 5
     Abort "The CILogg folder could not be prepared. Installation cancelled before replacing files."
@@ -172,7 +188,7 @@ FunctionEnd
 Function CiloggRollback
     ${If} $CiloggPrepared == 1
         ${CiloggLog} "Restoring the previous files"
-        nsExec::ExecToLog '"$PLUGINSDIR\cilogg_updater.exe" --installer-rollback "$INSTDIR" --log "$CiloggLog"'
+        nsExec::ExecToLog '"$PLUGINSDIR\cilogg_updater.exe" --installer-rollback "$CiloggDir" --log "$CiloggLog"'
         Pop $0
         StrCpy $CiloggPrepared 0
         ${If} $0 != 0
@@ -354,7 +370,7 @@ Section "-CILogg executable" ciloggexe
         SetErrorLevel 3
         Abort "CILogg files could not be written. The previous version was restored."
     ${EndIf}
-    nsExec::ExecToLog '"$PLUGINSDIR\cilogg_updater.exe" --installer-finish "$INSTDIR" --log "$CiloggLog"'
+    nsExec::ExecToLog '"$PLUGINSDIR\cilogg_updater.exe" --installer-finish "$CiloggDir" --log "$CiloggLog"'
     Pop $0
     StrCpy $CiloggPrepared 0
     ${If} $0 != 0
@@ -376,8 +392,8 @@ you already have the Microsoft Visual C++ 2017 Redistributable installed."
 
 # Uninstaller
 Section "Uninstall"
-    RMDir /r "$INSTDIR\plugins"
-    RMDir /r "$INSTDIR\plugin-sdk"
+    RMDir /r /REBOOTOK "$INSTDIR\plugins"
+    RMDir /r /REBOOTOK "$INSTDIR\plugin-sdk"
     Delete "$INSTDIR\plugin-sdk.md"
     Delete "$INSTDIR\Uninstall.exe"
 
@@ -438,16 +454,16 @@ Section "Uninstall"
     Delete "$INSTDIR\mimalloc-redirect.dll"
     Delete "$INSTDIR\mimalloc-redirect32.dll"
     Delete "$INSTDIR\*.dll"
-    RMDir /r "$INSTDIR\python_runtime"
-    RMDir /r "$INSTDIR\platforms"
-    RMDir /r "$INSTDIR\generic"
-    RMDir /r "$INSTDIR\iconengines"
-    RMDir /r "$INSTDIR\imageformats"
-    RMDir /r "$INSTDIR\networkinformation"
-    RMDir /r "$INSTDIR\sqldrivers"
-    RMDir /r "$INSTDIR\styles"
-    RMDir /r "$INSTDIR\tls"
-    RMDir /r "$INSTDIR\translations"
+    RMDir /r /REBOOTOK "$INSTDIR\python_runtime"
+    RMDir /r /REBOOTOK "$INSTDIR\platforms"
+    RMDir /r /REBOOTOK "$INSTDIR\generic"
+    RMDir /r /REBOOTOK "$INSTDIR\iconengines"
+    RMDir /r /REBOOTOK "$INSTDIR\imageformats"
+    RMDir /r /REBOOTOK "$INSTDIR\networkinformation"
+    RMDir /r /REBOOTOK "$INSTDIR\sqldrivers"
+    RMDir /r /REBOOTOK "$INSTDIR\styles"
+    RMDir /r /REBOOTOK "$INSTDIR\tls"
+    RMDir /r /REBOOTOK "$INSTDIR\translations"
     RMDir "$INSTDIR"
 
     ; Remove settings in %appdata%

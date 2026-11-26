@@ -1392,10 +1392,13 @@ std::optional<InstallBlocker> VersionChecker::parseInstallBlocker( const QString
     blocker.parentName = fields.at( 4 ).trimmed();
     if ( !pidValid || !parentValid || blocker.pid <= 0 )
         return std::nullopt;
-    if ( blocker.name.isEmpty() )
-        blocker.name = blocker.imagePath.isEmpty()
-                           ? tr( "Unknown program" )
-                           : QFileInfo( blocker.imagePath ).fileName();
+    if ( blocker.name.isEmpty() ) {
+        // A Windows path, also when this check runs elsewhere.
+        const auto separator = std::max( blocker.imagePath.lastIndexOf( '/' ),
+                                         blocker.imagePath.lastIndexOf( '\\' ) );
+        blocker.name = blocker.imagePath.isEmpty() ? tr( "Unknown program" )
+                                                   : blocker.imagePath.mid( separator + 1 );
+    }
     return blocker;
 }
 

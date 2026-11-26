@@ -191,6 +191,16 @@ $supervisorLog = Join-Path $workDirectory 'supervisor.log'
 $results = [Collections.Generic.List[object]]::new()
 $heldFile = $null
 try {
+    # The installer runs its own copy of the helper from its temporary folder: it must start
+    # there on this platform, without the Visual C++ runtime next to it.
+    $probeDirectory = Join-Path $workDirectory 'helper-probe'
+    New-Item -ItemType Directory -Path $probeDirectory | Out-Null
+    $probeHelper = Join-Path $probeDirectory 'cilogg_updater.exe'
+    Copy-Item -LiteralPath (Join-Path $PackageRoot 'release\cilogg_updater.exe') -Destination $probeHelper
+    $probeOutput = & $probeHelper --installer-prepare (Join-Path $probeDirectory 'not installed') 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw ("The packaged cilogg_updater.exe does not run on its own: exit 0x{0:X8}`n{1}" -f $LASTEXITCODE, ($probeOutput -join "`n"))
+    }
     $setup = Build-Installer
     $installedExe = Join-Path $installDirectory 'cilogg.exe'
     $expectedHash = (Get-FileHash -LiteralPath $releaseExe).Hash

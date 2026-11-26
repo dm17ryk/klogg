@@ -358,7 +358,52 @@ TEST_CASE( "An interrupted update is undone by the next one", "[installprepare]"
     REQUIRE( movedAsideFiles( root ).empty() );
 }
 
+TEST_CASE( "An update interrupted while deleting old copies is completed, not undone",
+           "[installprepare]" )
+{
+    QTemporaryDir temporary;
+    REQUIRE( temporary.isValid() );
+    const auto root = nativePath( temporary.path() );
+    writeText( root / "cilogg.exe", "old executable" );
+    writeText( root / "dropped.dll", "old library" );
+    std::vector<std::string> lines;
+    REQUIRE( prepare::runPrepare( root, {}, recorder( lines ) ) == prepare::PreparedExitCode );
+    writeText( root / "cilogg.exe", "new executable" );
+    // The installer was killed in its cleanup: it had marked the manifest and deleted the old
+    // cilogg.exe, but not yet put dropped.dll back.
+    {
+        std::ofstream marker( root / prepare::ManifestFileName, std::ios::binary | std::ios::app );
+        marker << "#finishing\n";
+    }
+    REQUIRE( fs::remove( root / "cilogg.exe.cilogg-old" ) );
+
+    REQUIRE( prepare::runPrepare( root, {}, recorder( lines ) ) == prepare::PreparedExitCode );
+    REQUIRE( prepare::runFinish( root, recorder( lines ) ) == prepare::PreparedExitCode );
+    REQUIRE( readText( root / "cilogg.exe" ) == "new executable" );
+    REQUIRE( readText( root / "dropped.dll" ) == "old library" );
+    REQUIRE( movedAsideFiles( root ).empty() );
+}
+
 #ifdef Q_OS_WIN
+TEST_CASE( "Another program's DLL in use in the same folder does not block the installation",
+           "[installprepare]" )
+{
+    QTemporaryDir temporary;
+    REQUIRE( temporary.isValid() );
+    const auto root = nativePath( temporary.path() ) / "Tools";
+    writeText( root / "cilogg.exe", "old executable" );
+    writeText( root / "other.dll", "another program's library" );
+    std::vector<std::string> lines;
+    ExclusiveHandle other( root / "other.dll" );
+    REQUIRE( other.isOpen() );
+
+    REQUIRE( prepare::runPrepare( root, {}, recorder( lines ) ) == prepare::PreparedExitCode );
+    REQUIRE_FALSE( fs::exists( root / "cilogg.exe" ) );
+    REQUIRE( fs::exists( root / "other.dll" ) );
+    REQUIRE( prepare::runRollback( root, recorder( lines ) ) == prepare::PreparedExitCode );
+    REQUIRE( readText( root / "cilogg.exe" ) == "old executable" );
+}
+
 TEST_CASE( "A running executable is moved aside and replaced, not closed", "[installprepare]" )
 {
     QTemporaryDir temporary;

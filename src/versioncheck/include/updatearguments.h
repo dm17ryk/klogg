@@ -54,10 +54,9 @@ inline constexpr char RelaunchPhase[] = "relaunch";
 inline constexpr char InstallerLogKey[] = "installer-log";
 inline constexpr char BlockerKey[] = "blocker";
 
-// Written by the Windows installer (cilogg.nsi) into the installation folder, which only
-// administrators can write for a per-machine install: the elevated installer never writes where
-// the user's own processes could redirect it. The helper copies the log next to its own log and
-// reads the report.
+// Written by the Windows installer (cilogg.nsi) into the installation folder, where it copies
+// its files anyway, never into the user's profile. The helper copies the log next to its own
+// log and reads the report.
 inline constexpr char InstallerLogFileName[] = "cilogg-installer.log";
 inline constexpr char InstallerReportFileName[] = "cilogg-installer-report.txt";
 
