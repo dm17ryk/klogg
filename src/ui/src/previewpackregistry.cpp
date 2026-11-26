@@ -9,7 +9,9 @@
 #include <QSet>
 #include <QSettings>
 #include <QTemporaryDir>
+#include <QTimer>
 #include <algorithm>
+#include <utility>
 
 #include "actionsconfigparser.h"
 #include "actionsmanager.h"
@@ -20,6 +22,7 @@
 #include "previewconfigparser.h"
 #include "previewdecodersettings.h"
 #include "previewservice.h"
+#include "pythonentriesclient.h"
 
 namespace {
 using cilogg::plugins::PackContent;
@@ -329,6 +332,7 @@ void PreviewPackRegistry::refresh()
     QList<ListedHighlighterSet> highlighterSets;
     QSet<QString> setIds;
     QVector<PackActionItems> actionItems;
+    QHash<QString, QString> pythonKeys;
     for ( const auto& pack : packs ) {
         cache_.insert( pack.id, pack );
         if ( !pack.error.isEmpty() ) {
@@ -367,6 +371,10 @@ void PreviewPackRegistry::refresh()
         if ( !pack.pythonModules.isEmpty() ) {
             decoder.python.append( QVariantMap{
                 { "id", pack.id }, { "root", pack.root }, { "decoders", pack.pythonModules } } );
+            // E16b: shown with each of its decoders (Preview Decoder Settings, previews).
+            decoder.pythonNames.insert( pack.id, packLabel( pack ) );
+            // Checked once for each version and edit of the pack (startPythonCheck).
+            pythonKeys.insert( pack.id, pack.id + QLatin1Char( '@' ) + pack.key );
         }
         // Between packs there is no precedence; the pack check refuses a shared route key, so
         // this keeps the first pack's route only if a check was bypassed.
@@ -390,12 +398,146 @@ void PreviewPackRegistry::refresh()
     decoder.key = keys.join( '\n' );
     LOG_INFO << "Configuration packs applied packs=" << packs.size()
              << " lua_packs=" << decoder.lua.size() << " python_packs=" << decoder.python.size();
+    decoder_ = decoder;
+    pythonKeys_ = pythonKeys;
+    // E16b: the checks of packs no longer applied are forgotten; the packs not checked yet are
+    // checked again below, whatever an earlier check found.
+    const auto current = pythonKeys.values();
+    for ( auto check = pythonChecks_.begin(); check != pythonChecks_.end(); ) {
+        check = current.contains( check.key() ) ? std::next( check ) : pythonChecks_.erase( check );
+    }
+    pythonFailure_.clear();
     // The decoder first, so the preview definitions rebuilt next carry its new revision.
-    PreviewDecoderSettings::instance().setPacks( decoder );
+    PreviewDecoderSettings::instance().setPacks( withPythonCheck() );
     PreviewManager::instance().setPackPreviews( previews );
     PackFilters::instance().setFilters( filters );
     PackHighlighters::instance().setSets( highlighterSets );
     ActionsManager::instance().setPackItems( actionItems );
+    // After the packs are set: a change of the preview settings ends a running check.
+    startPythonCheck();
+}
+
+void PreviewPackRegistry::checkPythonDecoders()
+{
+    if ( !pythonRequest_.isEmpty() ) {
+        return;
+    }
+    pythonFailure_.clear();
+    startPythonCheck();
+}
+
+PreviewDecoderPacks PreviewPackRegistry::withPythonCheck() const
+{
+    auto packs = decoder_;
+    bool pending = false;
+    for ( const auto& value : std::as_const( packs.python ) ) {
+        const auto id = value.toMap().value( "id" ).toString();
+        auto found = pythonChecks_.constFind( pythonKeys_.value( id ) );
+        if ( found == pythonChecks_.cend() ) {
+            pending = true;
+            // What a check that ran out of time found, until the next one ends.
+            found = pythonPartial_.constFind( pythonKeys_.value( id ) );
+            if ( found == pythonPartial_.cend() ) {
+                continue;
+            }
+        }
+        packs.pythonEntries.insert( id, found->entries );
+        if ( !found->notes.isEmpty() ) {
+            packs.pythonNotes.insert( id, found->notes );
+        }
+    }
+    packs.pythonCheck = !pending                    ? QStringLiteral( "done" )
+                        : !pythonFailure_.isEmpty() ? pythonFailure_
+                                                    : QStringLiteral( "checking" );
+    return packs;
+}
+
+void PreviewPackRegistry::startPythonCheck()
+{
+    QVariantList pending;
+    QHash<QString, QString> keys;
+    for ( const auto& value : std::as_const( decoder_.python ) ) {
+        const auto id = value.toMap().value( "id" ).toString();
+        if ( !pythonChecks_.contains( pythonKeys_.value( id ) ) ) {
+            pending.append( value );
+            keys.insert( id, pythonKeys_.value( id ) );
+        }
+    }
+    // A running check of the same packs goes on; one of other packs (or other versions) stops.
+    if ( !pythonRequest_.isEmpty() && keys == pythonPending_ ) {
+        return;
+    }
+    const auto previous = std::exchange( pythonRequest_, QString{} );
+    if ( !previous.isEmpty() ) {
+        PythonEntriesClient::instance().cancel( previous, QStringLiteral( "superseded" ) );
+    }
+    pythonPending_ = keys;
+    if ( pending.isEmpty() ) {
+        return;
+    }
+    pythonRequest_ = QStringLiteral( "python-entries-%1" ).arg( ++pythonRequests_ );
+    LOG_INFO << "Python decoder check started packs=" << pending.size()
+             << " request=" << pythonRequest_.toStdString();
+    // The check may end at once (no interpreter): the state it publishes then is the last one.
+    PreviewDecoderSettings::instance().setPacks( withPythonCheck() );
+    PythonEntriesClient::instance().check(
+        this, pending, pythonRequest_, [ this, request = pythonRequest_ ]( QVariantMap result ) {
+            finishPythonCheck( request, result );
+        } );
+}
+
+void PreviewPackRegistry::finishPythonCheck( const QString& request, const QVariantMap& result )
+{
+    if ( request != pythonRequest_ ) {
+        return; // a check of packs that changed since
+    }
+    pythonRequest_.clear();
+    const auto reason = result.value( "reason" ).toString();
+    if ( result.value( "state" ).toString() != QLatin1String( "completed" ) ) {
+        if ( reason == QLatin1String( "configuration_changed" ) ) {
+            // The preview settings changed during the check, which ends the worker: again.
+            LOG_DEBUG << "Python decoder check restarts after a settings change";
+            QTimer::singleShot( 0, this, [ this ] { checkPythonDecoders(); } );
+            return;
+        }
+        LOG_WARNING << "Python decoder check failed reason=" << reason.toStdString();
+        pythonFailure_ = reason;
+        PreviewDecoderSettings::instance().setPacks( withPythonCheck() );
+        return;
+    }
+    QHash<QString, PythonCheck> found;
+    QSet<QString> late;
+    for ( const auto& value : result.value( "modules" ).toList() ) {
+        const auto module = value.toMap();
+        const auto decoder = module.value( "decoder" ).toString();
+        const auto slash = decoder.indexOf( QLatin1Char( '/' ) );
+        auto& check = found[ decoder.left( slash ) ];
+        if ( module.value( "entry" ).toBool() ) {
+            check.entries.append( decoder.mid( slash + 1 ) );
+        }
+        else {
+            check.notes.insert( decoder.mid( slash + 1 ),
+                                QVariantMap{ { "reason", module.value( "reason" ) },
+                                             { "line", module.value( "line" ) },
+                                             { "detail", module.value( "detail" ) } } );
+        }
+        if ( module.value( "reason" ).toString() == QLatin1String( "timeout" ) ) {
+            late.insert( decoder.left( slash ) );
+        }
+    }
+    // A pack with modules the check had no time for shows what it found and is checked again
+    // (checkPythonDecoders); the others are done for this version and edit.
+    pythonPartial_.clear();
+    for ( auto pack = pythonPending_.cbegin(); pack != pythonPending_.cend(); ++pack ) {
+        ( late.contains( pack.key() ) ? pythonPartial_ : pythonChecks_ )
+            .insert( pack.value(), found.value( pack.key() ) );
+    }
+    if ( !late.isEmpty() ) {
+        pythonFailure_ = QStringLiteral( "timeout" );
+    }
+    LOG_INFO << "Python decoder check done packs=" << pythonPending_.size()
+             << " late_packs=" << late.size();
+    PreviewDecoderSettings::instance().setPacks( withPythonCheck() );
 }
 
 QString PreviewPackRegistry::copyPreview( const QString& name, const QString& copyName )

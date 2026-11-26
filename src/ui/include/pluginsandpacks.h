@@ -33,8 +33,9 @@ bool confirmPackLua( QWidget* parent, cilogg::plugins::PluginManager* manager, c
                      const QString& name, const QStringList& contents, bool enabling );
 // The Installed tab's text for a pack's Python decoders (get_plugins `pythonDecoders` and
 // `pythonDecodersActive`), following the host's `python_decoders` feature in `hostFeatures`
-// (MD03b): "requires a newer CILogg" without it, the count, "(inactive)" while they do not run;
-// empty for a pack without Python decoders.
+// (MD03b): "requires a newer CILogg" without it, the decoders' IDs from the manifest's
+// `content.python_decoders` (the first four of a longer list, E16b) or else their count,
+// "(inactive)" while they do not run; empty for a pack without Python decoders.
 QString pythonDecodersState( const QVariantMap& plugin, const QVariantMap& hostFeatures );
 // The content types of the catalog entry `entryId`; empty when unknown or not a pack.
 QStringList catalogContents( cilogg::plugins::PluginManager* manager, const QString& entryId );

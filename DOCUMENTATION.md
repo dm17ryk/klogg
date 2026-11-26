@@ -216,7 +216,8 @@ install, update, enable and remove like plugins, from the same repositories; bui
 them with `--os any --arch any`. Pack previews appear in the previews dialog with the pack's name,
 and **Copy to My Previews** makes your own copy. A preview routed to a pack's Python decoder is
 decoded by that decoder's `decode(payload, context)`; the preview pane shows `python_decoder` and
-the decoder's name. Pack filters appear in the predefined filter list as "<name> (<pack>)" and in
+the decoder with its pack's name, and **Add Python decoder** in Preview Decoder Settings routes a
+preview of yours to one of them. Pack filters appear in the predefined filter list as "<name> (<pack>)" and in
 the Predefined Filters dialog after yours, read only: **Copy to My Filters** makes your own copy
 (it replaces the pack's), **Edit…** edits the pack's filter in place, and **Packs…** opens the
 Plugins and Packs window. Pack highlighter sets work the same way: the Highlighters menu lists
