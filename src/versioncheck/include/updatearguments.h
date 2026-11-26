@@ -48,6 +48,21 @@ inline constexpr char InstallerPhase[] = "installer";
 inline constexpr char ReplacePhase[] = "replace";
 inline constexpr char RelaunchPhase[] = "relaunch";
 
+// install-result.txt keys added by the helper after a failed Windows installer: the installer's
+// log, and one line per process that kept files in the installation folder in use
+// ("<pid>\t<name>\t<image path>\t<parent pid>\t<parent name>", UTF-8).
+inline constexpr char InstallerLogKey[] = "installer-log";
+inline constexpr char BlockerKey[] = "blocker";
+
+// Written next to the helper log by the Windows installer (cilogg.nsi passes them on).
+inline constexpr char InstallerLogFileName[] = "cilogg-installer.log";
+inline constexpr char InstallerReportFileName[] = "cilogg-installer-report.txt";
+#ifdef _WIN32
+// Installer options; NSIS requires /D= to come last.
+inline constexpr wchar_t InstallerLogOptionWide[] = L"/CILOGGLOG=";
+inline constexpr wchar_t InstallerReportOptionWide[] = L"/CILOGGREPORT=";
+#endif
+
 // Helper exit codes for its own failures. System error codes pass through unchanged.
 inline constexpr int RelaunchFailedExitCode = 3;
 inline constexpr int StagedPackageMissingExitCode = 9;

@@ -51,6 +51,7 @@ add_executable(cilogg_tests
     streamsession_owner_test.cpp
     sessioninfo_test.cpp
     versionchecker_test.cpp
+    installprepare_test.cpp
     wrappedstring_test.cpp
     datasetschema_test.cpp
     datasetreference_test.cpp

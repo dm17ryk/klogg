@@ -36,6 +36,13 @@ uses ordinary JSON and preserves all settings.
 Restart or reload the client after installation. Move/install CILogg first and
 then run setup from that binary: the registration uses its absolute path.
 
+Updating CILogg on Windows never closes running MCP servers. The installer moves
+the files they use aside (`*.cilogg-old`, deleted once no process uses them) and
+installs the new version next to them, so each server keeps the version it started
+with until its client restarts it. Processes started from other folders are never
+touched. If another program keeps a CILogg file open, the update stops before
+replacing anything, and the next CILogg start names that program and its parent.
+
 ## Any MCP client
 
 Run `cilogg mcp config` to print the exact local entry:

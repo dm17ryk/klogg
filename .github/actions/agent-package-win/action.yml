@@ -49,7 +49,7 @@ runs:
         xcopy cilogg-%CILOGG_VERSION%-%CILOGG_ARCH%-%CILOGG_QT%-pdb.zip %CILOGG_BUILD_ROOT%\packages /y
         xcopy cilogg-%CILOGG_VERSION%-%CILOGG_ARCH%-%CILOGG_QT%-setup.exe %CILOGG_BUILD_ROOT%\packages /y
 
-    - name: Test installer process shutdown
+    - name: Test installer with running CILogg MCP servers
       shell: cmd
       run: |
         powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests\packaging\windows_installer_test.ps1 -OutputDirectory "%CILOGG_BUILD_ROOT%\reports\installer-processes"

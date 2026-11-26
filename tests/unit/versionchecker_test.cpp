@@ -514,6 +514,98 @@ TEST_CASE( "A failed exit-time install is reported once and not re-armed", "[upd
     REQUIRE( second->state() == UpdateState::Ready );
 }
 
+TEST_CASE( "A failed install names the programs that kept its files in use", "[updater]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    const QDir rootDir( root.path() );
+    const auto launched = makeTransaction( root.path(), "999.0.0", thisInstallation() );
+    writeTransaction( rootDir.filePath( LaunchedName ), launched );
+    const auto logDirectory = QFileInfo( launched.helperLogPath ).dir();
+    const auto installerLog = logDirectory.filePath(
+        QString::fromLatin1( cilogg::update_protocol::InstallerLogFileName ) );
+    // UTF-8 with tabs between the fields, as the helper writes it.
+    writeFile( logDirectory.filePath( cilogg::update_protocol::InstallResultFileName ),
+               "token=" + launched.transactionToken.toLatin1()
+                   + "\nmode=windows-setup\nphase=installer\ncode=2\ninstaller-log="
+                   + installerLog.toUtf8()
+                   + "\nblocker=4321\tcilogg.exe\tC:\\Program Files\\cilogg\\cilogg.exe\t99\t"
+                     "claude.exe\nblocker=77\tnotepad.exe\t\t0\t\nblocker=broken\n" );
+
+    const auto checker = makeOfflineChecker( root.path(), "26.04.2.1197" );
+    QSignalSpy failed( checker.get(), &VersionChecker::installFailed );
+    checker->activate();
+    REQUIRE( failed.wait( 2000 ) );
+    const auto message = failed.at( 0 ).at( 0 ).toString();
+    REQUIRE( message.contains( "stopped before replacing any files" ) );
+    REQUIRE( message.contains( "cilogg.exe (PID 4321, C:\\Program Files\\cilogg\\cilogg.exe), "
+                               "started by claude.exe (PID 99)" ) );
+    REQUIRE( message.contains( "notepad.exe (PID 77)" ) );
+    REQUIRE_FALSE( message.contains( "broken" ) );
+    REQUIRE( message.contains( QDir::toNativeSeparators( installerLog ) ) );
+    REQUIRE( message.contains( QDir::toNativeSeparators( launched.helperLogPath ) ) );
+    REQUIRE( checker->state() == UpdateState::Ready );
+}
+
+TEST_CASE( "Install blockers are parsed only from complete lines", "[updater]" )
+{
+    const auto full = VersionChecker::parseInstallBlocker(
+        "12\tcilogg.exe\tC:\\cilogg\\cilogg.exe\t7\tcodex.exe" );
+    REQUIRE( full.has_value() );
+    REQUIRE( full->pid == 12 );
+    REQUIRE( full->name == "cilogg.exe" );
+    REQUIRE( full->parentPid == 7 );
+    REQUIRE( full->parentName == "codex.exe" );
+    // A process the installer could not name gets its file name.
+    const auto unnamed = VersionChecker::parseInstallBlocker( "12\t\tC:\\cilogg\\python.exe\t0\t" );
+    REQUIRE( unnamed.has_value() );
+    REQUIRE( unnamed->name == "python.exe" );
+    REQUIRE_FALSE( VersionChecker::parseInstallBlocker( "12\tcilogg.exe" ).has_value() );
+    REQUIRE_FALSE( VersionChecker::parseInstallBlocker( "x\ta\tb\t1\tc" ).has_value() );
+    REQUIRE_FALSE( VersionChecker::parseInstallBlocker( "0\ta\tb\t1\tc" ).has_value() );
+    REQUIRE( VersionChecker::describeInstallBlockers( {} ).isEmpty() );
+    REQUIRE( VersionChecker::describeInstallBlockers( { *full } )
+             == "- cilogg.exe (PID 12, C:\\cilogg\\cilogg.exe), started by codex.exe (PID 7)" );
+}
+
+TEST_CASE( "A failed install can be scheduled again", "[updater]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    const QDir rootDir( root.path() );
+    const auto launched = makeTransaction( root.path(), "999.0.0", thisInstallation() );
+    writeTransaction( rootDir.filePath( LaunchedName ), launched );
+    writeFile( QFileInfo( launched.helperLogPath )
+                   .dir()
+                   .filePath( cilogg::update_protocol::InstallResultFileName ),
+               "token=" + launched.transactionToken.toLatin1()
+                   + "\nmode=windows-setup\nphase=installer\ncode=2\n" );
+
+    const auto checker = makeOfflineChecker( root.path(), "26.04.2.1197" );
+    QSignalSpy failed( checker.get(), &VersionChecker::installFailed );
+    checker->activate();
+    REQUIRE( failed.wait( 2000 ) );
+    REQUIRE( checker->state() == UpdateState::Ready );
+
+    QString error;
+    REQUIRE( checker->scheduleReadyUpdate( &error ) );
+    REQUIRE( error.isEmpty() );
+    REQUIRE( checker->state() == UpdateState::Scheduled );
+    const auto scheduled = readTransaction( rootDir.filePath( PendingName ) );
+    REQUIRE( scheduled.transactionToken == launched.transactionToken );
+    REQUIRE( scheduled.installOnExit );
+    REQUIRE( scheduled.launchedAt == 0 );
+
+    // A package changed since it was verified is never scheduled.
+    writeFile( launched.packagePath, "tampered" );
+    REQUIRE_FALSE( checker->scheduleReadyUpdate( &error ) );
+    REQUIRE( error.contains( "verified" ) );
+
+    // An updater that is not active (CLI, MCP and secondary processes) never schedules.
+    const auto passive = makeOfflineChecker( root.path(), "26.04.2.1197" );
+    REQUIRE_FALSE( passive->scheduleReadyUpdate( &error ) );
+}
+
 TEST_CASE( "A completed exit-time install clears its record silently", "[updater]" )
 {
     QTemporaryDir root;
@@ -552,6 +644,7 @@ TEST_CASE( "The helper retries only transient installer launch failures", "[upda
                  .contains( "missing" ) );
     // The same numbers returned by a running installer mean something else.
     REQUIRE( VersionChecker::describeInstallResult( 2, installer ).contains( "stopped before" ) );
+    REQUIRE( VersionChecker::describeInstallResult( 2, installer ).contains( "in use" ) );
     REQUIRE( VersionChecker::describeInstallResult( 5, installer ).contains( "exit code 5" ) );
     REQUIRE( VersionChecker::describeInstallResult( protocol::PackageVerificationFailedExitCode,
                                                     launch )
