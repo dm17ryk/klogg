@@ -476,6 +476,14 @@ bool executeResponseDefinition( StreamSession* session, const ResponseDefinition
         setError( errorMessage, QObject::tr( "No eligible COM session for automatic responses." ) );
         return false;
     }
+    // A configuration pack's response, or a step that runs a pack action (E16c3): what it
+    // schedules for later runs only while the packs are as they were, so disabling, updating or
+    // removing a pack stops it.
+    const auto packGeneration = ActionsManager::instance().packGeneration();
+    const bool packResponse = response.id >= PackItemIdBase;
+    const auto packsUnchanged = [ packGeneration ] {
+        return ActionsManager::instance().packGeneration() == packGeneration;
+    };
 
     cilogg::diagnostics::ActivityJournal::record(
         QStringLiteral( "response" ),
@@ -540,11 +548,13 @@ bool executeResponseDefinition( StreamSession* session, const ResponseDefinition
             continue;
         }
 
+        const bool packWork = packResponse || action.id >= PackItemIdBase;
         QTimer::singleShot(
             cumulativeDelay, safeSession.data(),
             [ safeSession, action, parameters, stepIndex = index, responseId = response.id,
-              generation ]() {
-                if ( actionContextIsCurrent( safeSession, generation, true ) ) {
+              generation, packWork, packsUnchanged ]() {
+                if ( actionContextIsCurrent( safeSession, generation, true )
+                     && ( !packWork || packsUnchanged() ) ) {
                     LOG_DEBUG << "Response id=" << responseId
                               << " sending delayed linked action index=" << stepIndex;
                     QString ignoredError;
@@ -561,8 +571,10 @@ bool executeResponseDefinition( StreamSession* session, const ResponseDefinition
             } );
     }
 
-    const auto finalizeResponse = [ safeSession, response, captures, generation ]() {
-        if ( !actionContextIsCurrent( safeSession, generation, true ) ) {
+    const auto finalizeResponse = [ safeSession, response, captures, generation, packResponse,
+                                    packsUnchanged ]() {
+        if ( !actionContextIsCurrent( safeSession, generation, true )
+             || ( packResponse && !packsUnchanged() ) ) {
             LOG_DEBUG << "Response id=" << response.id << " skipped stale finalization";
             return;
         }

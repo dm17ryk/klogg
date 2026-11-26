@@ -241,8 +241,13 @@ PreviewPackRegistry::Contribution PreviewPackRegistry::read( const QString& id,
         ActionsParseResult parsed;
         if ( error.isEmpty() && file.isOpen() ) {
             parsed = ActionsConfigParser().parseJson( bytes );
+            // A warning is something the parser read otherwise than written (an unknown sequence
+            // type sent as text, say): for a pack, an error.
             if ( !parsed.errors.isEmpty() ) {
                 error = parsed.errors.first();
+            }
+            else if ( !parsed.warnings.isEmpty() ) {
+                error = parsed.warnings.first();
             }
         }
         for ( const auto& action : parsed.actions ) {

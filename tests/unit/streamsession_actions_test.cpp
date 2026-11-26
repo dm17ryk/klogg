@@ -696,6 +696,49 @@ TEST_CASE( "Delayed response steps and finalization cannot revive after tab chan
     CHECK( session.isConnectionOpen() == ( change != 0 || !finalize ) );
 }
 
+TEST_CASE( "Delayed work of a pack's response stops when the packs change",
+           "[serial][session][actions][actionruntime][E16]" )
+{
+    // E16c3 (Codex review of #176): a pack disabled, updated or removed before a delayed step or
+    // the finalization of its response leaves nothing to send or close.
+    ScopedActionsState restore;
+    auto& settings = PersistentInfo::getSettings( app_settings{} );
+    settings.remove( "PackActions" );
+    const auto change = GENERATE( false, true );
+    const auto finalize = GENERATE( false, true );
+    CAPTURE( change, finalize );
+    auto& manager = ActionsManager::instance();
+    manager.setAutoResponsesEnabled( true );
+    auto action = testAction( 1 );
+    action.parameters.delay = finalize ? 30 : 0;
+    auto response = testResponse( 1 );
+    response.response.steps = { { 1, 10 } };
+    response.response.stopCommunication = finalize;
+    manager.setPackItems( { { "a.pack", "Pack A", { action }, { response } } } );
+    REQUIRE( manager.packResponses().size() == 1 );
+    const auto packResponse = manager.packResponses().first().response;
+    StreamSession session( settingsFor( QStringLiteral( "TEST_PACK_DELAYED" ) ) );
+    StreamSessionTestAccess::openConnection( session );
+    QSignalSpy dispatched( &session, &StreamSession::actionSent );
+    QSignalSpy closed( &session, &StreamSession::connectionClosed );
+    QString error;
+    REQUIRE( executeResponseDefinition( &session, packResponse, {}, &error ) );
+    if ( change ) {
+        manager.setPackItems( {} );
+    }
+    else {
+        // The packs as they were: the delayed work runs.
+        REQUIRE( QTest::qWaitFor(
+            [ & ] { return finalize ? !closed.isEmpty() : !dispatched.isEmpty(); }, 5000 ) );
+    }
+    REQUIRE( waitForActionTimers() );
+    CHECK( dispatched.size() == ( !change && !finalize ? 1 : 0 ) );
+    CHECK( closed.size() == ( !change && finalize ? 1 : 0 ) );
+    CHECK( session.isConnectionOpen() == ( change || !finalize ) );
+    manager.setPackItems( {} );
+    settings.remove( "PackActions" );
+}
+
 TEST_CASE( "Synchronous observers can invalidate automatic work before subsequent effects",
            "[serial][session][actions][actionruntime]" )
 {

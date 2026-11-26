@@ -94,6 +94,9 @@ class ActionsManager : public QObject {
     // The run-time id of an enabled pack's action or response named "<pack-id>/<local-id>".
     std::optional<int> resolvePackAction( const QString& namespacedId ) const;
     std::optional<int> resolvePackResponse( const QString& namespacedId ) const;
+    // Changes whenever the packs' items are replaced (a pack enabled, updated, disabled or
+    // removed): work a pack's response scheduled for later runs only while it is the same.
+    quint64 packGeneration() const;
     // Turns every response of an enabled pack on or off; returns how many changed.
     int setPackResponsesEnabled( const QString& packId, bool enabled );
     // A removed pack: which of its responses were on is forgotten, so installing it again starts
@@ -132,5 +135,6 @@ class ActionsManager : public QObject {
     QVector<PackActionItems> packSources_;
     QVector<ListedAction> packActions_;
     QVector<ListedResponse> packResponses_;
+    quint64 packGeneration_ = 0;
     bool autoResponsesEnabled_ = true;
 };

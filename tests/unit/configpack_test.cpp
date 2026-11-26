@@ -1894,6 +1894,15 @@ TEST_CASE( "A pack's actions must be ones CILogg runs, within the action limits"
     CHECK( PreviewPackRegistry::instance()
                .check( "a.pack", folder, manifest.json )
                .contains( "Missing sequence" ) );
+    // Nor one the parser reads otherwise than written (an unknown sequence type would be sent as
+    // text): its warning is the pack's error (Codex review of #176).
+    writeFile( folder + "/actions.json",
+               R"({ "actions": [ { "id": 1, "name": "Hex",
+                    "sequence": { "type": "hex", "value": "0102" } } ], "responses": [] })" );
+    const auto warned = PreviewPackRegistry::read( "a.pack", folder, manifest.json );
+    CHECK( warned.actions.isEmpty() );
+    REQUIRE( warned.warnings.size() == 1 );
+    CHECK( warned.warnings.first().contains( "Unknown sequence type" ) );
 
     // The user's actions and every enabled pack's within 4,096 together.
     writeFile( folder + "/actions.json", PackActionsJson );
@@ -1912,6 +1921,17 @@ TEST_CASE( "A pack's actions must be ones CILogg runs, within the action limits"
     CHECK( actions.packResponses().size() == 1 );
     const auto fits = actions.packActions().first().action.id;
     CHECK( actions.findActionById( fits ) != nullptr );
+    // An action of the user's that makes them give way tells the responses too (the Responses
+    // table follows), and deleting it brings them back.
+    {
+        QSignalSpy responsesChanged( &actions, &ActionsManager::responsesChanged );
+        QString error;
+        REQUIRE( actions.createAction( userAction( 0, "One more" ), &error ) );
+        CHECK( actions.packResponses().isEmpty() );
+        CHECK( responsesChanged.count() == 1 );
+        REQUIRE( actions.deleteAction( actions.actions().last().id, &error ) );
+        CHECK( actions.packResponses().size() == 1 );
+    }
     actions.setPackItems(
         { { "a.pack", "A", { userAction( 1 ), userAction( 2 ) }, { userResponse( 5, 1 ) } } } );
     CHECK( actions.packActions().isEmpty() );

@@ -142,6 +142,11 @@ bool ActionsManager::packActionsGiveWay() const
     return actions_.size() + packActions_.size() > MaxListedActionItems;
 }
 
+quint64 ActionsManager::packGeneration() const
+{
+    return packGeneration_;
+}
+
 void ActionsManager::forgetPack( const QString& packId )
 {
     auto& settings = PersistentInfo::getSettings( app_settings{} );
@@ -394,8 +399,13 @@ bool ActionsManager::createAction( ActionDefinition action, QString* errorMessag
         return false;
     }
 
+    const auto gaveWay = packActionsGiveWay();
     actions_ = std::move( updatedActions );
     Q_EMIT actionsChanged();
+    // The packs' responses give way with their actions (E16c3).
+    if ( packActionsGiveWay() != gaveWay ) {
+        Q_EMIT responsesChanged();
+    }
     return true;
 }
 
@@ -748,6 +758,7 @@ void ActionsManager::applyPackItems()
     }
     packActions_ = std::move( actions );
     packResponses_ = std::move( responses );
+    ++packGeneration_;
     // The user's responses that run pack actions follow (the packs' run-time ids, or nothing while
     // a pack is disabled); what is saved keeps their names.
     for ( auto& response : responses_ ) {
@@ -878,10 +889,14 @@ std::optional<int> ActionsManager::copyPackAction( int id, QString* errorMessage
         setError( errorMessage, tr( "Failed to save actions to settings." ) );
         return std::nullopt;
     }
+    const auto gaveWay = packActionsGiveWay();
     actions_ = std::move( updatedActions );
     LOG_INFO << "Pack action copied pack=" << listed->packId.toStdString()
              << " local=" << listed->localId << " id=" << copy.id;
     Q_EMIT actionsChanged();
+    if ( packActionsGiveWay() != gaveWay ) {
+        Q_EMIT responsesChanged();
+    }
     return copy.id;
 }
 
