@@ -168,12 +168,68 @@ QString highlightsInvalid( const PackFiles& files )
     return {};
 }
 
+// The actions file as the store writes it is one CILogg reads back the same: every action and
+// response with its id (its store path's) and a name, every response running actions of the pack,
+// within 4,096 of each and the 1 MiB of a pack file. Empty when they fit; a pack without actions
+// and responses has nothing to check.
+QString actionsInvalid( const PackFiles& files )
+{
+    PackFiles items;
+    qsizetype actions = 0;
+    qsizetype responses = 0;
+    for ( auto file = files.cbegin(); file != files.cend(); ++file ) {
+        const auto kind = packcanonical::kindOf( file.key() );
+        if ( kind == QLatin1String( "action" ) || kind == QLatin1String( "action-order" )
+             || kind == QLatin1String( "response" ) || kind == QLatin1String( "response-order" ) ) {
+            items.insert( file.key(), file.value() );
+            actions += kind == QLatin1String( "action" ) ? 1 : 0;
+            responses += kind == QLatin1String( "response" ) ? 1 : 0;
+        }
+    }
+    if ( items.isEmpty() ) {
+        return {};
+    }
+    if ( actions > packcanonical::MaxPackActionItems
+         || responses > packcanonical::MaxPackResponseItems ) {
+        return QStringLiteral( "The pack would have more than %1 actions or %2 responses, the most "
+                               "a pack can have." )
+            .arg( packcanonical::MaxPackActionItems )
+            .arg( packcanonical::MaxPackResponseItems );
+    }
+    QString error;
+    const auto written = packcanonical::toActions( items, &error );
+    if ( !error.isEmpty() ) {
+        return error;
+    }
+    if ( written.size() > MaxPackFileBytes ) {
+        return QStringLiteral( "The pack's actions are larger than 1 MiB as CILogg writes them." );
+    }
+    const auto readBack = packcanonical::fromActions( written, &error );
+    if ( !error.isEmpty() ) {
+        return error;
+    }
+    // Every item reads back as it is (as for filters): an "order" of its own, which the list order
+    // replaces, would change on the way to the content folder.
+    for ( auto item = items.cbegin(); item != items.cend(); ++item ) {
+        const auto kind = packcanonical::kindOf( item.key() );
+        if ( ( kind == QLatin1String( "action" ) || kind == QLatin1String( "response" ) )
+             && QJsonDocument::fromJson( readBack.value( item.key() ) )
+                    != QJsonDocument::fromJson( item.value() ) ) {
+            return QStringLiteral( "The pack's %1 %2 would change when CILogg writes it to the "
+                                   "actions file (the order is the order file's, not an item's)." )
+                .arg( kind, packcanonical::itemOf( item.key() ).left( 64 ) );
+        }
+    }
+    return {};
+}
+
 // What a merge result, an edit or a reset must keep for the content folder to load: the previews
-// within their limits, and the filters and highlighter sets as CILogg reads them. Empty when it
-// does.
+// within their limits, and the filters, highlighter sets, actions and responses as CILogg reads
+// them. Empty when it does.
 QString contentInvalid( const PackFiles& files )
 {
-    for ( const auto& check : { previewsTooLarge, filtersInvalid, highlightsInvalid } ) {
+    for ( const auto& check :
+          { previewsTooLarge, filtersInvalid, highlightsInvalid, actionsInvalid } ) {
         if ( const auto error = check( files ); !error.isEmpty() ) {
             return error;
         }
@@ -182,18 +238,34 @@ QString contentInvalid( const PackFiles& files )
 }
 
 // A Lua or Python file the manifest lists, a highlighter set (its rules one per line), or the
-// preview, filter or highlighter set order: merged as text.
+// preview, filter, highlighter set, action or response order: merged as text.
 bool textKind( const QString& kind )
 {
     return kind == QLatin1String( "file" ) || kind == QLatin1String( "order" )
            || kind == QLatin1String( "filter-order" ) || kind == QLatin1String( "highlight" )
-           || kind == QLatin1String( "highlight-order" );
+           || kind == QLatin1String( "highlight-order" ) || kind == QLatin1String( "action-order" )
+           || kind == QLatin1String( "response-order" );
 }
 
-// The member that is a structured item's identity and file name: a filter's id, else its name.
+// An action or an automatic response: known by its id, a number.
+bool actionKind( const QString& kind )
+{
+    return kind == QLatin1String( "action" ) || kind == QLatin1String( "response" );
+}
+
+// The member that is a structured item's identity and file name: the id of a filter, an action or
+// a response, else the name.
 QString identityField( const QString& kind )
 {
-    return kind == QLatin1String( "filter" ) ? QStringLiteral( "id" ) : QStringLiteral( "name" );
+    return kind == QLatin1String( "filter" ) || actionKind( kind ) ? QStringLiteral( "id" )
+                                                                   : QStringLiteral( "name" );
+}
+
+// An item's identity as its store path spells it: an action's or a response's id is a whole number
+// ("7"; never "7" as text or 7.5), the others are text.
+QString identityText( const QString& kind, const QJsonValue& value )
+{
+    return actionKind( kind ) ? packcanonical::itemIdText( value ) : value.toString();
 }
 
 // How many conflicts a job lists: a preview of 1 MiB can conflict in thousands of fields.
@@ -390,9 +462,11 @@ bool applyResolution( PackFiles* merged, const QVariantMap& resolution, const QS
     }
     const auto identity = identityField( kind );
     if ( field.isEmpty() ) {
-        // A whole preview or block keeps the name its path stands for, a whole filter its id.
+        // A whole preview or block keeps the name its path stands for, a whole filter, action or
+        // response its id.
         if ( value && value->isObject()
-             && value->toObject().value( identity ).toString() == packcanonical::itemOf( path ) ) {
+             && identityText( kind, value->toObject().value( identity ) )
+                    == packcanonical::itemOf( path ) ) {
             merged->insert( path, packcanonical::itemBytes( value->toObject() ) );
         }
         else if ( !value ) {
@@ -468,12 +542,20 @@ bool highlightsKind( const QString& kind )
     return kind == QLatin1String( "highlight" ) || kind == QLatin1String( "highlight-order" );
 }
 
+// A store item of the actions file: an action, a response or one of their orders.
+bool actionsKind( const QString& kind )
+{
+    return actionKind( kind ) || kind == QLatin1String( "action-order" )
+           || kind == QLatin1String( "response-order" );
+}
+
 // The documents a version's manifest has, which decide which store items go with it.
 struct Documents {
     QStringList listed; // its files
     bool previews = false;
     bool filters = false;
     bool highlights = false;
+    bool actions = false;
 };
 
 Documents documentsOf( const QJsonObject& manifest )
@@ -481,18 +563,21 @@ Documents documentsOf( const QJsonObject& manifest )
     PackContent content;
     const bool valid = validatePackManifest( manifest, &content ).isEmpty();
     return { packcanonical::listedFiles( manifest ), hasPreviewsDocument( manifest ),
-             hasFiltersDocument( manifest ), valid && !content.highlights.isEmpty() };
+             hasFiltersDocument( manifest ), valid && !content.highlights.isEmpty(),
+             valid && !content.actions.isEmpty() };
 }
 
 // Whether a store item goes with a version whose manifest has `documents`: a file it no longer
-// lists, or anything of a previews document, filters file or highlighters file it no longer has.
+// lists, or anything of a previews document, filters, highlighters or actions file it no longer
+// has.
 bool goneWith( const QString& storePath, const Documents& documents )
 {
     const auto kind = packcanonical::kindOf( storePath );
     return ( kind == QLatin1String( "file" ) && !documents.listed.contains( storePath ) )
            || ( !documents.previews && previewsKind( kind ) )
            || ( !documents.filters && filtersKind( kind ) )
-           || ( !documents.highlights && highlightsKind( kind ) );
+           || ( !documents.highlights && highlightsKind( kind ) )
+           || ( !documents.actions && actionsKind( kind ) );
 }
 
 // The files of a merge result are exactly those the new version's manifest lists: a file it
@@ -745,6 +830,10 @@ QString PluginManager::preparePackInstall( const StagedPlugin& staged, const QVa
                 : kind == QLatin1String( "filter-order" ) ? QStringLiteral( "the filter order" )
                 : kind == QLatin1String( "highlight-order" )
                     ? QStringLiteral( "the highlighter set order" )
+                : kind == QLatin1String( "action-order" )   ? QStringLiteral( "the action order" )
+                : kind == QLatin1String( "response-order" ) ? QStringLiteral( "the response order" )
+                : actionKind( kind )
+                    ? QStringLiteral( "%1 %2" ).arg( kind, packcanonical::itemOf( it.key() ) )
                 : kind == QLatin1String( "meta" ) ? QStringLiteral( "the previews settings" )
                                                   : packcanonical::itemOf( it.key() ) );
         }
@@ -996,9 +1085,11 @@ Result PluginManager::managePack( const QString& operation, const QString& id,
         // The manifest lists the Lua and Python files a pack has; they, the orders and highlighter
         // sets (deactivate a set you do not want) are edited, never deleted.
         if ( remove && textKind( kind ) ) {
-            return { "Pack files, highlighter sets and the preview, filter and highlighter set "
-                     "orders can be edited, not deleted.",
-                     {} };
+            return {
+                "Pack files, highlighter sets and the preview, filter, highlighter set, action "
+                "and response orders can be edited, not deleted.",
+                {}
+            };
         }
         if ( !remove && content.size() > MaxPackFileBytes ) {
             return { "The item is larger than 1 MiB.", {} };
@@ -1007,7 +1098,7 @@ Result PluginManager::managePack( const QString& operation, const QString& id,
         if ( !remove ) {
             bytes = content;
             if ( kind == QLatin1String( "preview" ) || kind == QLatin1String( "block" )
-                 || kind == QLatin1String( "filter" ) ) {
+                 || kind == QLatin1String( "filter" ) || actionKind( kind ) ) {
                 QJsonParseError parseError;
                 const auto document = QJsonDocument::fromJson( content, &parseError );
                 if ( parseError.error != QJsonParseError::NoError || !document.isObject() ) {
@@ -1015,12 +1106,17 @@ Result PluginManager::managePack( const QString& operation, const QString& id,
                                  .arg( parseError.errorString() ),
                              {} };
                 }
-                if ( document.object().value( identityField( kind ) ).toString()
+                if ( identityText( kind, document.object().value( identityField( kind ) ) )
                      != packcanonical::itemOf( path ) ) {
-                    return { kind == QLatin1String( "filter" )
-                                 ? "The filter's id must stay the same (copy it to make another)."
-                                 : "The item's name must stay the same (copy it to rename it).",
-                             {} };
+                    return {
+                        kind == QLatin1String( "filter" ) || actionKind( kind )
+                            ? QStringLiteral( "The %1's id must stay the same (copy it to make "
+                                              "another)." )
+                                  .arg( kind )
+                            : QStringLiteral(
+                                  "The item's name must stay the same (copy it to rename it)." ),
+                        {}
+                    };
                 }
                 bytes = packcanonical::itemBytes( document.object() );
             }
@@ -1054,9 +1150,9 @@ Result PluginManager::managePack( const QString& operation, const QString& id,
             }
         }
         // A readable message, such as "Edit preview 'Frame'" or "Edit filter 'Software or Reset'"
-        // (design 4.6): a filter by its name, which its id is not.
+        // (design 4.6): a filter, an action or a response by its name, which its id is not.
         auto item = packcanonical::itemOf( path );
-        if ( kind == QLatin1String( "filter" ) ) {
+        if ( kind == QLatin1String( "filter" ) || actionKind( kind ) ) {
             const auto name = QJsonDocument::fromJson( bytes.value_or( files.value( path ) ) )
                                   .object()
                                   .value( "name" )
@@ -1083,6 +1179,8 @@ Result PluginManager::managePack( const QString& operation, const QString& id,
               : kind == QLatin1String( "filter-order" ) ? QStringLiteral( "the filter order" )
               : kind == QLatin1String( "highlight-order" )
                   ? QStringLiteral( "the highlighter set order" )
+              : kind == QLatin1String( "action-order" )   ? QStringLiteral( "the action order" )
+              : kind == QLatin1String( "response-order" ) ? QStringLiteral( "the response order" )
               : kind == QLatin1String( "highlight" )
                   ? QStringLiteral( "highlighter set '%1'" ).arg( item )
               : kind == QLatin1String( "order" ) ? QStringLiteral( "the preview order" )

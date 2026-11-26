@@ -1,0 +1,22 @@
+{
+  "version": 4,
+  "actions": [
+    {
+      "id": 1,
+      "order": 0,
+      "name": "Demo status request",
+      "description": "Asks the demo device for a status frame.",
+      "sequence": { "type": "string", "value": "DEMO STATUS\r\n" }
+    }
+  ],
+  "responses": [
+    {
+      "id": 1,
+      "order": 0,
+      "name": "Demo ready: request status",
+      "description": "When the demo device says it is ready, asks for its status. Starts off, as every pack response does.",
+      "match": { "type": "string", "value": "DEMO READY" },
+      "response": { "steps": [ { "action_id": 1, "delay_ms": 0 } ], "comment": "", "linebreak": false, "timestamp": false, "snapshot": false, "stop_communication": false }
+    }
+  ]
+}

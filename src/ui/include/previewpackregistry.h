@@ -12,6 +12,7 @@
 #include <functional>
 #include <optional>
 
+#include "actionsconfig.h"
 #include "highlighterset.h"
 #include "predefinedfilters.h"
 #include "previewmanager.h"
@@ -21,10 +22,10 @@ class PluginManager;
 }
 
 // Applies the enabled configuration packs (docs/plugin-repositories.md 4.2-4.5) to previews, to
-// the TShark decoder and to the predefined filters, and checks a pack before it is enabled or an
-// update of it is installed: no preview name or filter id shared with another enabled pack, and
-// the user's items and all enabled packs together within the preview, Lua, route and filter
-// limits.
+// the TShark decoder, to the predefined filters, highlighter sets, actions and automatic
+// responses, and checks a pack before it is enabled or an update of it is installed: no preview
+// name, filter or set id shared with another enabled pack, and the user's items and all enabled
+// packs together within the preview, Lua, route, filter, highlighter and action limits.
 class PreviewPackRegistry : public QObject {
     Q_OBJECT
 public:
@@ -46,10 +47,15 @@ public:
         QList<ListedFilter> filters;
         // Its highlighter sets in its order, with packId and packName (E16c2).
         QList<ListedHighlighterSet> highlighterSets;
+        // Its actions and automatic responses in its order, with the pack's own ids and links
+        // (E16c3; ActionsManager gives them run-time ids).
+        QVector<ActionDefinition> actions;
+        QVector<ResponseDefinition> responses;
         QString error;
-        // A filters or highlighters file that is not exactly an export (a pack enabled before
-        // E16c may carry one): its items are left out, the rest of the pack applies, and enabling
-        // or updating the pack is refused with this reason.
+        // A filters, highlighters or actions file that is not exactly an export (a pack enabled
+        // before E16c may carry one), or an action CILogg would not run: that file's items are
+        // left out, the rest of the pack applies, and enabling or updating the pack is refused
+        // with this reason.
         QStringList warnings;
     };
     // The most predefined filters the user's and the enabled packs' can be together when a pack is

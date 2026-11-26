@@ -1136,6 +1136,69 @@ TEST_CASE( "Commander CLI loads send_action parameters from JSON", "[commander][
              == QVariantList{ 1, 4 } );
 }
 
+TEST_CASE( "Commander and the CLI name a pack's action or response as <pack-id>/<local-id>",
+           "[commander][cli][actions][E16]" )
+{
+    // E16c3: the same on every PC; the running instance makes it the item's run-time id.
+    QString errorMessage;
+    const auto fromMap = [ &errorMessage ]( const QVariantMap& map ) {
+        errorMessage.clear();
+        return commanderRequestFromVariantMap( map, &errorMessage );
+    };
+    for ( const auto& key : { QStringLiteral( "entityId" ), QStringLiteral( "entityKey" ) } ) {
+        INFO( key.toStdString() );
+        const auto request
+            = fromMap( { { "action", "send_action" }, { key, "org.example.pack/7" } } );
+        REQUIRE( request.has_value() );
+        CHECK( request->entityKey == "org.example.pack/7" );
+        CHECK( !request->entityId );
+        // It crosses to the running instance as it is.
+        const auto again = fromMap( commanderRequestToVariantMap( *request ) );
+        REQUIRE( again.has_value() );
+        CHECK( again->entityKey == "org.example.pack/7" );
+        CHECK( !again->entityId );
+    }
+    CHECK( fromMap( { { "action", "send_action" }, { "entityId", 7 } } )->entityId == 7 );
+    CHECK( !fromMap( { { "action", "send_action" }, { "entityId", "seven" } } ) );
+    CHECK( errorMessage.contains( "entity id" ) );
+    CHECK( !fromMap(
+        { { "action", "send_action" }, { "entityId", 7 }, { "entityKey", "a.pack/7" } } ) );
+    CHECK( errorMessage.contains( "not both" ) );
+
+    const auto cli = []( const QStringList& arguments ) {
+        return CliParameters( QStringList{ "cilogg", "command", "--action" } + arguments );
+    };
+    {
+        const auto parameters = cli( { "send_action", "--id", "org.example.pack/7" } );
+        REQUIRE_FALSE( parameters.parse_error );
+        REQUIRE( parameters.commander_request.has_value() );
+        CHECK( parameters.commander_request->entityKey == "org.example.pack/7" );
+        CHECK( !parameters.commander_request->entityId );
+    }
+    {
+        const auto parameters = cli( { "send_action", "--id", "9" } );
+        REQUIRE( parameters.commander_request.has_value() );
+        CHECK( parameters.commander_request->entityId == 9 );
+        CHECK( parameters.commander_request->entityKey.isEmpty() );
+    }
+    {
+        const auto parameters
+            = cli( { "wait_response", "--id", "a.pack/3", "--timeout-ms", "100" } );
+        REQUIRE( parameters.commander_request.has_value() );
+        CHECK( parameters.commander_request->entityKey == "a.pack/3" );
+    }
+    {
+        const auto parameters = cli( { "reset_response_counter", "--id", "a.pack/3" } );
+        REQUIRE( parameters.commander_request.has_value() );
+        CHECK( parameters.commander_request->entityKey == "a.pack/3" );
+    }
+    // A local id is a whole number written plainly.
+    for ( const auto* bad : { "a.pack/07", "a.pack/-1", "/7", "a.pack/x" } ) {
+        INFO( bad );
+        CHECK( !cli( { "send_action", "--id", bad } ).commander_request.has_value() );
+    }
+}
+
 TEST_CASE( "Grep CLI parses context precedence and maximum count", "[cli][grep]" )
 {
     CliParameters parameters(

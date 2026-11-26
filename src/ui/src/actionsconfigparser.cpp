@@ -532,6 +532,7 @@ bool parseResponse( const QJsonObject& object,
                     continue;
                 }
                 step.delayMs = stepObj.value( "delay_ms" ).toInt( 0 );
+                step.packAction = stepObj.value( "pack_action" ).toString();
                 if ( stepObj.value( "parameters" ).isObject() ) {
                     step.parameters = stepObj.value( "parameters" ).toObject().toVariantMap();
                     for ( auto parameter = step.parameters.constBegin();

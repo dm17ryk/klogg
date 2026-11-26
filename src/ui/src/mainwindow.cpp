@@ -4028,15 +4028,21 @@ CommanderResult MainWindow::commanderWaitResponse( const CommanderRequest& reque
                                  tr( "wait_response requires a positive timeout." ) );
     }
 
-    const ResponseDefinition* response = nullptr;
+    // A copy: the lists it comes from are replaced while the loop below runs (the user edits the
+    // responses, or a configuration pack is enabled, updated or disabled).
+    std::optional<ResponseDefinition> response;
+    const ResponseDefinition* found = nullptr;
     if ( request.entityId ) {
-        response = ActionsManager::instance().findResponseById( *request.entityId );
+        found = ActionsManager::instance().findResponseById( *request.entityId );
     }
     else if ( !request.entityName.isEmpty() ) {
-        response = ActionsManager::instance().findResponseByName( request.entityName );
+        found = ActionsManager::instance().findResponseByName( request.entityName );
+    }
+    if ( found != nullptr ) {
+        response = *found;
     }
 
-    if ( response == nullptr ) {
+    if ( !response ) {
         return commanderFailure( CommanderResultCode::NotFound,
                                  tr( "Requested response was not found." ) );
     }

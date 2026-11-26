@@ -5,10 +5,11 @@
   "protocol_version": 1,
   "kind": "config-pack",
   "pack_format": 1,
-  "description": "A configuration pack for a synthetic demo protocol: a JSON preview, a Lua dissector for TShark and the route between them, and predefined filters for its lines.",
+  "description": "A configuration pack for a synthetic demo protocol: a JSON preview, a Lua dissector for TShark and the route between them, predefined filters for its lines, and an action with an automatic response (off until you turn it on).",
   "content": {
     "previews": "previews.json",
     "filters": "filters.conf",
+    "actions": "actions.json",
     "lua": { "folder": "lua", "load": ["common.lua", "demo.lua"] },
     "decoder_routes": {
       "previewRoutes": { "Demo frame": { "dissector": "cilogg_demo" } }

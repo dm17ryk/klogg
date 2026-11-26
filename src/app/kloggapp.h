@@ -581,8 +581,54 @@ class KloggApp : public QApplication {
         activeWindows_.top()->loadFileNonInteractive( file );
     }
 
+    // E16c3: "<pack-id>/<local-id>" names a configuration pack's action or response the same on
+    // every PC; here it becomes the item's run-time id. The error, or an empty string.
+    static QString resolvePackEntity( CommanderRequest* request )
+    {
+        if ( request->entityKey.isEmpty() ) {
+            return {};
+        }
+        const auto& actions = ActionsManager::instance();
+        std::optional<int> id;
+        QString kind;
+        switch ( request->action ) {
+        case CommanderAction::SendAction:
+        case CommanderAction::UpdateAction:
+        case CommanderAction::DeleteAction:
+            id = actions.resolvePackAction( request->entityKey );
+            kind = QStringLiteral( "action" );
+            break;
+        case CommanderAction::WaitResponse:
+        case CommanderAction::GetResponseCounter:
+        case CommanderAction::ResetResponseCounter:
+        case CommanderAction::UpdateResponse:
+        case CommanderAction::DeleteResponse:
+            id = actions.resolvePackResponse( request->entityKey );
+            kind = QStringLiteral( "response" );
+            break;
+        default:
+            return QStringLiteral( "%1 does not take an action or response id." )
+                .arg( commanderActionToString( request->action ) );
+        }
+        if ( !id ) {
+            return QStringLiteral( "There is no %1 %2 (an enabled configuration pack's item is "
+                                   "named \"<pack-id>/<local-id>\")." )
+                .arg( kind, request->entityKey.left( 256 ) );
+        }
+        request->entityId = *id;
+        request->entityKey.clear();
+        return {};
+    }
+
     CommanderResult executeCommanderRequest( const CommanderRequest& request )
     {
+        if ( !request.entityKey.isEmpty() ) {
+            auto resolved = request;
+            if ( const auto error = resolvePackEntity( &resolved ); !error.isEmpty() ) {
+                return commanderFailure( CommanderResultCode::InvalidRequest, error );
+            }
+            return executeCommanderRequest( resolved );
+        }
         using cilogg::plugins::Result;
         const auto pluginResult = []( const Result& result ) {
             return result.ok() ? commanderSuccess( {}, result.payload )
@@ -746,10 +792,25 @@ class KloggApp : public QApplication {
             return scriptSupervisor_.clearGlobalScriptSubscriptions();
         }
 
+        // The user's items, then the enabled configuration packs' (E16c3) with packId, packName,
+        // their pack-local id and "<pack-id>/<local-id>" (the same on every PC) next to the
+        // run-time id.
+        const auto packFields = []( QVariantMap item, const QString& packId,
+                                    const QString& packName, int localId ) {
+            item.insert( QStringLiteral( "packId" ), packId );
+            item.insert( QStringLiteral( "packName" ), packName );
+            item.insert( QStringLiteral( "localId" ), localId );
+            item.insert( QStringLiteral( "namespacedId" ), namespacedItemId( packId, localId ) );
+            return item;
+        };
         if ( request.action == CommanderAction::GetActions ) {
             QVariantList actions;
             for ( const auto& action : ActionsManager::instance().actions() ) {
                 actions.push_back( actionDefinitionToVariantMap( action ) );
+            }
+            for ( const auto& listed : ActionsManager::instance().packActions() ) {
+                actions.push_back( packFields( actionDefinitionToVariantMap( listed.action ),
+                                               listed.packId, listed.packName, listed.localId ) );
             }
             return commanderSuccess( {}, QVariantMap{ { QStringLiteral( "actions" ), actions } } );
         }
@@ -758,6 +819,10 @@ class KloggApp : public QApplication {
             QVariantList responses;
             for ( const auto& response : ActionsManager::instance().responses() ) {
                 responses.push_back( responseDefinitionToVariantMap( response ) );
+            }
+            for ( const auto& listed : ActionsManager::instance().packResponses() ) {
+                responses.push_back( packFields( responseDefinitionToVariantMap( listed.response ),
+                                                 listed.packId, listed.packName, listed.localId ) );
             }
             return commanderSuccess( {}, QVariantMap{ { QStringLiteral( "responses" ), responses } } );
         }
