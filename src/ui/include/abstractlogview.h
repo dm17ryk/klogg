@@ -371,9 +371,9 @@ private Q_SLOTS:
 
 private:
     bool linePreviewCurrent() const;
-    // The tooltip is one for the whole application: a view hides only the tooltip it showed, so
-    // another view's update (a follow-mode scroll on new lines) never closes it. `area` is where
-    // the mouse may stay, in viewport coordinates.
+    // The tooltip is one for the whole application: a view hides only the tooltip it showed last
+    // (no other view or widget showed one since), so another view's update (a follow-mode scroll
+    // on new lines) never closes it. `area` is where the mouse may stay, in viewport coordinates.
     void showViewToolTip( const QPoint& globalPosition, const QString& text, const QRect& area );
     void hideViewToolTip();
     QString shownToolTip_;
@@ -406,6 +406,9 @@ private:
     int textAreaWidthPx() const;
     // The full annotation of the line under `position` when its column cuts it short
     QString elidedAnnotationAt( const QPoint& position ) const;
+    // The annotation column's cell of the line under `position`, in viewport coordinates: every
+    // row of a wrapped line. Null outside the rows of lines.
+    QRect annotationCellAt( const QPoint& position ) const;
     // Pane commands of the window, filled when the context menu opens
     QMenu* paneMenu_ = nullptr;
 

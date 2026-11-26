@@ -8,12 +8,19 @@
 #include <QProcess>
 #include <QTimer>
 #include <QToolTip>
-#include <algorithm>
 
 namespace {
 // A view's tooltip stays until the mouse moves to another line or column, leaves the view, or
 // the user scrolls, clicks or types; Qt's default (10 s plus the text length) is only the backstop.
 constexpr int ViewToolTipDisplayMs = 10 * 60 * 1000;
+
+// The view that showed the application's tooltip last. Two views can show the same text, so the
+// text alone does not tell which one owns the tooltip.
+QPointer<AbstractLogView>& toolTipOwner()
+{
+    static QPointer<AbstractLogView> owner;
+    return owner;
+}
 } // namespace
 
 LineNumber AbstractLogView::previewPhysicalLine( LineNumber viewRow ) const
@@ -27,13 +34,19 @@ void AbstractLogView::showViewToolTip( const QPoint& globalPosition, const QStri
 {
     QToolTip::showText( globalPosition, text, viewport(), area, ViewToolTipDisplayMs );
     shownToolTip_ = QToolTip::isVisible() ? QToolTip::text() : QString{};
+    toolTipOwner() = this;
 }
 
 void AbstractLogView::hideViewToolTip()
 {
-    // Another view's tooltip, or one this view no longer owns, stays.
-    if ( !shownToolTip_.isEmpty() && QToolTip::isVisible() && QToolTip::text() == shownToolTip_ ) {
-        QToolTip::hideText();
+    // Another view's tooltip stays. So does a tooltip of another widget shown after Qt closed
+    // this view's own: its text differs.
+    if ( toolTipOwner() == this ) {
+        if ( !shownToolTip_.isEmpty() && QToolTip::isVisible()
+             && QToolTip::text() == shownToolTip_ ) {
+            QToolTip::hideText();
+        }
+        toolTipOwner() = nullptr;
     }
     shownToolTip_.clear();
 }
@@ -97,18 +110,18 @@ bool AbstractLogView::viewportEvent( QEvent* event )
         auto* help = static_cast<QHelpEvent*>( event );
         if ( rightMarginPx_ > 0 && help->pos().x() >= viewport()->width() - rightMarginPx_ ) {
             // The annotation column: its label in full when the column cuts it short. It stays
-            // while the mouse stays in that cell of the column.
-            clearLinePreview();
+            // while the mouse stays in that cell of the column. Qt asks again after every small
+            // mouse move: the label is shown again without being closed first, because Qt does
+            // not show a tooltip being closed again with the same text.
+            if ( linePreviewActive_ ) {
+                clearLinePreview();
+            }
             if ( const auto annotation = elidedAnnotationAt( help->pos() );
-                 !annotation.isEmpty() && charHeight_ > 0 ) {
-                const auto row
-                    = std::max( 0, ( help->pos().y() - drawingTopOffset_ ) / charHeight_ );
-                const QRect cell( viewport()->width() - rightMarginPx_,
-                                  drawingTopOffset_ + row * charHeight_, rightMarginPx_,
-                                  charHeight_ );
-                showViewToolTip( help->globalPos(), annotation, cell );
+                 !annotation.isEmpty() ) {
+                showViewToolTip( help->globalPos(), annotation, annotationCellAt( help->pos() ) );
             }
             else {
+                hideViewToolTip();
                 event->ignore();
             }
             return true;
@@ -119,12 +132,19 @@ bool AbstractLogView::viewportEvent( QEvent* event )
             return true;
         }
         const auto row = convertCoordToLine( help->pos().y() );
-        clearLinePreview();
         if ( help->pos().x() < leftMarginPx_ || help->pos().y() < drawingTopOffset_ || !row
              || row->get() >= logData_->getNbLine().get() ) {
+            clearLinePreview();
             event->ignore();
             return true;
         }
+        // Asked again for the line whose preview is shown or on its way (the mouse moved a little
+        // within the line): it is kept rather than closed and computed again.
+        if ( linePreviewActive_ && previewPhysicalLine( *row ).get() == linePreviewPhysical_ ) {
+            event->accept();
+            return true;
+        }
+        clearLinePreview();
         if ( !linePreviewConnectionsReady_ ) {
             linePreviewConnectionsReady_ = true;
             // A scroll is no reason to close the preview: follow mode scrolls on every new line
