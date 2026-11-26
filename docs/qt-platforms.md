@@ -118,7 +118,9 @@ running. A stuck Apple Silicon queue is handled by this rule:
    `ci-run-id` set to that run and `allow-missing-macos-arm64` checked. The
    workflow refuses the run unless its only unsuccessful jobs are Mac arm64
    jobs that never got a runner; a job that ran and failed still blocks the
-   release. The release notes name the missing arm64 packages.
+   release. Only the packages of those jobs may be missing; the package of an
+   arm64 job that succeeded is still required. The release notes name the
+   missing arm64 packages.
 5. Without `allow-missing-macos-arm64`, a release needs all four macOS
    packages, and a run named by `ci-run-id` must be successful. Make a release
    with the arm64 packages as soon as their jobs run again.

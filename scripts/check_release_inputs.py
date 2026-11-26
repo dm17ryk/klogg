@@ -3,12 +3,13 @@
 
 ``ci-run``: the CI Build run named by the ``ci-run-id`` input must be
 successful. With ``--allow-missing-macos-arm64`` it may instead be a finished
-master run whose only unsuccessful jobs are "Mac (arm64, ...)" jobs that never
-got a runner; the left-out jobs are printed.
+master run whose only unsuccessful jobs are macOS arm64 jobs that never got a
+runner. The package directories of exactly those jobs are printed, one per
+line; the release may leave out only these.
 
 ``macos-packages``: the downloaded artifacts must contain every macOS package
-directory. With ``--allow-missing-macos-arm64`` the Apple Silicon ones may be
-absent; the absent ones are printed, one per line, for the release notes.
+directory except those named with ``--allow-missing``. The allowed ones that
+are absent are printed, one per line, for the release notes.
 
 See "Hosted macOS runner outages" in docs/qt-platforms.md.
 """
@@ -21,12 +22,15 @@ from pathlib import Path
 
 CI_WORKFLOW = ".github/workflows/ci-build.yml"
 RELEASE_BRANCH = "master"
-# Built from the Mac job's name template in ci-build.yml:
-# "Mac (${{ matrix.config.arch }}, ${{ matrix.config.backend }}, Qt ...)".
+# ci-build.yml names Mac jobs "Mac (<arch>, <backend>, Qt <qt_version>)" and
+# uploads each row's packages as "packages-<artifacts_id>".
 MACOS_ARM64_JOB_PREFIX = "Mac (arm64,"
-# "packages-" + the Mac matrix rows' artifacts_id in ci-build.yml.
 MACOS_PACKAGE_DIRS = ("packages-macos-intel-qt6", "packages-macos-intel-qt612")
-MACOS_ARM64_PACKAGE_DIRS = ("packages-macos-arm-qt6", "packages-macos-arm-qt612")
+MACOS_ARM64_PACKAGES = {
+    "Mac (arm64, vectorscan, Qt 6.10.1)": "packages-macos-arm-qt6",
+    "Mac (arm64, vectorscan, Qt 6.12.0)": "packages-macos-arm-qt612",
+}
+MACOS_ARM64_PACKAGE_DIRS = tuple(MACOS_ARM64_PACKAGES.values())
 
 
 class ReleaseInputError(Exception):
@@ -54,7 +58,7 @@ def never_got_a_runner(job: dict) -> bool:
 
 
 def check_ci_run(run: dict, jobs: list, allow_missing_macos_arm64: bool) -> list:
-    """Return the names of the macOS arm64 jobs the release leaves out.
+    """Return the package directories of the macOS arm64 jobs that never got a runner.
 
     Raises ReleaseInputError when the run must not be released.
     """
@@ -83,28 +87,32 @@ def check_ci_run(run: dict, jobs: list, allow_missing_macos_arm64: bool) -> list
         if job.get("conclusion") == "success":
             continue
         if name.startswith(MACOS_ARM64_JOB_PREFIX) and never_got_a_runner(job):
-            left_out.append(name)
+            if name in MACOS_ARM64_PACKAGES:
+                left_out.append(MACOS_ARM64_PACKAGES[name])
+            else:
+                problems.append(f"{name}: unknown macOS arm64 job; add it to MACOS_ARM64_PACKAGES")
         else:
             problems.append(f"{name}: {job.get('status')}/{job.get('conclusion')}")
     if problems:
         raise ReleaseInputError(
             "only macOS arm64 jobs that never got a runner may be left out, but these jobs did not succeed: "
             + "; ".join(problems))
-    return left_out
+    return [directory for directory in MACOS_ARM64_PACKAGE_DIRS if directory in left_out]
 
 
-def missing_macos_packages(root: Path, allow_missing_macos_arm64: bool) -> list:
-    """Return the absent macOS arm64 package directories.
+def missing_macos_packages(root: Path, allowed_missing=()) -> list:
+    """Return the directories in allowed_missing that are absent.
 
-    Raises ReleaseInputError when a required macOS package directory is absent.
+    Raises ReleaseInputError when any other macOS package directory is absent.
     """
-    required = list(MACOS_PACKAGE_DIRS)
-    if not allow_missing_macos_arm64:
-        required += MACOS_ARM64_PACKAGE_DIRS
-    absent = [name for name in required if not (root / name).is_dir()]
+    unknown = [name for name in allowed_missing if name not in MACOS_ARM64_PACKAGE_DIRS]
+    if unknown:
+        raise ReleaseInputError("only macOS arm64 packages may be left out, not: " + ", ".join(unknown))
+    every = MACOS_PACKAGE_DIRS + MACOS_ARM64_PACKAGE_DIRS
+    absent = [name for name in every if name not in allowed_missing and not (root / name).is_dir()]
     if absent:
         raise ReleaseInputError("missing macOS package directories: " + ", ".join(absent))
-    return [name for name in MACOS_ARM64_PACKAGE_DIRS if not (root / name).is_dir()]
+    return [name for name in MACOS_ARM64_PACKAGE_DIRS if name in allowed_missing and not (root / name).is_dir()]
 
 
 def parse_args(argv: list) -> argparse.Namespace:
@@ -113,11 +121,12 @@ def parse_args(argv: list) -> argparse.Namespace:
     ci_run = commands.add_parser("ci-run", help="check the CI Build run a release is made from")
     ci_run.add_argument("--run", type=Path, required=True, help="GET /actions/runs/{id} response")
     ci_run.add_argument("--jobs", type=Path, required=True, help="the run's jobs, as JSON values")
+    ci_run.add_argument("--allow-missing-macos-arm64", action="store_true",
+                        help="accept macOS arm64 jobs that never got a runner")
     packages = commands.add_parser("macos-packages", help="check the downloaded macOS packages")
     packages.add_argument("--root", type=Path, required=True, help="directory holding packages-* artifacts")
-    for command in (ci_run, packages):
-        command.add_argument("--allow-missing-macos-arm64", action="store_true",
-                             help="accept a release without the macOS arm64 packages")
+    packages.add_argument("--allow-missing", action="append", default=[], metavar="DIR",
+                          help="a macOS arm64 package directory that may be absent (repeatable)")
     return parser.parse_args(argv)
 
 
@@ -127,11 +136,12 @@ def main(argv: list) -> int:
         if args.command == "ci-run":
             run = json.loads(args.run.read_text(encoding="utf-8"))
             jobs = load_json_values(args.jobs.read_text(encoding="utf-8"))
-            for name in check_ci_run(run, jobs, args.allow_missing_macos_arm64):
-                print(f"Left out, never got a runner: {name}")
+            for directory in check_ci_run(run, jobs, args.allow_missing_macos_arm64):
+                print(f"Left out, its job never got a runner: {directory}", file=sys.stderr)
+                print(directory)
         else:
-            for name in missing_macos_packages(args.root, args.allow_missing_macos_arm64):
-                print(name)
+            for directory in missing_macos_packages(args.root, args.allow_missing):
+                print(directory)
     except ReleaseInputError as error:
         print(f"Release check failed: {error}", file=sys.stderr)
         return 1

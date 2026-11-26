@@ -29,9 +29,14 @@ jobs:
     permissions:
       actions: read
       contents: read
+    outputs:
+      # Space-separated macOS arm64 package directories whose CI Build jobs never got a
+      # runner; only these may be missing from the release.
+      allowed-missing: ${{ steps.check.outputs.allowed-missing }}
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     - name: Check the CI Build run
+      id: check
       env:
         GH_TOKEN: ${{ github.token }}
         CI_RUN_ID: ${{ github.event.inputs.ci-run-id }}
@@ -52,7 +57,8 @@ jobs:
         if [ "$ALLOW_MISSING_MACOS_ARM64" = "true" ]; then
           args+=(--allow-missing-macos-arm64)
         fi
-        python3 ./scripts/check_release_inputs.py "${args[@]}"
+        left_out="$(python3 ./scripts/check_release_inputs.py "${args[@]}")"
+        echo "allowed-missing=$(echo $left_out)" >> "$GITHUB_OUTPUT"
 
   validate-linux:
     needs: check-ci-run
@@ -123,7 +129,7 @@ jobs:
         run_id: ${{ github.event.inputs.ci-run-id }}
     - name: Validate macOS artifacts
       env:
-        CILOGG_ALLOW_MISSING_MACOS_ARM64: ${{ github.event.inputs.allow-missing-macos-arm64 }}
+        CILOGG_ALLOWED_MISSING_MACOS_PACKAGES: ${{ needs.check-ci-run.outputs.allowed-missing }}
       run: bash ./scripts/validate_release_macos.sh
 
   release:
@@ -260,7 +266,7 @@ jobs:
       env:
         GH_TOKEN: ${{ env.CILOGG_GITHUB_TOKEN }}
         RELEASE_CHANNEL: ${{ github.event.inputs.channel }}
-        ALLOW_MISSING_MACOS_ARM64: ${{ github.event.inputs.allow-missing-macos-arm64 }}
+        ALLOWED_MISSING: ${{ needs.check-ci-run.outputs.allowed-missing }}
       shell: bash
       run: |
         if [ "$RELEASE_CHANNEL" = "stable" ]; then
@@ -270,11 +276,15 @@ jobs:
           tag="continuous-${CILOGG_VERSION}"
           flags=(--prerelease --generate-notes)
         fi
-        if [ "$ALLOW_MISSING_MACOS_ARM64" = "true" ]; then
-          missing="$(python3 ./scripts/check_release_inputs.py macos-packages --root . --allow-missing-macos-arm64 | paste -sd ' ' -)"
+        if [ -n "$ALLOWED_MISSING" ]; then
+          check=(macos-packages --root .)
+          for directory in $ALLOWED_MISSING; do
+            check+=(--allow-missing "$directory")
+          done
+          missing="$(python3 ./scripts/check_release_inputs.py "${check[@]}" | paste -sd ' ' -)"
           if [ -n "$missing" ]; then
             # Prepended to the generated notes.
-            flags+=(--notes "This release has no macOS Apple Silicon (arm64) packages: their CI Build jobs never got a GitHub-hosted runner. Missing: ${missing}.")
+            flags+=(--notes "This release has no macOS Apple Silicon (arm64) packages from: ${missing}. Their CI Build jobs never got a GitHub-hosted runner.")
           fi
         fi
           mapfile -d '' assets < <(
