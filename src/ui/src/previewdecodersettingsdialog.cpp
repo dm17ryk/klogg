@@ -94,12 +94,17 @@ public:
         if ( combo->isEditable() )
             combo->setEditText( text );
         else
-            combo->setCurrentIndex( std::max( 0, combo->findText( text ) ) );
+            combo->setCurrentIndex( combo->findText( text ) );
     }
     void setModelData( QWidget* editor, QAbstractItemModel* model,
                        const QModelIndex& index ) const override
     {
-        model->setData( index, static_cast<QComboBox*>( editor )->currentText(), Qt::EditRole );
+        // A fixed drop-down that shows none of its values (an empty encoding: the default) was
+        // only visited: the cell keeps its value.
+        auto* combo = static_cast<QComboBox*>( editor );
+        if ( !combo->isEditable() && combo->currentIndex() < 0 )
+            return;
+        model->setData( index, combo->currentText(), Qt::EditRole );
     }
 
 private:
@@ -457,8 +462,9 @@ void PreviewDecoderSettingsDialog::followDissector( QTableWidget* table, QTableW
     const auto selected = pdml->text().trimmed();
     if ( !selected.isEmpty() && selected != previous )
         return;
-    // A Python decoder takes no PDML protocol.
-    pdml->setText( current.startsWith( PythonPrefix ) ? QString() : current );
+    // Only a dissector a Lua file declares or TShark lists is surely also a PDML protocol's name;
+    // for any other (and for a Python decoder, which takes none) every decoded protocol shows.
+    pdml->setText( choices_.tsharkDissectors().contains( current ) ? current : QString() );
 }
 
 void PreviewDecoderSettingsDialog::refreshChoices()
@@ -492,7 +498,8 @@ void PreviewDecoderSettingsDialog::showChoicesStatus()
     else if ( !tsharkFailure_.isEmpty() )
         tshark = tr( "no TShark protocols (%1)" ).arg( tsharkFailure_ );
     else
-        tshark = tr( "no TShark protocols (apply a TShark executable to list them)" );
+        tshark = tr( "no TShark protocols (enable TShark and apply its executable to list "
+                     "them)" );
     choicesStatus_->setText( tr( "Offered dissectors: %1 from Lua files, %2, %3." )
                                  .arg( QString::number( choices_.luaNames().size() ), python,
                                        tshark ) );
@@ -501,17 +508,21 @@ void PreviewDecoderSettingsDialog::showChoicesStatus()
 void PreviewDecoderSettingsDialog::showEvent( QShowEvent* event )
 {
     QDialog::showEvent( event );
-    loadTsharkProtocols();
+    // A list that failed (a cold start past the timeout) is read again on the next show.
+    loadTsharkProtocols( true );
 }
 
-void PreviewDecoderSettingsDialog::loadTsharkProtocols()
+void PreviewDecoderSettingsDialog::loadTsharkProtocols( bool retry )
 {
-    // Only the saved TShark runs: applying the dialog approves its executables.
-    const auto path
-        = PreviewDecoderSettings::instance().configuration().value( "tshark" ).toString();
-    const auto key = tsharkKey( path );
+    // Only the saved TShark of an enabled decoder runs, as for a preview: applying the settings
+    // approves their executables.
+    const auto config = PreviewDecoderSettings::instance().configuration();
+    const auto key = config.value( "enabled" ).toBool()
+                         ? tsharkKey( config.value( "tshark" ).toString() )
+                         : QString{};
     if ( key == tsharkKey_
-         && ( choices_.tsharkLoaded || tsharkProcess_ || !tsharkFailure_.isEmpty() ) )
+         && ( choices_.tsharkLoaded || tsharkProcess_
+              || ( !tsharkFailure_.isEmpty() && !retry ) ) )
         return;
     if ( tsharkProcess_ ) {
         tsharkProcess_->disconnect( this );
@@ -539,7 +550,7 @@ void PreviewDecoderSettingsDialog::loadTsharkProtocols()
     auto* process = new QProcess( this );
     tsharkProcess_ = process;
     // The folder stays until the process is gone.
-    connect( process, &QObject::destroyed, [ folder ] {} );
+    connect( process, &QObject::destroyed, [ folder ] { Q_UNUSED( folder ) } );
     process->setProcessEnvironment( isolatedEnvironment( folder->path() ) );
     process->setWorkingDirectory( folder->path() );
     process->setStandardInputFile( QProcess::nullDevice() );
@@ -567,7 +578,8 @@ void PreviewDecoderSettingsDialog::loadTsharkProtocols()
         process->kill();
     } );
     LOG_INFO << "Preview decoder settings read the TShark protocol list";
-    process->start( path, { "-G", "protocols" }, QIODevice::ReadOnly );
+    process->start( config.value( "tshark" ).toString(), { "-G", "protocols" },
+                    QIODevice::ReadOnly );
     showChoicesStatus();
 }
 
@@ -590,8 +602,8 @@ void PreviewDecoderSettingsDialog::tsharkProtocolsLoaded( QProcess* process, con
     LOG_INFO << "Preview decoder settings TShark protocols=" << names.size()
              << " failure=" << tsharkFailure_;
     refreshChoices();
-    // Warnings shown for the saved settings are checked again with the list.
-    if ( !warnings_.isEmpty() )
+    // Apply's warnings are checked again with the list.
+    if ( checked_ )
         showWarnings(
             previewroutes::check( PreviewDecoderSettings::instance().configuration(), choices_ ) );
 }
@@ -612,6 +624,7 @@ void PreviewDecoderSettingsDialog::reload()
     dissector_->setEditText( config.value( "defaultDissector" ).toString() );
     populate( previewRoutes_, config.value( "previewRoutes" ).toMap(), false );
     populate( protocolRoutes_, config.value( "protocolRoutes" ).toMap(), true );
+    checked_ = false;
     showWarnings( {} );
 }
 
@@ -652,12 +665,14 @@ bool PreviewDecoderSettingsDialog::apply()
               << " scripts=" << scripts.size() << " routes=" << preview.size() + protocol.size();
     if ( !ok )
         return false;
-    refreshChoices();
-    showWarnings(
-        previewroutes::check( PreviewDecoderSettings::instance().configuration(), choices_ ) );
-    // A TShark applied while the dialog is open lists its protocols too.
+    // The TShark just applied lists its protocols (an unchanged one keeps its list), so no
+    // warning is checked against the previous TShark's.
     if ( isVisible() )
         loadTsharkProtocols();
+    refreshChoices();
+    checked_ = true;
+    showWarnings(
+        previewroutes::check( PreviewDecoderSettings::instance().configuration(), choices_ ) );
     return true;
 }
 
@@ -676,9 +691,10 @@ void PreviewDecoderSettingsDialog::showWarnings( const QVector<previewroutes::Wa
     warningsLabel_->setText( lines.join( '\n' ) );
     warningsLabel_->setVisible( !lines.isEmpty() );
     useDeclared_->setVisible( suggestions );
-    if ( !warnings.isEmpty() )
+    if ( !warnings.isEmpty() ) {
         LOG_INFO << "Preview decoder settings route warnings=" << warnings.size()
                  << " suggestions=" << suggestions;
+    }
 }
 
 void PreviewDecoderSettingsDialog::useDeclaredNames()

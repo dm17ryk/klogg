@@ -290,7 +290,7 @@ Warning dissectorWarning( const QString& field, const QString& name, const Choic
     }
     else if ( choices.tsharkLoaded ) {
         warning.text = tr( "`%1` is not declared by a selected Lua file, and TShark does not "
-                           "know it." )
+                           "list it as a protocol." )
                            .arg( name );
     }
     else {

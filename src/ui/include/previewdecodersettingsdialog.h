@@ -33,8 +33,9 @@ private:
     // Rereads the selected Lua files and the enabled packs, and refills the drop-downs.
     void refreshChoices();
     void showChoicesStatus();
-    // Reads `tshark -G protocols` of the saved TShark once, in the background.
-    void loadTsharkProtocols();
+    // Reads `tshark -G protocols` of the saved TShark once, in the background, while the saved
+    // decoder is enabled. `retry` reads it again after a failure.
+    void loadTsharkProtocols( bool retry = false );
     void tsharkProtocolsLoaded( QProcess* process, const QString& key, const QString& failure );
     // An empty PDML protocol, or one that was the previous dissector, follows the dissector.
     void followDissector( QTableWidget* table, QTableWidgetItem* item );
@@ -60,4 +61,6 @@ private:
     QString tsharkFailure_;
     QPointer<QProcess> tsharkProcess_;
     QVector<previewroutes::Warning> warnings_;
+    // Whether the shown warnings are Apply's: a TShark list that arrives later checks again.
+    bool checked_ = false;
 };

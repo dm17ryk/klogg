@@ -205,7 +205,7 @@ TEST_CASE( "Apply warns about dissectors nothing declares", "[previewroutes]" )
     CHECK( byName.value( "MY_PROTO" ).suggestion == "my_proto" );
     CHECK( byName.value( "MY_PROTO" ).text.contains( "lower case" ) );
     CHECK( byName.value( "nowhere" ).suggestion.isEmpty() );
-    CHECK( byName.value( "nowhere" ).text.contains( "TShark does not know it" ) );
+    CHECK( byName.value( "nowhere" ).text.contains( "TShark does not list it" ) );
     CHECK( byName.value( "stale.lua" ).suggestion.isEmpty() );
     CHECK( byName.value( "stale.lua" ).field.contains( "EHCI" ) );
     CHECK( byName.value( "stale.lua" ).text.contains( "looks like a file name" ) );
@@ -330,6 +330,26 @@ TEST_CASE( "Decoder settings offer the known route values", "[previewroutes]" )
         commit( previews, 0, 2, "pack_proto" );
         commit( previews, 0, 1, "python:org.example.alpha/summary" );
         CHECK( previews->item( 0, 2 )->text().isEmpty() );
+        // A typed dissector nothing declares may not name a PDML protocol: every decoded
+        // protocol keeps showing.
+        commit( previews, 0, 1, "typed_unknown" );
+        CHECK( previews->item( 0, 2 )->text().isEmpty() );
+        commit( previews, 0, 1, "pack_proto" );
+        CHECK( previews->item( 0, 2 )->text() == "pack_proto" );
+        commit( previews, 0, 1, "typed_unknown" );
+        CHECK( previews->item( 0, 2 )->text().isEmpty() );
+    }
+    SECTION( "an empty encoding stays empty when its drop-down is only visited" )
+    {
+        protocols->item( 0, 3 )->setText( {} );
+        auto* encoding = editor( protocols, 0, 3 );
+        CHECK( encoding->currentIndex() == -1 );
+        const auto index = protocols->model()->index( 0, 3 );
+        protocols->itemDelegate()->setModelData( encoding, protocols->model(), index );
+        CHECK( protocols->item( 0, 3 )->text().isEmpty() );
+        encoding->setCurrentIndex( encoding->findText( "base64" ) );
+        protocols->itemDelegate()->setModelData( encoding, protocols->model(), index );
+        CHECK( protocols->item( 0, 3 )->text() == "base64" );
     }
     SECTION( "a new route row is filled through the same drop-downs" )
     {
