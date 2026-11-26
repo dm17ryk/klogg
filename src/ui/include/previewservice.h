@@ -41,5 +41,8 @@ public:
                                         QObject* cancellationOwner = nullptr );
     static void cancel( QProcess* process );
     static QString tooltipHtml( const QVariantMap& result );
+    // E16b: the Python decoder that decoded `result`, "<pack-id>/<decoder-id>", followed by its
+    // pack's name while that pack is enabled; empty for another backend. Plain text.
+    static QString pythonDecoderLabel( const QVariantMap& result );
     static int workerMain( int argc, char* argv[] );
 };
