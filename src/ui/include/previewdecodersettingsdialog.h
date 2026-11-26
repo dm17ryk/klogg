@@ -39,8 +39,9 @@ private:
     void tsharkProtocolsLoaded( QProcess* process, const QString& key, const QString& failure );
     // An empty PDML protocol, or one that was the previous dissector, follows the dissector.
     void followDissector( QTableWidget* table, QTableWidgetItem* item );
-    // The warnings for the saved settings; while TShark is listing, only those it cannot settle.
-    QVector<previewroutes::Warning> savedWarnings();
+    // The warnings for the saved routes and Lua files; while TShark is listing, only those its
+    // list cannot settle.
+    QVector<previewroutes::Warning> savedWarnings() const;
     void showWarnings( const QVector<previewroutes::Warning>& warnings );
     // What the status says when OK stays open to show new warnings.
     QString heldOpenNote() const;
@@ -64,8 +65,7 @@ private:
     QString tsharkKey_;
     QString tsharkFailure_;
     QPointer<QProcess> tsharkProcess_;
+    // The shown warnings: always those of the saved settings (checked on opening, on Apply and
+    // when a TShark list arrives).
     QVector<previewroutes::Warning> warnings_;
-    // Whether the shown warnings are those of the saved settings (checked on opening and on
-    // Apply): a TShark list that arrives later checks them again.
-    bool checked_ = false;
 };

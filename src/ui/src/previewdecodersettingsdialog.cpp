@@ -285,14 +285,10 @@ PreviewDecoderSettingsDialog::PreviewDecoderSettingsDialog( QWidget* parent )
             if ( scripts_->findItems( path, Qt::MatchExactly ).isEmpty() )
                 scripts_->addItem( path );
         }
-        // The shown warnings stay those of the applied Lua files: a TShark list that arrives
-        // now must not check the saved routes against Lua files that are not applied yet.
-        checked_ = false;
         refreshChoices();
     } );
     connect( remove, &QPushButton::clicked, this, [ this ] {
         delete scripts_->takeItem( scripts_->currentRow() );
-        checked_ = false;
         refreshChoices();
     } );
     auto* tabs = new QTabWidget( this );
@@ -473,9 +469,9 @@ void PreviewDecoderSettingsDialog::followDissector( QTableWidget* table, QTableW
     const auto selected = pdml->text().trimmed();
     if ( !selected.isEmpty() && selected != previous )
         return;
-    // Only a dissector a Lua file declares or TShark lists is surely also a PDML protocol's name;
-    // for any other, every decoded protocol shows.
-    pdml->setText( choices_.tsharkDissectors().contains( current ) ? current : QString() );
+    // A dissector a Lua file declares is also the PDML protocol it adds to the tree (Wireshark
+    // registers both under its lower-case name); for any other, every decoded protocol shows.
+    pdml->setText( choices_.luaNames().contains( current ) ? current : QString() );
 }
 
 void PreviewDecoderSettingsDialog::refreshChoices()
@@ -511,10 +507,17 @@ void PreviewDecoderSettingsDialog::refreshChoices()
         edit->setCursorPosition( cursor );
 }
 
-QVector<previewroutes::Warning> PreviewDecoderSettingsDialog::savedWarnings()
+QVector<previewroutes::Warning> PreviewDecoderSettingsDialog::savedWarnings() const
 {
-    choices_.tsharkPending = !tsharkProcess_.isNull();
-    return previewroutes::check( PreviewDecoderSettings::instance().configuration(), choices_ );
+    // The saved routes are checked against the saved Lua files, whatever the list shows now
+    // (a file added or removed but not applied yet), with the TShark list as far as it is.
+    const auto config = PreviewDecoderSettings::instance().configuration();
+    auto choices = previewroutes::collect( config.value( "lua" ).toStringList() );
+    choices.tshark = choices_.tshark;
+    choices.tsharkLoaded = choices_.tsharkLoaded;
+    choices.tsharkPending = !tsharkProcess_.isNull();
+    choices.tsharkDisabled = !config.value( "enabled" ).toBool();
+    return previewroutes::check( config, choices );
 }
 
 void PreviewDecoderSettingsDialog::showChoicesStatus()
@@ -543,8 +546,7 @@ void PreviewDecoderSettingsDialog::showEvent( QShowEvent* event )
     // A list that failed (a cold start past the timeout) is read again on the next show.
     loadTsharkProtocols( true );
     // While it loads, the names only its list could settle wait for it.
-    if ( checked_ )
-        showWarnings( savedWarnings() );
+    showWarnings( savedWarnings() );
 }
 
 QString PreviewDecoderSettingsDialog::heldOpenNote() const
@@ -645,11 +647,9 @@ void PreviewDecoderSettingsDialog::tsharkProtocolsLoaded( QProcess* process, con
     refreshChoices();
     // The saved routes are checked again with the list (also in a closed dialog: it shows them
     // when it opens); when none remain, OK's note goes too.
-    if ( checked_ ) {
-        showWarnings( savedWarnings() );
-        if ( warnings_.isEmpty() && error_->text() == heldOpenNote() )
-            error_->setText( tr( "Settings applied." ) );
-    }
+    showWarnings( savedWarnings() );
+    if ( warnings_.isEmpty() && error_->text() == heldOpenNote() )
+        error_->setText( tr( "Settings applied." ) );
 }
 
 void PreviewDecoderSettingsDialog::reload()
@@ -668,9 +668,11 @@ void PreviewDecoderSettingsDialog::reload()
     dissector_->setEditText( config.value( "defaultDissector" ).toString() );
     populate( previewRoutes_, config.value( "previewRoutes" ).toMap(), false );
     populate( protocolRoutes_, config.value( "protocolRoutes" ).toMap(), true );
+    // Settings reloaded into an open dialog may name another TShark.
+    if ( isVisible() )
+        loadTsharkProtocols();
     // The saved routes are checked when the dialog opens, so a warning that came after it was
     // closed (a TShark list that arrived late) is shown again.
-    checked_ = true;
     showWarnings( savedWarnings() );
 }
 
@@ -716,7 +718,6 @@ bool PreviewDecoderSettingsDialog::apply()
     if ( isVisible() )
         loadTsharkProtocols();
     refreshChoices();
-    checked_ = true;
     showWarnings( savedWarnings() );
     return true;
 }

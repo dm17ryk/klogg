@@ -14,6 +14,7 @@
 #include <QTest>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QPushButton>
 #include <QTableWidget>
 #include <QTemporaryDir>
@@ -223,6 +224,7 @@ TEST_CASE( "Apply warns about dissectors nothing declares", "[previewroutes]" )
     CHECK( byName.value( "MY_PROTO" ).text.contains( "lower case" ) );
     CHECK( byName.value( "nowhere" ).suggestion.isEmpty() );
     CHECK( byName.value( "nowhere" ).text.contains( "TShark does not list it" ) );
+    CHECK( byName.value( "nowhere" ).text.contains( "may still be a dissector name" ) );
     CHECK( byName.value( "stale.lua" ).suggestion.isEmpty() );
     CHECK( byName.value( "stale.lua" ).field.contains( "EHCI" ) );
     CHECK( byName.value( "stale.lua" ).text.contains( "looks like a file name" ) );
@@ -254,8 +256,24 @@ TEST_CASE( "Apply warns about dissectors nothing declares", "[previewroutes]" )
         CHECK_FALSE( names.contains( "data" ) );
         CHECK_FALSE( names.contains( "json" ) );
         CHECK_FALSE( names.contains( "nowhere" ) );
+        // A Lua file's base name may also be a TShark protocol: it waits for the list too.
+        CHECK_FALSE( names.contains( "MY_PROTO" ) );
         CHECK( names.contains( "my_proto.lua" ) );
         CHECK( names.contains( "stale.lua" ) );
+        CHECK( names.contains( "org.example.alpha/missing" ) );
+    }
+    SECTION( "with TShark disabled, only what does not need its list is reported" )
+    {
+        choices.tshark.clear();
+        choices.tsharkLoaded = false;
+        choices.tsharkDisabled = true;
+        QStringList names;
+        for ( const auto& warning : previewroutes::check( configuration, choices ) )
+            names << warning.name;
+        CHECK_FALSE( names.contains( "data" ) );
+        CHECK_FALSE( names.contains( "nowhere" ) );
+        CHECK( names.contains( "MY_PROTO" ) );
+        CHECK( names.contains( "my_proto.lua" ) );
         CHECK( names.contains( "org.example.alpha/missing" ) );
     }
     SECTION( "nothing to report" )
@@ -481,6 +499,19 @@ TEST_CASE( "Apply saves, warns and offers the declared name", "[previewroutes]" 
         // The same warnings again: OK closes.
         buttons->button( QDialogButtonBox::Ok )->click();
         CHECK_FALSE( dialog.isVisible() );
+    }
+    SECTION( "the saved routes are checked against the saved Lua files" )
+    {
+        // A Lua file removed from the list but not applied yet still declares the saved
+        // routes' dissector: a later check (here, showing the dialog) keeps its suggestion.
+        auto* scripts = dialog.findChild<QListWidget*>( "decoderLuaScripts" );
+        REQUIRE( scripts );
+        scripts->setCurrentRow( 0 );
+        dialog.findChild<QPushButton*>( "decoderRemoveLua" )->click();
+        REQUIRE( scripts->count() == 0 );
+        dialog.show();
+        CHECK( warnings->text().contains( "registers `my_proto`" ) );
+        CHECK_FALSE( useDeclared->isHidden() );
     }
     SECTION( "warnings the dialog already showed do not hold OK" )
     {

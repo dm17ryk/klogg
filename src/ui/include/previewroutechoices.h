@@ -41,6 +41,9 @@ struct Choices {
     bool tsharkLoaded = false;
     // TShark is still listing its protocols: names only its list could settle are not reported.
     bool tsharkPending = false;
+    // TShark is disabled, so no TShark route runs: names only its list could settle are not
+    // reported either.
+    bool tsharkDisabled = false;
 
     // The names the Lua files declare, in file order, without duplicates.
     QStringList luaNames() const;

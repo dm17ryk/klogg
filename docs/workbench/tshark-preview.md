@@ -60,11 +60,12 @@ dialog is shown after a failure. It uses no personal or global Wireshark
 plugins or settings, like a preview session. The line under the routes counts
 what each source offers.
 
-When you choose a dissector that a Lua file declares or TShark lists, an empty
-PDML protocol takes its name. It keeps following the dissector until you choose
-another PDML protocol. **Use the declared names** (below) does the same. Any
-other dissector leaves it empty. A Python decoder takes no PDML protocol, so
-choosing one clears the field.
+When you choose a dissector that a selected Lua file declares, an empty PDML
+protocol takes its name, because that is also the protocol the Lua dissector
+adds to the tree. It keeps following the dissector until you choose another PDML
+protocol. **Use the declared names** (below) does the same. Any other dissector,
+TShark's own included, leaves it empty, which shows every decoded protocol. A
+Python decoder takes no PDML protocol, so choosing one clears the field.
 
 **The dialog checks the saved routes** when it opens and on Apply. Apply saves
 the settings first, then CILogg warns about:
@@ -74,8 +75,9 @@ the settings first, then CILogg warns about:
 
 TShark lists protocols, not every dissector name, so a valid dissector-only name
 can also be warned about. The warning doesn't block it. While TShark is still
-listing its protocols, Apply skips names only that list could settle and checks
-them again when it arrives.
+listing its protocols, any name except a Lua file name waits for that list and
+is checked when it arrives. While TShark is disabled, no TShark route runs, so
+only names that don't need its list are reported.
 
 When the value looks like a Lua file name (`my_proto.lua`), or differs from a
 known name only in case, the warning names the dissector to use. **Use the

@@ -287,6 +287,10 @@ Warning dissectorWarning( const QString& field, const QString& name, const Choic
     };
     if ( name.isEmpty() || known( name ) )
         return warning;
+    // While TShark is listing, any name but a Lua file's could be one of its protocols (also a
+    // Lua file's base name, or a name in other case): it waits for the list.
+    if ( choices.tsharkPending && !name.endsWith( LuaSuffix, Qt::CaseInsensitive ) )
+        return warning;
     const auto fileText = tr( "`%1` looks like a file name; the Lua file registers %2." );
     if ( known( name.toLower() ) ) {
         warning.suggestion = name.toLower();
@@ -313,13 +317,13 @@ Warning dissectorWarning( const QString& field, const QString& name, const Choic
                            "registers a dissector." )
                            .arg( name );
     }
-    else if ( choices.tsharkPending ) {
-        // TShark's list, still loading, may know it: the check runs again once it is there.
-    }
     else if ( choices.tsharkLoaded ) {
         warning.text = tr( "`%1` is not declared by a selected Lua file, and TShark does not "
-                           "list it as a protocol." )
+                           "list it as a protocol (it may still be a dissector name)." )
                            .arg( name );
+    }
+    else if ( choices.tsharkDisabled ) {
+        // No TShark route runs while TShark is disabled; its list would settle the name.
     }
     else {
         warning.text = tr( "`%1` is not declared by a selected Lua file; TShark's protocol list "
