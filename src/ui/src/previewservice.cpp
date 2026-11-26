@@ -555,14 +555,19 @@ public:
         }
         const auto result = document.object().toVariantMap();
         if ( result.value( "backend" ) != "tshark_carrier" ) {
-            // A TShark route whose input the selector could not prepare is a TShark/Lua failure.
-            if ( fallsBack() && result.value( "backend" ) == TsharkBackend
-                 && result.value( "state" ) == "failed" ) {
+            auto failed = result;
+            // The carrier of a route whose input the selector could not prepare; internal only.
+            const auto carrier = failed.take( "carrierName" ).toString();
+            // A TShark route whose input the selector could not prepare is a TShark/Lua failure:
+            // the JSON preview of that carrier follows, not of any earlier match.
+            if ( fallsBack() && failed.value( "backend" ) == TsharkBackend
+                 && failed.value( "state" ) == "failed" ) {
                 externalBackend_ = TsharkBackend;
-                fallBack( result.value( "reason" ).toString() );
+                fallbackCarrier_ = carrier;
+                fallBack( failed.value( "reason" ).toString() );
                 return;
             }
-            finish( result );
+            finish( failed );
             return;
         }
         external_ = true;
@@ -979,6 +984,9 @@ int PreviewService::workerMain( int argc, char* argv[] )
                         !prepared.ok ? ( prepared.reason.isEmpty() ? "no_match" : prepared.reason )
                                      : "input_limit" );
                     result[ "backend" ] = python ? "python_decoder" : "tshark_lua";
+                    // The carrier the failed route was for, so that Automatic's JSON fallback
+                    // shows that preview (#182). The host removes it from the result.
+                    result[ "carrierName" ] = direct ? QString() : name;
                     LOG_DEBUG << "Preview carrier failed reason="
                               << result.value( "reason" ).toString();
                 }
