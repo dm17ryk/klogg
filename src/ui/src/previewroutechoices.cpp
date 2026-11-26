@@ -96,20 +96,30 @@ qsizetype skipComment( const QString& source, qsizetype i )
     const auto end = source.indexOf( '\n', i );
     return end < 0 ? source.size() : end + 1;
 }
+// The index after the white space and comments from `i`: Lua allows comments between tokens.
+qsizetype skipBlank( const QString& source, qsizetype i )
+{
+    for ( ;; ) {
+        i = skipSpace( source, i );
+        if ( i + 1 >= source.size() || source[ i ] != '-' || source[ i + 1 ] != '-' )
+            return i;
+        i = skipComment( source, i );
+    }
+}
 // The name in `Proto("<name>", ...)` or `Proto.new("<name>", ...)`, from just after `Proto`.
 QString declaredName( const QString& source, qsizetype i )
 {
-    auto j = skipSpace( source, i );
+    auto j = skipBlank( source, i );
     if ( j < source.size() && source[ j ] == '.' ) {
-        j = skipSpace( source, j + 1 );
+        j = skipBlank( source, j + 1 );
         if ( source.mid( j, 3 ) != QLatin1String( "new" )
              || ( j + 3 < source.size() && identifierChar( source[ j + 3 ] ) ) )
             return {};
-        j = skipSpace( source, j + 3 );
+        j = skipBlank( source, j + 3 );
     }
     if ( j >= source.size() || source[ j ] != '(' )
         return {};
-    j = skipSpace( source, j + 1 );
+    j = skipBlank( source, j + 1 );
     if ( j >= source.size() || ( source[ j ] != '"' && source[ j ] != '\'' ) )
         return {};
     QString name;

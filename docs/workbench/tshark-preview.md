@@ -66,7 +66,8 @@ another PDML protocol. **Use the declared names** (below) does the same. Any
 other dissector leaves it empty. A Python decoder takes no PDML protocol, so
 choosing one clears the field.
 
-**Apply checks the routes.** The settings are saved first, then CILogg warns about:
+**The dialog checks the saved routes** when it opens and on Apply. Apply saves
+the settings first, then CILogg warns about:
 
 - a dissector that no selected Lua file declares and TShark doesn't list, and
 - a `python:` route to a decoder that no enabled pack has.

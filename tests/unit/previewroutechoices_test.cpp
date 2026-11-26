@@ -127,6 +127,13 @@ TEST_CASE( "Lua Proto declarations give the dissector names", "[previewroutes]" 
                    "local a, b = Proto(\"one\", \"1\"), Proto('two', '2') local c = \"x" )
                == QStringList{ "one", "two" } );
     }
+    SECTION( "comments between the declaration's tokens" )
+    {
+        CHECK( previewroutes::luaProtoNames(
+                   "local p = Proto( -- the name\n  \"foo\", \"Foo\")\n"
+                   "local q = Proto --[[ a ]] . --[==[ b ]==] new ( 'bar', 'Bar' )" )
+               == QStringList{ "foo", "bar" } );
+    }
     SECTION( "strings continued on the next line" )
     {
         // A backslash before a Windows line end, and `\z`, continue a short string.
@@ -425,7 +432,11 @@ TEST_CASE( "Apply saves, warns and offers the declared name", "[previewroutes]" 
     REQUIRE( warnings );
     REQUIRE( useDeclared );
     REQUIRE( status );
-    CHECK( useDeclared->isHidden() );
+    // The dialog checks the saved routes when it opens.
+    CHECK( warnings->text().contains( "`my_proto.lua` looks like a file name" ) );
+    CHECK_FALSE( useDeclared->isHidden() );
+    auto* routesTable = dialog.findChild<QTableWidget*>( "decoderPreviewRoutes" );
+    REQUIRE( routesTable );
     const auto savedDissector = [] {
         return PreviewDecoderSettings::instance()
             .configuration()
@@ -440,9 +451,7 @@ TEST_CASE( "Apply saves, warns and offers the declared name", "[previewroutes]" 
     SECTION( "Apply saves as typed, warns, and the declared name replaces the file name" )
     {
         // Spaces around a typed dissector are not part of it.
-        dialog.findChild<QTableWidget*>( "decoderPreviewRoutes" )
-            ->item( 0, 1 )
-            ->setText( "  my_proto.lua " );
+        routesTable->item( 0, 1 )->setText( "  my_proto.lua " );
         buttons->button( QDialogButtonBox::Apply )->click();
         // The warning does not block the save.
         CHECK( status->text() == "Settings applied." );
@@ -452,8 +461,7 @@ TEST_CASE( "Apply saves, warns and offers the declared name", "[previewroutes]" 
         CHECK_FALSE( useDeclared->isHidden() );
 
         useDeclared->click();
-        CHECK( dialog.findChild<QTableWidget*>( "decoderPreviewRoutes" )->item( 0, 1 )->text()
-               == "my_proto" );
+        CHECK( routesTable->item( 0, 1 )->text() == "my_proto" );
         CHECK( savedDissector() == "my_proto" );
         CHECK( status->text() == "Settings applied." );
         CHECK( warnings->text().isEmpty() );
@@ -461,7 +469,11 @@ TEST_CASE( "Apply saves, warns and offers the declared name", "[previewroutes]" 
     }
     SECTION( "OK saves and stays open once to show new warnings" )
     {
+        routesTable->item( 0, 1 )->setText( "my_proto" );
+        buttons->button( QDialogButtonBox::Apply )->click();
+        CHECK( warnings->text().isEmpty() );
         dialog.show();
+        routesTable->item( 0, 1 )->setText( "my_proto.lua" );
         buttons->button( QDialogButtonBox::Ok )->click();
         CHECK( savedDissector() == "my_proto.lua" );
         CHECK( dialog.isVisible() );
@@ -469,6 +481,15 @@ TEST_CASE( "Apply saves, warns and offers the declared name", "[previewroutes]" 
         // The same warnings again: OK closes.
         buttons->button( QDialogButtonBox::Ok )->click();
         CHECK_FALSE( dialog.isVisible() );
+    }
+    SECTION( "warnings the dialog already showed do not hold OK" )
+    {
+        dialog.show();
+        buttons->button( QDialogButtonBox::Ok )->click();
+        CHECK_FALSE( dialog.isVisible() );
+        // Opened again, it shows them again.
+        dialog.reload();
+        CHECK( warnings->text().contains( "looks like a file name" ) );
     }
 }
 

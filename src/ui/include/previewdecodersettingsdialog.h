@@ -42,6 +42,8 @@ private:
     // The warnings for the saved settings; while TShark is listing, only those it cannot settle.
     QVector<previewroutes::Warning> savedWarnings();
     void showWarnings( const QVector<previewroutes::Warning>& warnings );
+    // What the status says when OK stays open to show new warnings.
+    QString heldOpenNote() const;
     void useDeclaredNames();
     QCheckBox* enabled_;
     QCheckBox* approval_;
@@ -63,6 +65,7 @@ private:
     QString tsharkFailure_;
     QPointer<QProcess> tsharkProcess_;
     QVector<previewroutes::Warning> warnings_;
-    // Whether the shown warnings are Apply's: a TShark list that arrives later checks again.
+    // Whether the shown warnings are those of the saved settings (checked on opening and on
+    // Apply): a TShark list that arrives later checks them again.
     bool checked_ = false;
 };

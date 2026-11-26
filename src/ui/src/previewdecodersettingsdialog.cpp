@@ -337,8 +337,7 @@ PreviewDecoderSettingsDialog::PreviewDecoderSettingsDialog( QWidget* parent )
         if ( warnings_.isEmpty() || warningsLabel_->text() == shown )
             accept();
         else
-            error_->setText( tr( "Settings applied, with the warnings below. OK again closes "
-                                 "the dialog." ) );
+            error_->setText( heldOpenNote() );
     } );
     connect( buttons, &QDialogButtonBox::rejected, this, &QDialog::reject );
     reload();
@@ -543,6 +542,14 @@ void PreviewDecoderSettingsDialog::showEvent( QShowEvent* event )
     QDialog::showEvent( event );
     // A list that failed (a cold start past the timeout) is read again on the next show.
     loadTsharkProtocols( true );
+    // While it loads, the names only its list could settle wait for it.
+    if ( checked_ )
+        showWarnings( savedWarnings() );
+}
+
+QString PreviewDecoderSettingsDialog::heldOpenNote() const
+{
+    return tr( "Settings applied, with the warnings below. OK again closes the dialog." );
 }
 
 void PreviewDecoderSettingsDialog::loadTsharkProtocols( bool retry )
@@ -636,10 +643,11 @@ void PreviewDecoderSettingsDialog::tsharkProtocolsLoaded( QProcess* process, con
     LOG_INFO << "Preview decoder settings TShark protocols=" << names.size()
              << " failure=" << tsharkFailure_;
     refreshChoices();
-    // Apply's warnings are checked again with the list; when none remain, OK's note goes too.
+    // The saved routes are checked again with the list (also in a closed dialog: it shows them
+    // when it opens); when none remain, OK's note goes too.
     if ( checked_ ) {
         showWarnings( savedWarnings() );
-        if ( warnings_.isEmpty() )
+        if ( warnings_.isEmpty() && error_->text() == heldOpenNote() )
             error_->setText( tr( "Settings applied." ) );
     }
 }
@@ -660,8 +668,10 @@ void PreviewDecoderSettingsDialog::reload()
     dissector_->setEditText( config.value( "defaultDissector" ).toString() );
     populate( previewRoutes_, config.value( "previewRoutes" ).toMap(), false );
     populate( protocolRoutes_, config.value( "protocolRoutes" ).toMap(), true );
-    checked_ = false;
-    showWarnings( {} );
+    // The saved routes are checked when the dialog opens, so a warning that came after it was
+    // closed (a TShark list that arrived late) is shown again.
+    checked_ = true;
+    showWarnings( savedWarnings() );
 }
 
 bool PreviewDecoderSettingsDialog::apply()
