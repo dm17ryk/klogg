@@ -728,7 +728,7 @@ std::vector<ProcessInfo> processesUsing( const std::vector<fs::path>& files, std
     status = RmRegisterResources( session, static_cast<UINT>( pointers.size() ), pointers.data(), 0,
                                   nullptr, 0, nullptr );
     std::vector<RM_PROCESS_INFO> infos;
-    bool listed = false;
+    bool listComplete = false;
     for ( int attempt = 0; status == ERROR_SUCCESS && attempt < 5; ++attempt ) {
         UINT needed = 0;
         auto count = static_cast<UINT>( infos.size() );
@@ -742,12 +742,12 @@ std::vector<ProcessInfo> processesUsing( const std::vector<fs::path>& files, std
         }
         if ( status == ERROR_SUCCESS ) {
             infos.resize( count );
-            listed = true;
+            listComplete = true;
         }
         break;
     }
     RmEndSession( session );
-    if ( status == ERROR_SUCCESS && !listed )
+    if ( status == ERROR_SUCCESS && !listComplete )
         status = ERROR_MORE_DATA; // the list kept growing
     if ( status != ERROR_SUCCESS ) {
         if ( error )
@@ -793,16 +793,35 @@ bool isInUse( const fs::path& file )
 
 std::size_t removeMovedAside( const fs::path& directory, const Log& log )
 {
-    std::size_t removed = 0;
-    std::size_t restored = 0;
-    std::size_t remaining = 0;
+    struct Copy {
+        fs::path file;
+        fs::path original;
+        fs::file_time_type written;
+    };
+    std::vector<Copy> copies;
     for ( const auto& file : installationFiles( directory ) ) {
         const auto fileName = toUtf8( file.filename() );
         const auto suffixLength = movedAsideSuffixLength( lowerAscii( fileName ) );
         if ( suffixLength == 0 )
             continue;
-        const auto original
-            = file.parent_path() / fromUtf8( fileName.substr( 0, fileName.size() - suffixLength ) );
+        std::error_code error;
+        copies.push_back(
+            { file,
+              file.parent_path()
+                  / fromUtf8( fileName.substr( 0, fileName.size() - suffixLength ) ),
+              fs::last_write_time( file, error ) } );
+    }
+    // The newest copy of a file first: when its original is missing, that one is put back.
+    std::sort( copies.begin(), copies.end(), []( const Copy& left, const Copy& right ) {
+        return left.original != right.original ? left.original < right.original
+                                               : left.written > right.written;
+    } );
+
+    std::size_t removed = 0;
+    std::size_t restored = 0;
+    std::size_t remaining = 0;
+    for ( const auto& [ file, original, written ] : copies ) {
+        (void)written;
         std::error_code error;
         if ( !fs::exists( original, error ) ) {
             // The only copy of a file an update could not put back: never delete it.

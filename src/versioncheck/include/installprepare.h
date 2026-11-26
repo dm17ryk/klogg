@@ -37,6 +37,8 @@ inline constexpr int ManifestFailedExitCode = 4;
 // Installed, but some files the installation did not replace could not be put back; the
 // manifest keeps them for the next update, which puts them back first.
 inline constexpr int FinishIncompleteExitCode = 5;
+// The helper stopped on an unexpected error; files may have been moved aside already.
+inline constexpr int UnexpectedErrorExitCode = 6;
 
 struct ProcessInfo {
     unsigned long pid = 0;

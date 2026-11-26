@@ -812,12 +812,18 @@ int runInstallerMode( int argc, wchar_t** argv )
         sink( "The installation folder must be an absolute path" );
         return prepare::UsageExitCode;
     }
-    if ( mode == L"--installer-prepare" )
-        return prepare::runPrepare( directory, report, sink );
-    if ( mode == L"--installer-finish" )
-        return prepare::runFinish( directory, sink );
-    if ( mode == L"--installer-rollback" )
-        return prepare::runRollback( directory, sink );
+    try {
+        if ( mode == L"--installer-prepare" )
+            return prepare::runPrepare( directory, report, sink );
+        if ( mode == L"--installer-finish" )
+            return prepare::runFinish( directory, sink );
+        if ( mode == L"--installer-rollback" )
+            return prepare::runRollback( directory, sink );
+    } catch ( const std::exception& error ) {
+        // The installer then restores what the manifest records.
+        sink( std::string( "Unexpected error: " ) + error.what() );
+        return prepare::UnexpectedErrorExitCode;
+    }
     return prepare::UsageExitCode;
 }
 #endif

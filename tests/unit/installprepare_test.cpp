@@ -1,6 +1,7 @@
 #include <catch2/catch.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -300,8 +301,17 @@ TEST_CASE( "A moved-aside file whose original is missing is put back, never dele
     writeText( root / "plugins" / "table.2.cilogg-old", "a name with a number" );
     std::vector<std::string> lines;
 
+    // Two copies of a file whose original is missing: the newer one is put back.
+    writeText( root / "libssl.dll.cilogg-old-2", "older" );
+    writeText( root / "libssl.dll.cilogg-old", "newer" );
+    fs::last_write_time( root / "libssl.dll.cilogg-old-2",
+                         fs::last_write_time( root / "libssl.dll.cilogg-old" )
+                             - std::chrono::hours( 1 ) );
+
     REQUIRE( prepare::removeMovedAside( root, recorder( lines ) ) == 0 );
     REQUIRE( readText( root / "Qt6Core.dll" ) == "the only copy" );
+    REQUIRE( readText( root / "libssl.dll" ) == "newer" );
+    REQUIRE_FALSE( fs::exists( root / "libssl.dll.cilogg-old-2" ) );
     REQUIRE_FALSE( fs::exists( root / "cilogg.exe.cilogg-old" ) );
     REQUIRE_FALSE( fs::exists( root / "cilogg.exe.cilogg-old-2" ) );
     REQUIRE( readText( root / "plugins" / "table.2" ) == "a name with a number" );

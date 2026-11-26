@@ -178,6 +178,16 @@ Function CiloggPrepareInstallDirectory
         ${Else}
             ${CiloggLog} "Setup could not unpack $PLUGINSDIR\cilogg_updater.exe"
         ${EndIf}
+    ${Else}
+        ; The helper stopped unexpectedly (for example, it was killed) and may have moved files
+        ; aside already: put back what its manifest records.
+        StrCpy $CiloggPrepared 1
+        Call CiloggRollback
+        ${If} $CiloggRestoreFailed == 1
+            ${CiloggLog} "Setup cancelled: the installation folder could not be prepared (result $0) or restored"
+            SetErrorLevel 4
+            Abort "The CILogg folder could not be prepared, and the previous version could not be fully restored. Run setup again."
+        ${EndIf}
     ${EndIf}
     ${CiloggLog} "Setup cancelled before replacing files: the installation folder could not be prepared (result $0)"
     SetErrorLevel 5
@@ -241,37 +251,6 @@ Section "CILogg" cilogg
         StrCpy $CiloggCopyFailed 1
     ${EndIf}
 
-!ifndef CILOGG_TEST_INSTALL
-    ; Create the 'sendto' link
-    CreateShortCut "$SENDTO\cilogg.lnk" "$INSTDIR\cilogg.exe" "" "$INSTDIR\cilogg.exe" 0
-
-    ; Register as an otion (but not main handler) for some files (.txt, .Log, .cap)
-    WriteRegStr HKCR "Applications\cilogg.exe" "" ""
-    WriteRegStr HKCR "Applications\cilogg.exe\shell" "" "open"
-    WriteRegStr HKCR "Applications\cilogg.exe\shell\open" "CILogg log viewer" "cilogg"
-    WriteRegStr HKCR "Applications\cilogg.exe\shell\open\command" "" '"$INSTDIR\cilogg.exe" "%1"'
-    WriteRegStr HKCR "*\OpenWithList\cilogg.exe" "" ""
-    WriteRegStr HKCR ".txt\OpenWithList\cilogg.exe" "" ""
-    WriteRegStr HKCR ".Log\OpenWithList\cilogg.exe" "" ""
-    WriteRegStr HKCR ".cap\OpenWithList\cilogg.exe" "" ""
-
-    ; Register uninstaller
-    WriteRegExpandStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\cilogg"\
-"UninstallString" '"$INSTDIR\Uninstall.exe"'
-    WriteRegExpandStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\cilogg"\
-"InstallLocation" "$INSTDIR"
-    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\cilogg" "DisplayName" "CILogg"
-    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\cilogg" "DisplayVersion" "${VERSION}"
-    WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\cilogg" "NoModify" "1"
-    WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\cilogg" "NoRepair" "1"
-!endif
-
-    ; Create uninstaller
-    ClearErrors
-    WriteUninstaller "$INSTDIR\Uninstall.exe"
-    ${If} ${Errors}
-        StrCpy $CiloggCopyFailed 1
-    ${EndIf}
 SectionEnd
 
 Section "Qt Runtime libraries" qtlibs
@@ -363,6 +342,7 @@ Section "-CILogg executable" ciloggexe
         File /nonfatal release\cilogg_crashpad_handler.exe
         File /nonfatal release\cilogg_minidump_dump.exe
         File release\cilogg.exe
+        WriteUninstaller "$INSTDIR\Uninstall.exe"
         ${If} ${Errors}
             StrCpy $CiloggCopyFailed 1
         ${EndIf}
@@ -379,12 +359,49 @@ Section "-CILogg executable" ciloggexe
     ${EndIf}
     nsExec::ExecToLog '"$PLUGINSDIR\cilogg_updater.exe" --installer-finish "$CiloggDir" --log "$CiloggLog"'
     Pop $0
+    ${If} $0 == 4
+        ; The manifest could not be marked as finishing: a later run would take this
+        ; installation for an interrupted one. Undo it now instead.
+        ${CiloggLog} "The update could not be completed (result $0)"
+        Call CiloggRollback
+        ${If} $CiloggRestoreFailed == 1
+            SetErrorLevel 4
+            Abort "CILogg could not be updated, and the previous version could not be fully restored. Run setup again."
+        ${EndIf}
+        SetErrorLevel 3
+        Abort "CILogg could not be updated. The previous version was restored."
+    ${EndIf}
     StrCpy $CiloggPrepared 0
     ${If} $0 != 0
         ${CiloggLog} "Some files of the previous version that this installation does not replace could not be put back (result $0); run setup again"
         SetErrorLevel 6
         MessageBox MB_OK|MB_ICONEXCLAMATION "CILogg was installed, but some files of the previous version could not be put back. Run setup again." /SD IDOK
     ${EndIf}
+!ifndef CILOGG_TEST_INSTALL
+    ; Registered only once the new version is in place.
+    ; Create the 'sendto' link
+    CreateShortCut "$SENDTO\cilogg.lnk" "$INSTDIR\cilogg.exe" "" "$INSTDIR\cilogg.exe" 0
+
+    ; Register as an otion (but not main handler) for some files (.txt, .Log, .cap)
+    WriteRegStr HKCR "Applications\cilogg.exe" "" ""
+    WriteRegStr HKCR "Applications\cilogg.exe\shell" "" "open"
+    WriteRegStr HKCR "Applications\cilogg.exe\shell\open" "CILogg log viewer" "cilogg"
+    WriteRegStr HKCR "Applications\cilogg.exe\shell\open\command" "" '"$INSTDIR\cilogg.exe" "%1"'
+    WriteRegStr HKCR "*\OpenWithList\cilogg.exe" "" ""
+    WriteRegStr HKCR ".txt\OpenWithList\cilogg.exe" "" ""
+    WriteRegStr HKCR ".Log\OpenWithList\cilogg.exe" "" ""
+    WriteRegStr HKCR ".cap\OpenWithList\cilogg.exe" "" ""
+
+    ; Register uninstaller
+    WriteRegExpandStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\cilogg"\
+"UninstallString" '"$INSTDIR\Uninstall.exe"'
+    WriteRegExpandStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\cilogg"\
+"InstallLocation" "$INSTDIR"
+    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\cilogg" "DisplayName" "CILogg"
+    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\cilogg" "DisplayVersion" "${VERSION}"
+    WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\cilogg" "NoModify" "1"
+    WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\cilogg" "NoRepair" "1"
+!endif
     ${CiloggLog} "CILogg ${VERSION} installed in $INSTDIR"
 SectionEnd
 
