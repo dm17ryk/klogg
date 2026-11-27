@@ -43,7 +43,8 @@ public:
                                         QObject* cancellationOwner = nullptr );
     static void cancel( QProcess* process );
     // Requests not finished yet. A cancelled request keeps its place until the event loop has
-    // reaped its worker; evaluate() refuses a third one with "preview_busy".
+    // reaped its worker (the limit counts worker processes); evaluate() refuses a third one with
+    // "preview_busy". Application thread only, like evaluate().
     static int activeRequestCount();
     static QString tooltipHtml( const QVariantMap& result );
     // Which limit cut a limited result, and by how much (#183), e.g. "390 of 768 rows: result

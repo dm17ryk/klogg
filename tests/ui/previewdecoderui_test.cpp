@@ -143,17 +143,21 @@ TEST_CASE( "JSON pane uses supervised carrier selection and rejects stale delive
     // An earlier test's cancelled requests keep their places until their workers are reaped and
     // would make this one "preview_busy" (#173); one that never ends fails here.
     REQUIRE( QTest::qWaitFor( [] { return PreviewService::activeRequestCount() == 0; }, 10000 ) );
-    PreviewMessageTab tab( "prefix:0102", "Auto", 1 );
-    REQUIRE( QTest::qWaitFor( [ & ] { return !tab.result().isEmpty(); }, 10000 ) );
-    INFO( "reason: " << tab.result().value( "reason" ).toString().toStdString() );
-    CHECK( tab.result().value( "backend" ) == "json_preview" );
-    CHECK( tab.result().value( "previewName" ) == "Carrier" );
-    CHECK( tab.findChild<QTreeWidget*>( "previewFields" )->columnCount() == 5 );
-    tab.findChild<QPushButton*>( "previewRun" )->click();
-    tab.findChild<QComboBox*>( "previewDecoderMode" )->setCurrentIndex( 2 );
-    QTest::qWait( 100 );
-    CHECK( tab.result().isEmpty() );
-    CHECK( tab.findChild<QLabel*>( "previewStatus" )->text().contains( "Options changed" ) );
+    {
+        PreviewMessageTab tab( "prefix:0102", "Auto", 1 );
+        REQUIRE( QTest::qWaitFor( [ & ] { return !tab.result().isEmpty(); }, 10000 ) );
+        INFO( "reason: " << tab.result().value( "reason" ).toString().toStdString() );
+        CHECK( tab.result().value( "backend" ) == "json_preview" );
+        CHECK( tab.result().value( "previewName" ) == "Carrier" );
+        CHECK( tab.findChild<QTreeWidget*>( "previewFields" )->columnCount() == 5 );
+        tab.findChild<QPushButton*>( "previewRun" )->click();
+        tab.findChild<QComboBox*>( "previewDecoderMode" )->setCurrentIndex( 2 );
+        QTest::qWait( 100 );
+        CHECK( tab.result().isEmpty() );
+        CHECK( tab.findChild<QLabel*>( "previewStatus" )->text().contains( "Options changed" ) );
+    }
+    // Like the cancellation test, this one leaves no request for the next test.
+    REQUIRE( QTest::qWaitFor( [] { return PreviewService::activeRequestCount() == 0; }, 10000 ) );
     CHECK( PreviewService::tooltipHtml( { { "backend", "json_preview" },
                                           { "available", false },
                                           { "reason", "no_match" },
