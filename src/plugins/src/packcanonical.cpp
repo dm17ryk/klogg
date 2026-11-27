@@ -45,6 +45,7 @@ constexpr int HighlightsVersion = 2;
 constexpr int HighlightSetVersion = 3;
 // A rule's colour variance: the colours vary by this many percent either way, so it stays within
 // 0..100 (the editor offers 5 to 99).
+// The same limit as Highlighter::MaxColorVariance (src/ui/include/highlighterset.h).
 constexpr int MaxColorVariance = 100;
 
 // One highlighter rule's members, as HighlighterSet saves them: the canonical form keeps them all.

@@ -89,7 +89,8 @@ class Highlighter {
 
     // How far (in percent) "Variate colors" may darken or lighten a match's colors. Values outside
     // 0 to MaxColorVariance, from a hand-edited or imported file, are clamped (#170): they would
-    // give the colour distribution bounds in the wrong order or overflow them.
+    // give the colour distribution bounds in the wrong order or overflow them. Configuration packs
+    // refuse values past the same limit (MaxColorVariance in src/plugins/src/packcanonical.cpp).
     static constexpr int MaxColorVariance = 100;
     int colorVariance() const;
     void setColorVariance( int colorVariance );

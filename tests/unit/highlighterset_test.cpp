@@ -65,4 +65,6 @@ TEST_CASE( "A highlighter's color variance set out of range is clamped (#170)", 
     klogg::vector<HighlightedMatch> matches;
     REQUIRE( highlighter.matchLine( "one match", matches ) );
     REQUIRE( matches.size() == 1 );
+    CHECK( matches.front().foreColor().isValid() );
+    CHECK( matches.front().backColor().isValid() );
 }
