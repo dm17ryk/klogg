@@ -233,8 +233,9 @@ TEST_CASE( "TShark's folders prove the plugin isolation", "[previewroutes]" )
             .arg( native, globalLua )
             .toUtf8();
     };
-    CHECK( previewroutes::tsharkFoldersIsolated( folders( native + QStringLiteral( "\\plugins" ) ),
-                                                 root ) );
+    // The native separator: a backslash names a folder only on Windows.
+    CHECK( previewroutes::tsharkFoldersIsolated(
+        folders( native + QDir::separator() + QStringLiteral( "plugins" ) ), root ) );
     CHECK( previewroutes::tsharkFoldersIsolated( folders( root + QStringLiteral( "/plugins" ) ),
                                                  root ) );
     // Outside the root, through `..`, or a sibling that only shares the root's name.
