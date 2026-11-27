@@ -136,12 +136,15 @@ std::vector<MovedFile> finish( const std::filesystem::path& directory,
 // not be restored for now (another attempt may succeed); a file lost meanwhile and an entry
 // outside the installation folder are logged and dropped, as nothing can ever act on them.
 // `addedKept` receives how many added files could not be removed, plus one when a folder could not
-// be read to its end (another attempt may succeed); the record is then kept.
+// be read to its end (another attempt may succeed); the record is then kept. `lostFiles` receives
+// how many recorded files are gone along with their copy: no attempt can restore them, but the
+// previous version is then incomplete.
 std::vector<MovedFile> rollback( const std::filesystem::path& directory,
                                  const std::vector<MovedFile>& moved, const Log& log,
                                  bool removeAdded = false,
                                  const std::vector<std::filesystem::path>& leftInPlace = {},
-                                 std::size_t* addedKept = nullptr );
+                                 std::size_t* addedKept = nullptr,
+                                 std::size_t* lostFiles = nullptr );
 
 // The installer modes of cilogg_updater. "prepare" first restores what an interrupted earlier
 // update left (from its manifest), then moves files aside and records them in the manifest; when

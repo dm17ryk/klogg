@@ -553,11 +553,13 @@ bool holdsInstallation( const fs::path& directory, bool* complete = nullptr )
 // Links and junctions where the installer writes: a folder cilogg.nsi installs, a file it
 // installs at the top (or the manifest), and anything inside such a folder. The installer would
 // write through one, to files no record holds.
-std::vector<fs::path> linksInInstallation( const fs::path& directory )
+// `complete` is false when a folder could not be read to its end: a link may then be missed.
+std::vector<fs::path> linksInInstallation( const fs::path& directory, bool* complete )
 {
     const auto manifest = lowerAscii( ManifestFileName );
     std::vector<fs::path> links;
     const auto top = listDirectory( directory );
+    *complete = top.complete;
     for ( const auto& link : top.links ) {
         if ( listed( OwnedFolders, lowerName( link ) ) || isOwnedTopLevelFile( link )
              || lowerName( link ) == manifest )
@@ -571,6 +573,7 @@ std::vector<fs::path> linksInInstallation( const fs::path& directory )
     while ( !pending.empty() ) {
         const auto listing = listDirectory( pending.back() );
         pending.pop_back();
+        *complete = *complete && listing.complete;
         links.insert( links.end(), listing.links.begin(), listing.links.end() );
         pending.insert( pending.end(), listing.folders.begin(), listing.folders.end() );
     }
@@ -1382,10 +1385,12 @@ std::size_t removeNewFiles( const fs::path& directory, const std::vector<MovedFi
 std::vector<MovedFile> rollback( const fs::path& directory, const std::vector<MovedFile>& moved,
                                  const Log& log, bool removeAdded,
                                  const std::vector<fs::path>& leftInPlace,
-                                 std::size_t* addedKept )
+                                 std::size_t* addedKept, std::size_t* lostFiles )
 {
     if ( addedKept )
         *addedKept = 0;
+    if ( lostFiles )
+        *lostFiles = 0;
     std::vector<MovedFile> left;
     std::size_t lost = 0;
     for ( auto file = moved.rbegin(); file != moved.rend(); ++file ) {
@@ -1455,13 +1460,17 @@ std::vector<MovedFile> rollback( const fs::path& directory, const std::vector<Mo
         unsure += removeNewFiles( directory, moved, keep, log );
     if ( addedKept )
         *addedKept = unsure;
+    if ( lostFiles )
+        *lostFiles = lost;
     return left;
 }
 
 namespace {
 // A first installation: no previous version to restore, but a failed copy must not leave a part
-// of one behind. Every file of the folder now is recorded as left in place, so a rollback removes
-// only what the installation wrote. The records and their mark reach the disk before any copy.
+// of one behind, nor another program's file the installation overwrote. Each file already where
+// the installer writes (another program's, sharing the folder) stays in place and is copied, the
+// copy recorded like a moved file: a rollback restores it if overwritten, and removes only what
+// the installation wrote. The records and their mark reach the disk before any copy.
 int recordFirstInstallation( const fs::path& directory, const fs::path& manifestPath,
                              const Log& log )
 {
@@ -1472,12 +1481,26 @@ int recordFirstInstallation( const fs::path& directory, const fs::path& manifest
              + " could not be read to its end; nothing is installed" );
         return ManifestFailedExitCode;
     }
+    std::vector<MovedFile> copied;
     {
         std::ofstream manifest( manifestPath, std::ios::binary | std::ios::trunc );
-        for ( const auto& file : present )
-            manifest << LeftInPlacePrefix << withoutSeparators( exactUtf8( file ) ) << "\n";
-        manifest.flush();
-        bool recorded = static_cast<bool>( manifest ) && writeThrough( manifestPath, log );
+        bool recorded = static_cast<bool>( manifest );
+        for ( const auto& file : present ) {
+            if ( !recorded )
+                break;
+            fs::path copyPath;
+            std::string copyError;
+            if ( !copyToFreeName( file, directory, &copyPath, &copyError ) ) {
+                log( "Cannot copy " + toUtf8( file ) + ": " + copyError );
+                recorded = false;
+                break;
+            }
+            copied.push_back( { file, copyPath } );
+            manifest << formatManifestLine( copied.back() ) << "\n";
+            manifest.flush();
+            recorded = static_cast<bool>( manifest );
+        }
+        recorded = recorded && writeThrough( manifestPath, log );
         if ( recorded ) {
             manifest << PreparedMarker << "\n";
             manifest.flush();
@@ -1485,11 +1508,17 @@ int recordFirstInstallation( const fs::path& directory, const fs::path& manifest
         }
         if ( recorded ) {
             log( "First installation into " + toUtf8( directory ) + "; "
-                 + std::to_string( present.size() ) + " files there are left alone" );
+                 + std::to_string( copied.size() ) + " files already there are copied" );
             return PreparedExitCode;
         }
     }
     log( "Cannot record the first installation in " + toUtf8( manifestPath ) );
+    // Nothing was installed: the copies, all unchanged, are deleted.
+    std::size_t unsure = 0;
+    if ( !rollback( directory, copied, log, false, {}, &unsure ).empty() || unsure > 0 ) {
+        log( "Kept " + toUtf8( manifestPath ) + "; run setup again" );
+        return RollbackIncompleteExitCode;
+    }
     discardManifest( manifestPath, log );
     return ManifestFailedExitCode;
 }
@@ -1554,7 +1583,13 @@ int runPrepare( const fs::path& directory, const fs::path& report, const Log& lo
              + " could not be read to its end; nothing is installed" );
         return ManifestFailedExitCode;
     }
-    const auto links = linksInInstallation( directory );
+    bool linksListed = true;
+    const auto links = linksInInstallation( directory, &linksListed );
+    if ( !linksListed ) {
+        log( "A folder of " + toUtf8( directory )
+             + " could not be read to its end; nothing is installed" );
+        return ManifestFailedExitCode;
+    }
     if ( !links.empty() ) {
         for ( const auto& link : links )
             log( "A link or junction where the installer writes: " + toUtf8( link ) );
@@ -1700,9 +1735,10 @@ int runRollback( const fs::path& directory, const Log& log )
         return FinishedInsteadIncompleteExitCode;
     }
     std::size_t addedKept = 0;
+    std::size_t lost = 0;
     const auto left = rollback( directory, readManifest( directory, *record, log ), log,
                                 hasMarker( *record, PreparedMarker ),
-                                readLeftInPlace( *record ), &addedKept );
+                                readLeftInPlace( *record ), &addedKept, &lost );
     if ( !left.empty() || addedKept > 0 ) {
         // Kept whole, with its marks: another pass skips what is restored already.
         log( "Kept " + toUtf8( manifestPath ) + "; run setup again" );
@@ -1711,6 +1747,11 @@ int runRollback( const fs::path& directory, const Log& log )
     // A record left behind with its marks would make the next run remove files added later.
     if ( !discardManifest( manifestPath, log ) )
         return RollbackIncompleteExitCode;
+    if ( lost > 0 ) {
+        // Nothing can bring them back, so the record is not kept; a new installation writes them.
+        log( std::to_string( lost ) + " files of the previous version are lost; run setup again" );
+        return RollbackIncompleteExitCode;
+    }
     return PreparedExitCode;
 }
 

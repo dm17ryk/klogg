@@ -339,13 +339,14 @@ TEST_CASE( "A first installation into another program's folder moves nothing",
     REQUIRE( readText( root / "tool.exe" ) == "another program" );
     REQUIRE( readText( root / "library.dll" ) == "another library" );
     REQUIRE( readText( root / "plugins" / "plugin.dll" ) == "another plugin" );
-    REQUIRE( movedAsideFiles( root ).empty() );
-    // The installation is recorded: a successful one only deletes the record.
+    // The installation is recorded, with copies of the files where it writes: a successful one
+    // deletes the copies and the record.
     REQUIRE( fs::exists( root / prepare::ManifestFileName ) );
     writeText( root / "cilogg.exe", "new executable" );
     REQUIRE( prepare::runFinish( root, recorder( lines ) ) == prepare::PreparedExitCode );
     REQUIRE( readText( root / "cilogg.exe" ) == "new executable" );
     REQUIRE( readText( root / "plugins" / "plugin.dll" ) == "another plugin" );
+    REQUIRE( movedAsideFiles( root ).empty() );
     REQUIRE_FALSE( fs::exists( root / prepare::ManifestFileName ) );
 }
 
@@ -380,6 +381,26 @@ TEST_CASE( "A rollback puts back a file moved aside without a record", "[install
     REQUIRE_FALSE( fs::exists( root / prepare::ManifestFileName ) );
 }
 
+TEST_CASE( "A rollback that lost a previous file says so", "[installprepare]" )
+{
+    QTemporaryDir temporary;
+    REQUIRE( temporary.isValid() );
+    const auto root = nativePath( temporary.path() );
+    writeText( root / "cilogg.exe", "old executable" );
+    writeText( root / "Qt6Core.dll", "old library" );
+    std::vector<std::string> lines;
+    REQUIRE( prepare::runPrepare( root, {}, recorder( lines ) ) == prepare::PreparedExitCode );
+    // Security software removed the library's copy; then the installation failed.
+    fs::remove( root / "Qt6Core.dll.cilogg-old" );
+    writeText( root / "cilogg.exe", "new executable" );
+
+    REQUIRE( prepare::runRollback( root, recorder( lines ) )
+             == prepare::RollbackIncompleteExitCode );
+    REQUIRE( readText( root / "cilogg.exe" ) == "old executable" );
+    // Nothing can bring the library back: the record is not kept to block later updates.
+    REQUIRE_FALSE( fs::exists( root / prepare::ManifestFileName ) );
+}
+
 TEST_CASE( "A failed first installation removes only what it wrote", "[installprepare]" )
 {
     QTemporaryDir temporary;
@@ -393,15 +414,19 @@ TEST_CASE( "A failed first installation removes only what it wrote", "[installpr
 
     for ( const auto& root : { shared, missing } ) {
         REQUIRE( prepare::runPrepare( root, {}, recorder( lines ) ) == prepare::PreparedExitCode );
-        // The copy wrote part of the installation, then failed.
+        // The copy wrote part of the installation, then failed. In the shared folder it also
+        // overwrote another program's library that has the name of one of its own.
         writeText( root / "cilogg.exe", "new executable" );
         writeText( root / "Qt6Core.dll", "new library" );
         writeText( root / "plugins" / "added.json", "new plugin" );
+        if ( root == shared )
+            writeText( root / "library.dll", "overwritten" );
         REQUIRE( prepare::runRollback( root, recorder( lines ) ) == prepare::PreparedExitCode );
         REQUIRE_FALSE( fs::exists( root / "cilogg.exe" ) );
         REQUIRE_FALSE( fs::exists( root / "Qt6Core.dll" ) );
         REQUIRE_FALSE( fs::exists( root / "plugins" / "added.json" ) );
         REQUIRE_FALSE( fs::exists( root / prepare::ManifestFileName ) );
+        REQUIRE( movedAsideFiles( root ).empty() );
     }
     REQUIRE( readText( shared / "tool.exe" ) == "another program" );
     REQUIRE( readText( shared / "library.dll" ) == "another library" );
