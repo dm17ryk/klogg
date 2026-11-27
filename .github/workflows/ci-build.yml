@@ -66,6 +66,7 @@ jobs:
           python3 -m unittest discover -s tests/packaging -p 'test_*.py'
           bash tests/packaging/linux_native_test.sh
           bash tests/packaging/linux_command_launcher_test.sh
+          bash tests/packaging/legacy_latest_json_test.sh
 
       - name: Save version
         run: echo $CILOGG_VERSION > cilogg_version.txt
