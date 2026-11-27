@@ -34,6 +34,7 @@
 #include <QSignalSpy>
 #include <QSpinBox>
 #include <QStandardItemModel>
+#include <QStyle>
 #include <QTabWidget>
 #include <QTemporaryFile>
 #include <QTest>
@@ -690,6 +691,23 @@ void hover( AbstractLogView* view, const QPoint& point )
     QHelpEvent help( QEvent::ToolTip, point, global );
     QApplication::sendEvent( view->viewport(), &help );
 }
+
+// Qt asks on its own for the tooltip under the cursor a while after the cursor moved: its
+// wake-up delay, or 20 ms while a tooltip shows. That ask is waited out before the views
+// scroll: landing after it, it would ask for whatever line the scroll brought under the mouse.
+void settleToolTipRequest( QWidget* widget )
+{
+    QTest::qWait( widget->style()->styleHint( QStyle::SH_ToolTip_WakeUpDelay, nullptr, widget )
+                  + 300 );
+}
+
+// The tooltip that showed `text` closes. Qt then asks for the tooltip of what is under the
+// mouse now, which may show at once.
+bool toolTipEnds( const QString& text )
+{
+    return QTest::qWaitFor(
+        [ & ] { return !QToolTip::isVisible() || QToolTip::text() != text; }, 1500 );
+}
 } // namespace
 
 TEST_CASE( "view_tooltips_stay_while_a_followed_file_grows", "[ui][previewhover]" )
@@ -753,7 +771,7 @@ TEST_CASE( "view_tooltips_stay_while_a_followed_file_grows", "[ui][previewhover]
     const auto preview = QToolTip::text();
     // Qt asks again after a small mouse move within the line: the preview stays as it is.
     hover( main, linePoint + QPoint( 2, 0 ) );
-    QTest::qWait( 500 );
+    settleToolTipRequest( main );
     CHECK( requested.size() == 1 );
     CHECK( QToolTip::isVisible() );
     CHECK( QToolTip::text() == preview );
@@ -765,7 +783,7 @@ TEST_CASE( "view_tooltips_stay_while_a_followed_file_grows", "[ui][previewhover]
     CHECK( QToolTip::text() == preview );
     // Another line ends it.
     moveMouse( main, linePoint + QPoint( 0, 2 * main->fontMetrics().height() ) );
-    REQUIRE( QTest::qWaitFor( [] { return !QToolTip::isVisible(); }, 1500 ) );
+    REQUIRE( toolTipEnds( preview ) );
 
     // A "Matched by" cell too narrow for its label shows the label in full.
     REQUIRE( filtered->isMatchedByColumnVisible() );
@@ -784,7 +802,7 @@ TEST_CASE( "view_tooltips_stay_while_a_followed_file_grows", "[ui][previewhover]
     const auto label = QToolTip::text();
     // Asked again for the same cell: the label stays.
     hover( filtered, cellPoint + QPoint( -1, 0 ) );
-    QTest::qWait( 500 );
+    settleToolTipRequest( filtered );
     CHECK( QToolTip::isVisible() );
     CHECK( QToolTip::text() == label );
     main->clearLinePreview(); // another view ends its own preview
@@ -797,7 +815,7 @@ TEST_CASE( "view_tooltips_stay_while_a_followed_file_grows", "[ui][previewhover]
     CHECK( QToolTip::text() == label );
     // Leaving the cell for the text of its line ends it.
     moveMouse( filtered, QPoint( filtered->viewport()->width() / 2, cellPoint.y() ) );
-    REQUIRE( QTest::qWaitFor( [] { return !QToolTip::isVisible(); }, 1500 ) );
+    REQUIRE( toolTipEnds( label ) );
 }
 
 TEST_CASE( "view_tooltip_belongs_to_the_view_that_showed_it", "[ui][previewhover]" )
