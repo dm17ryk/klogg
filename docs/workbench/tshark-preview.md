@@ -56,20 +56,40 @@ The preview pane offers **Automatic (TShark first)**, **TShark/Lua**, and
 **JSON**. Auto first tries an assembly protocol route, then mapped matching
 carriers even when an earlier JSON-only definition matches. It next tries the
 configured default on a carrier or directly on input. Disabled Auto retains the
-legacy JSON behavior. Explicit TShark permits a named dissector and UTF-8, hex,
-or base64 input. JSON explicitly selects the legacy renderer. The request budget
+legacy JSON behavior. Explicit TShark with **Dissector from route / settings**
+finds the dissector the same way, among TShark routes only: the assembly
+protocol's route, then the route of a matching preview, then the default
+dissector on the input. Unlike Automatic, a matching preview without a TShark
+route does not lend its carrier: the default dissector then decodes the whole
+input. When a TShark-mapped preview's carrier cannot be taken from the line,
+that failure is the result; explicit mode no longer decodes the whole input
+instead. A named dissector decodes the input directly, as UTF-8, hex or
+base64. JSON explicitly selects the legacy renderer. The request budget
 is available in every mode, defaults to 3000 ms and is bounded to 100-10000 ms.
 Its displayed value covers selection, startup and delivery, including Automatic
-routes and fallback. A cold engine may need a larger budget; increase it and run
+routes; a JSON fallback after a TShark/Lua failure may add up to 3 s (see
+below). A cold engine may need a larger budget; increase it and run
 again while keeping Automatic selected. Hover keeps its fixed 3000 ms budget.
 
-Auto falls back to JSON when no TShark route/default applies or the selected
-dissector produces no decoded output. Results expose the actual backend,
-`preferredBackend`, `decoderAttempts`, and `fallbackReason`. Lua, timeout,
-malformed input and engine/protocol failures remain visible; explicit TShark
-does not fall back. A completed processing result does not establish protocol
-integrity. Engine offsets refer to decoded buffers and have unresolved source
-mapping, not guaranteed positions in the original log.
+Auto falls back to JSON when no TShark route/default applies, and after any
+TShark/Lua failure: a Lua error, a timeout, a dissector that is missing or
+decodes nothing, a protocol it does not produce, input the route cannot carry,
+or an engine failure, busy engines (`preview_busy`) included. The fallback
+shows the JSON preview of the carrier the route was for, also after a Python
+decoder returns `None`. A user's cancel or a settings change during the run is
+not a failure. Neither is a failure of the selector process itself (the
+worker that finds the carrier before any decoder runs: its timeout, crash or
+protocol error), as opposed to a route's input it could not prepare: the JSON
+preview needs that process as well, so its failure is the result. Results
+expose the actual backend, `preferredBackend`, `decoderAttempts` and
+`fallbackReason` (the TShark/Lua failure), and the preview pane's status names
+it. The engine keeps the whole budget; the JSON fallback gets what is left of it, and at least 3 s, so after a TShark/Lua
+timeout the JSON result arrives up to 3 s after the budget. Explicit TShark
+does not fall back: its failure is the result; definitions it cannot use leave
+it the default dissector on the input. A completed processing
+result does not establish protocol integrity. Engine offsets refer to decoded
+buffers and have unresolved source mapping, not guaranteed positions in the
+original log.
 
 A TShark/Lua result holds up to 2048 rows and up to its result limit in bytes:
 1 MiB, or what the pane's

@@ -71,8 +71,8 @@ public:
     void setVisibility( Visibility visi );
     Visibility visibility() const;
 
-    // Names the filter that selected each line in the "Matched by" column. A null or empty
-    // labeler leaves only the "mark" labels of marked lines.
+    // Shows the text that selected each line in the "Matched by" column, and what matched it in
+    // the cell's tooltip. A null or empty labeler leaves only the "mark" labels of marked lines.
     void setMatchLabeler( std::shared_ptr<const MatchLabeler> labeler );
     void setMatchedByColumnVisible( bool visible );
     bool isMatchedByColumnVisible() const
@@ -82,6 +82,8 @@ public:
     // The "Matched by" text of the filtered line at `index`. Labels are computed in the
     // background: this is empty until the label of the line has arrived (asking queues it).
     QString matchedByText( LineNumber index ) const;
+    // The tooltip of that cell: the filters and alternatives that matched, with their text.
+    QString matchedByToolTip( LineNumber index ) const;
 
     // Width of the "Matched by" column in characters; 0 hides it.
     int annotationColumnChars() const override;
@@ -100,6 +102,7 @@ protected:
     LineNumber maxDisplayLineNumber() const override;
 
     QString lineAnnotation( LineNumber lineNumber, const QString& lineText ) const override;
+    QString lineAnnotationToolTip( LineNumber lineNumber, const QString& lineText ) const override;
 
     void doRegisterShortcuts() override;
 
@@ -108,11 +111,15 @@ private:
     // Labels being computed at once; more lines are asked for again on a later paint.
     static constexpr int MaxPendingAnnotations = 256;
 
+    struct CachedAnnotation;
+    // The label of a matched line that is not marked, or null: until it is computed (asking
+    // queues it), and for marked lines, context lines or without a labeler.
+    const CachedAnnotation* matchAnnotation( LineNumber lineNumber, const QString& lineText ) const;
     // Queues the label of a line on the labelling thread; storeAnnotation() receives it.
     void requestAnnotation( quint64 sourceLine, const QString& lineText,
                             std::size_t textHash ) const;
     void storeAnnotation( quint64 labelerGeneration, quint64 sourceLine, std::size_t textHash,
-                          qsizetype textSize, const QString& label );
+                          qsizetype textSize, const MatchLabeler::Annotation& annotation );
 
     LogFilteredData* logFilteredData_;
     std::shared_ptr<const MatchLabeler> matchLabeler_;
@@ -128,6 +135,7 @@ private:
         std::size_t textHash = 0;
         qsizetype textSize = 0;
         QString label;
+        QString toolTip;
     };
     mutable QHash<quint64, CachedAnnotation> annotationCache_;
     // Lines whose label is being computed, with the hash of the text sent.

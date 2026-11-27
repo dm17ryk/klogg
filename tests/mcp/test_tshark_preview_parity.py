@@ -2,11 +2,23 @@
 
 import unittest
 
-from tshark_preview_parity import comparable, require_visible_failure
+from tshark_preview_parity import comparable, require_json_fallback, require_visible_failure
 from workbench_contracts import ParityError, compare_json
 
 
 class ComparisonTests(unittest.TestCase):
+    def test_json_fallback_names_the_failure(self):
+        fallback = {"backend": "json_preview", "available": True, "fallbackReason": "lua_failure",
+                    "preferredBackend": "tshark_lua",
+                    "decoderAttempts": ["tshark_lua", "json_preview"]}
+        require_json_fallback(fallback, {"lua_failure"})
+        for changed in (dict(fallback, backend="tshark_lua"),
+                        dict(fallback, available=False),
+                        dict(fallback, fallbackReason="no_applicable_decoder"),
+                        dict(fallback, decoderAttempts=["json_preview"])):
+            with self.subTest(changed=changed), self.assertRaises(AssertionError):
+                require_json_fallback(changed, {"lua_failure"})
+
     def test_visible_failure_rejects_masked_or_wrong_results(self):
         failure = {"backend": "tshark_lua", "reason": "lua_failure", "state": "failed",
                    "available": False, "complete": False}

@@ -79,6 +79,11 @@ int main( int argc, char** argv )
         // The result limit the host asked for, in bytes (#183).
         if ( mode == "result_limit" )
             attributes[ "show" ] = QString::number( request.value( "responseLimit" ).toInt() );
+        // The dissector and protocol the host resolved for this request (#182).
+        if ( mode == "profile" )
+            attributes[ "show" ] = request.value( "profile" ).toObject().value( "dissector" ).toString()
+                                   + "|"
+                                   + request.value( "profile" ).toObject().value( "protocol" ).toString();
         QJsonObject field{ { "id", "0/0" },
                            { "depth", 0 },
                            { "positionOrigin", "engine_data_source_unresolved" },
@@ -162,9 +167,9 @@ int main( int argc, char** argv )
             response[ "limited" ] = true;
             response[ "fields" ] = QJsonArray{};
         }
-        if ( mode == "reported_timeout" ) {
+        if ( mode == "reported_timeout" || mode == "lua_failure" ) {
             response[ "state" ] = "failed";
-            response[ "reason" ] = "timeout";
+            response[ "reason" ] = mode == "lua_failure" ? "lua_failure" : "timeout";
             response[ "available" ] = false;
             response[ "complete" ] = false;
             response[ "fields" ] = QJsonArray{};
