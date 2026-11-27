@@ -5,6 +5,7 @@ import copy
 import io
 import json
 import os
+import re
 import struct
 import subprocess
 import sys
@@ -161,6 +162,73 @@ class WireTests(unittest.TestCase):
             with self.subTest(reason=reason):
                 with self.assertRaisesRegex(wire.ProofError, reason):
                     wire.normalize_pdml(data, **limits)
+
+    def test_pdml_prefix_keeps_the_first_items_in_preorder(self):
+        # Issue #198: a tree past the item limit keeps its first items instead of failing.
+        data = (b'<pdml><packet><proto name="p"><field name="a"><field name="b"/></field>'
+                b'<field name="c"/><field name="d"/></proto></packet></pdml>')
+        whole, cut = wire.normalize_pdml_prefix(data, node_limit=6, depth_limit=32)
+        self.assertFalse(cut)
+        self.assertEqual(whole, wire.normalize_pdml(data))
+        packets, cut = wire.normalize_pdml_prefix(data, node_limit=4, depth_limit=32)
+        self.assertTrue(cut)
+        names = lambda node: [node["attributes"].get("name")] + [
+            name for child in node["children"] for name in names(child)
+        ]
+        self.assertEqual(names(packets[0]), [None, "p", "a", "b"])
+        self.assertEqual(packets[0]["children"][0]["children"][0]["children"][0]["id"], "0/0/0/0")
+
+    def test_pdml_prefix_cut_at_a_byte_limit_drops_its_incomplete_end(self):
+        data = '<pdml><packet><proto name="p"><field name="a" show="é"/><field name="b" show="é"/>'
+        data = data.encode("utf-8")
+        for end in range(len(b"<pdml><packet>"), len(data) + 1):
+            with self.subTest(end=end):
+                packets, cut = wire.normalize_pdml_prefix(
+                    data[:end], node_limit=8192, depth_limit=32, whole=False
+                )
+                self.assertFalse(cut)
+                self.assertEqual(len(packets), 1)
+        packets, _ = wire.normalize_pdml_prefix(data, node_limit=8192, depth_limit=32, whole=False)
+        self.assertEqual([c["attributes"]["show"] for c in packets[0]["children"][0]["children"]],
+                         ["é", "é"])
+
+    def test_pdml_prefix_errors(self):
+        for data, changes, reason in [
+            (b"<!DOCTYPE pdml><pdml><packet/></pdml>", {}, "invalid_pdml"),
+            (b"<other><packet/></other>", {}, "invalid_pdml"),
+            (b"<pdml></pdml>", {}, "invalid_pdml"),
+            (b"<pdml><packet>", {}, "invalid_pdml"),  # A whole document must be complete.
+            (b"<pdml><packet><a></b></packet></pdml>", {"whole": False}, "invalid_pdml"),
+            (b"<pdml><packet><field><field/></field></packet></pdml>", {"depth_limit": 1},
+             "depth_limit"),
+        ]:
+            with self.subTest(data=data):
+                limits = {"node_limit": 8192, "depth_limit": 32}
+                limits.update(changes)
+                with self.assertRaisesRegex(wire.ProofError, reason):
+                    wire.normalize_pdml_prefix(data, **limits)
+
+    def test_host_mirrors_the_workers_limits(self):
+        # Review of #192 (#198): the host's copies of the worker's limits must not drift.
+        header = (ROOT / "src/ui/include/tsharkpreviewclient.h").read_text(encoding="utf-8")
+        expected = {
+            "FieldLimit": worker.FIELD_LIMIT,
+            "PdmlItemLimit": worker.PDML_NODE_LIMIT,
+            "PdmlByteLimit": worker.PDML_LIMIT,
+            "PdmlDepthLimit": worker.PDML_DEPTH_LIMIT,
+            "DiagnosticByteLimit": worker.STDERR_LIMIT,
+            "ResultLimitMin": worker.RESPONSE_LIMIT_MIN,
+            "ResultLimitDefault": worker.RESPONSE_LIMIT,
+            "ResultLimitMax": worker.RESPONSE_LIMIT_MAX,
+        }
+        for name, value in expected.items():
+            with self.subTest(name=name):
+                match = re.search(r"static constexpr int %s = ([0-9 *]+);" % name, header)
+                self.assertIsNotNone(match, name)
+                product = 1
+                for factor in match.group(1).split("*"):
+                    product *= int(factor)
+                self.assertEqual(product, value)
 
     def test_render_limit_is_reported(self):
         packets = wire.normalize_pdml(
@@ -326,6 +394,41 @@ class ResultLimitTests(unittest.TestCase):
         # The same rows fit the default limit whole.
         self.assertEqual(worker._fit_response(value), value)
 
+    def test_a_byte_cut_after_a_pdml_cut_keeps_the_pdml_limit(self):
+        # Issue #198: the tree's size is not known; the byte limit counts the rows read and
+        # names the PDML limit that cut the tree first.
+        rows = [ResponseBudgetTests.row("a" * 1000, identity=str(i)) for i in range(300)]
+        value = ResponseBudgetTests.response(
+            rows, complete=False, limited=True, reason="pdml_item_limit",
+            limit={"name": "pdmlItems", "maximum": 8192, "shownRows": 300, "readRows": 5000},
+        )
+        fitted = worker._fit_response(value, 128 * 1024)
+        self.assertEqual(fitted["reason"], "response_limit")
+        self.assertEqual(fitted["limit"]["tree"], "pdmlItems")
+        self.assertEqual(fitted["limit"]["totalRows"], 5000)
+        self.assertEqual(fitted["limit"]["shownRows"], len(fitted["fields"]))
+        self.assertEqual(worker._fit_response(value), value)
+
+    def test_limit_failures_are_limited_and_end_the_channel(self):
+        # Review of #192 (#198): the host's limit text relies on `limited` for these failures.
+        for reason, limited in (("pdml_item_limit", True), ("pdml_byte_limit", True),
+                                ("depth_limit", True), ("diagnostic_limit", True),
+                                ("lua_failure", False)):
+            with self.subTest(reason=reason):
+                stdin, stdout = io.BytesIO(), io.BytesIO()
+                worker.write_frame(stdin, request())
+                stdin.seek(0)
+                with patch.object(worker.PreviewWorker, "evaluate",
+                                  side_effect=wire.ProofError(reason)), \
+                        patch.object(worker.sys, "stdin", type("In", (), {"buffer": stdin})), \
+                        patch.object(worker.sys, "stdout", type("Out", (), {"buffer": stdout})), \
+                        patch.object(worker.logging, "basicConfig"):
+                    self.assertEqual(worker.main([]), 1)
+                stdout.seek(0)
+                response = worker.read_frame(stdout)
+                self.assertEqual((response["state"], response["reason"], response["limited"]),
+                                 ("failed", reason, limited))
+
 
 class ResponseBudgetTests(unittest.TestCase):
     @staticmethod
@@ -486,16 +589,61 @@ class ProcessTests(unittest.TestCase):
         self.assertEqual([record.getMessage() for record in warnings.records], ["preview_pipe_timeout"])
 
     def test_stdout_and_stderr_flood_are_bounded(self):
-        for stream in ("stdout", "stderr"):
+        # Issue #198: past the PDML limit the engine's output is read and dropped (the packet
+        # never ends here, so the request times out); past the diagnostics limit it fails.
+        for stream, reason in (("stdout", "execution_timeout"), ("stderr", "diagnostic_limit")):
             with self.subTest(stream=stream):
                 child = self.child(
                     "import sys,time; sys." + stream
                     + '.buffer.write(b"x"*%d); time.sleep(60)' % (worker.PDML_LIMIT + 65536)
                 )
-                with self.assertRaisesRegex(wire.ProofError, "output_limit"):
+                with self.assertRaisesRegex(wire.ProofError, reason):
                     child.packet(time.monotonic() + 5)
                 self.assertLessEqual(len(child.buffers[0]), worker.PDML_LIMIT)
+                self.assertLessEqual(len(child.cut or b""), worker.PDML_LIMIT)
                 self.assertLessEqual(len(child.buffers[1]), worker.STDERR_LIMIT)
+
+    def test_a_packet_past_the_pdml_limit_is_cut_and_the_next_one_stays_in_step(self):
+        # Issue #198: the engine is not failed; its next packet is read whole.
+        child = self.child(
+            "import sys,time\n"
+            "out = sys.stdout.buffer\n"
+            'out.write(b\'<?xml version="1.0"?>\\n<pdml version="0">\\n<packet><proto name="p">\')\n'
+            "out.write((b'<field name=\"x\" show=\"' + b'a' * 1000 + b'\"/>') * 5000)\n"
+            "out.write(b'</proto></packet>\\n<packet><proto name=\"next\"/></packet>\\n')\n"
+            "out.flush(); time.sleep(60)\n"
+        )
+        data, cut = child.packet(time.monotonic() + 10)
+        self.assertTrue(cut)
+        self.assertEqual(len(data), len(b"<pdml>") + worker.PDML_LIMIT
+                         - len(b'<?xml version="1.0"?>\n<pdml version="0">\n'))
+        packets, items_cut = wire.normalize_pdml_prefix(
+            data, node_limit=worker.PDML_NODE_LIMIT, depth_limit=32, whole=False
+        )
+        self.assertFalse(items_cut)
+        self.assertGreater(len(packets[0]["children"][0]["children"]), 4000)
+        data, cut = child.packet(time.monotonic() + 10)
+        self.assertFalse(cut)
+        self.assertEqual(data, b'<pdml><packet><proto name="next"/></packet></pdml>')
+
+    def test_the_end_of_a_cut_packet_is_found_across_reads(self):
+        # The end tag of a dropped packet may arrive split over several reads.
+        engine = object.__new__(worker.EngineProcess)
+        engine.buffers, engine.cut, engine.discarding, engine.tail = [bytearray(), b""], None, False, b""
+        stream = b"<packet>" + b"x" * 40 + b"</packet>" + b"<packet>n</packet>"
+        with patch.object(worker, "PDML_LIMIT", 24):
+            for byte in range(len(stream)):
+                engine.take_pdml(stream[byte : byte + 1])
+        self.assertEqual(engine.cut, b"<packet>" + b"x" * 16)
+        self.assertFalse(engine.discarding)
+        self.assertEqual(bytes(engine.buffers[0]), b"<packet>n</packet>")
+        # A packet whose end lies just past the limit is cut too; what follows it is kept.
+        engine.buffers[0], engine.cut = bytearray(), None
+        with patch.object(worker, "PDML_LIMIT", 24):
+            engine.take_pdml(b"<packet>" + b"x" * 10 + b"</packet>" + b"<packet>n</packet>")
+        self.assertEqual(engine.cut, b"<packet>" + b"x" * 10 + b"</pack")
+        self.assertFalse(engine.discarding)
+        self.assertEqual(bytes(engine.buffers[0]), b"<packet>n</packet>")
 
     def test_lua_load_error_is_detected_even_with_exit_zero(self):
         child = self.child('import sys; print("Lua Error: private source",file=sys.stderr)')
@@ -587,6 +735,69 @@ class NativePreviewTests(unittest.TestCase):
             {"name": "rows", "maximum": worker.FIELD_LIMIT, "shownRows": worker.FIELD_LIMIT,
              "totalRows": 2101},
         )
+
+    def items_probe(self, add):
+        """A dissector adding as many items as the message's first two bytes say (#198)."""
+        script = Path(self.temp.name) / "items_probe.lua"
+        script.write_text(
+            'local p = Proto("cilogg_items", "CILogg items probe")\n'
+            'local item = ProtoField.uint8("cilogg_items.item", "Item")\n'
+            'local text = ProtoField.string("cilogg_items.text", "Text")\n'
+            "p.fields = { item, text }\n"
+            "function p.dissector(tvb, pinfo, tree)\n"
+            "    local root = tree:add(p, tvb())\n"
+            "    for index = 1, tvb(0, 2):uint() do %s end\n"
+            "    return tvb:len()\n"
+            "end\n" % add,
+            encoding="utf-8",
+        )
+        self.profile.update(lua=[str(script)], dissector="cilogg_items", protocol="cilogg_items")
+
+    def test_a_tree_past_the_pdml_item_limit_shows_its_first_rows(self):
+        # Issue #198: a tree past the 8192 items the worker reads shows its first 2048 rows, and
+        # the worker stays warm for the next message.
+        self.items_probe("root:add(item, tvb(0, 1))")
+        result = self.evaluate(payloadBase64=base64.b64encode(struct.pack(">H", 9000)).decode())
+        self.assertTrue(result["available"], result["reason"])
+        self.assertTrue(result["limited"])
+        self.assertFalse(result["complete"])
+        self.assertEqual(result["reason"], "pdml_item_limit")
+        self.assertEqual(len(result["fields"]), worker.FIELD_LIMIT)
+        limit = result["limit"]
+        self.assertEqual(sorted(limit), ["maximum", "name", "readRows", "shownRows"])
+        self.assertEqual((limit["name"], limit["maximum"], limit["shownRows"]),
+                         ("pdmlItems", worker.PDML_NODE_LIMIT, worker.FIELD_LIMIT))
+        self.assertGreater(limit["readRows"], worker.FIELD_LIMIT)
+        self.assertLess(limit["readRows"], worker.PDML_NODE_LIMIT)
+        small = self.evaluate(id="small", payloadBase64=base64.b64encode(b"\x00\x03").decode())
+        self.assertTrue(small["complete"], small["reason"])
+        self.assertEqual(len(small["fields"]), 4)
+        self.assertEqual(small["enginePid"], result["enginePid"])
+
+    def test_a_tree_past_the_pdml_byte_limit_shows_its_first_rows(self):
+        # Issue #198: fewer than 8192 items, but past the 4 MiB of PDML the worker reads.
+        self.items_probe("root:add(text, tvb(2, 150))")
+        payload = base64.b64encode(struct.pack(">H", 7000) + b"A" * 150).decode()
+        result = self.evaluate(payloadBase64=payload, responseLimit=worker.RESPONSE_LIMIT_MAX)
+        self.assertTrue(result["available"], result["reason"])
+        self.assertEqual(result["reason"], "pdml_byte_limit")
+        self.assertEqual(len(result["fields"]), worker.FIELD_LIMIT)
+        limit = result["limit"]
+        self.assertEqual((limit["name"], limit["maximum"], limit["shownRows"]),
+                         ("pdmlBytes", worker.PDML_LIMIT, worker.FIELD_LIMIT))
+        self.assertGreater(limit["readRows"], worker.FIELD_LIMIT)
+        self.assertLess(limit["readRows"], 7001)
+        # At the default result limit the rows are cut again by bytes, which keeps the PDML cut.
+        fitted = self.evaluate(id="fitted", payloadBase64=payload)
+        self.assertEqual(fitted["reason"], "response_limit")
+        self.assertEqual(fitted["limit"]["tree"], "pdmlBytes")
+        self.assertEqual(fitted["limit"]["totalRows"], limit["readRows"])
+        # The dropped rest of the packet leaves the engine in step for the next message.
+        small = self.evaluate(id="small", payloadBase64=base64.b64encode(b"\x00\x01" + b"A" * 150)
+                              .decode())
+        self.assertTrue(small["complete"], small["reason"])
+        self.assertEqual(len(small["fields"]), 2)
+        self.assertEqual(small["enginePid"], result["enginePid"])
 
     def test_large_map_tree_fits_whole_and_names_a_smaller_limit(self):
         # Issue #183 on a real engine: a 4 KiB message whose information map has 256 entries

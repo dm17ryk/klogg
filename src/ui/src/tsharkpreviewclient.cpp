@@ -3,7 +3,9 @@
 #include <QCoreApplication>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QMap>
 #include <QRegularExpression>
+#include <algorithm>
 #include <cmath>
 
 namespace {
@@ -18,36 +20,64 @@ bool integer( const QJsonValue& value, double minimum, double maximum )
     return value.isDouble() && std::isfinite( number ) && std::floor( number ) == number
            && number >= minimum && number <= maximum;
 }
-// What a limited result says about its limit (#183): `rows` (the row limit) or `bytes` (the body
-// limit, with the bytes the whole result needed), its maximum, and the rows shown and in the tree.
+constexpr double JsonIntegerMax = 9007199254740991.0;
+// What a limited result says about its limit (#183, #198): `rows` (the row limit), `bytes` (the
+// body limit, with the bytes the whole result needed), `pdmlItems` or `pdmlBytes` (what the worker
+// reads of TShark's output, with the rows in the part read); its maximum and the rows shown.
 bool validLimit( const QJsonObject& value )
 {
+    struct Kind {
+        const char* reason;
+        QStringList keys;
+    };
+    static const QMap<QString, Kind> kinds{
+        { "rows", { "rendered_field_limit", { "totalRows" } } },
+        { "bytes", { "response_limit", { "totalRows", "neededBytes" } } },
+        { "pdmlItems", { "pdml_item_limit", { "readRows" } } },
+        { "pdmlBytes", { "pdml_byte_limit", { "readRows" } } },
+    };
     const auto limit = value.value( "limit" ).toObject();
-    const bool bytes = limit.value( "name" ) == "bytes";
-    const QStringList keys{ "name", "maximum", "shownRows", "totalRows" };
+    const auto name = limit.value( "name" ).toString();
     // The limit agrees with the result's reason (#183 review).
     if ( !value.value( "limit" ).isObject() || value.value( "state" ) != "completed"
-         || !value.value( "limited" ).toBool()
-         || ( !bytes && limit.value( "name" ) != "rows" )
-         || value.value( "reason" ) != ( bytes ? "response_limit" : "rendered_field_limit" )
-         || limit.size() != keys.size() + ( bytes ? 1 : 0 ) )
+         || !value.value( "limited" ).toBool() || !kinds.contains( name )
+         || value.value( "reason" ) != kinds[ name ].reason )
         return false;
-    for ( const auto& key : keys.mid( 1 ) )
+    // A byte cut of a tree cut at a PDML limit names that limit too (#198).
+    const bool tree = name == "bytes" && limit.contains( "tree" );
+    const auto keys = QStringList{ "maximum", "shownRows" } + kinds[ name ].keys;
+    if ( limit.size() != 1 + keys.size() + ( tree ? 1 : 0 )
+         || ( tree && limit.value( "tree" ) != "pdmlItems" && limit.value( "tree" ) != "pdmlBytes" ) )
+        return false;
+    for ( const auto& key : keys )
         if ( !limit.contains( key ) )
             return false;
     const auto shown = limit.value( "shownRows" ).toDouble();
     const auto maximum = limit.value( "maximum" ).toDouble();
+    const bool rows = integer( limit.value( "shownRows" ), 0, TsharkPreviewClient::FieldLimit )
+                      && shown == static_cast<double>( value.value( "fields" ).toArray().size() );
+    if ( name == "pdmlItems" || name == "pdmlBytes" ) {
+        // The rows shown are the part read up to the row limit; the items read include the
+        // packet's own, so they hold fewer rows than the item limit.
+        const bool items = name == "pdmlItems";
+        const auto read = limit.value( "readRows" ).toDouble();
+        return rows && shown >= 1
+               && maximum
+                      == ( items ? TsharkPreviewClient::PdmlItemLimit
+                                 : TsharkPreviewClient::PdmlByteLimit )
+               && integer( limit.value( "readRows" ), shown,
+                           items ? TsharkPreviewClient::PdmlItemLimit - 1 : JsonIntegerMax )
+               && shown == std::min( read, static_cast<double>( TsharkPreviewClient::FieldLimit ) );
+    }
     // A cut shows fewer rows than the tree has. A row cut shows exactly the row limit; a byte
     // cut has a limit a request may choose, and the result needed more than it.
-    const bool cut = integer( limit.value( "shownRows" ), 0, TsharkPreviewClient::FieldLimit )
-                     && shown == static_cast<double>( value.value( "fields" ).toArray().size() )
-                     && integer( limit.value( "totalRows" ), shown + 1, 9007199254740991.0 );
-    if ( !bytes )
+    const bool cut = rows && integer( limit.value( "totalRows" ), shown + 1, JsonIntegerMax );
+    if ( name == "rows" )
         return cut && maximum == TsharkPreviewClient::FieldLimit && shown == maximum;
     return cut
            && integer( limit.value( "maximum" ), TsharkPreviewClient::ResultLimitMin,
                        TsharkPreviewClient::ResultLimitMax )
-           && integer( limit.value( "neededBytes" ), maximum + 1, 9007199254740991.0 );
+           && integer( limit.value( "neededBytes" ), maximum + 1, JsonIntegerMax );
 }
 // A row's columns as the worker derives them from the item's PDML attributes (#181, see
 // display_columns in message_decoder_preview_worker.py): Name, the display text (showname after
@@ -133,7 +163,7 @@ bool validResponse( const QJsonObject& value, const QString& id )
                                    : completed && value.value( "limited" ).toBool() )
         return false;
     if ( value.contains( "enginePid" )
-         && !integer( value.value( "enginePid" ), 1, 9007199254740991.0 ) )
+         && !integer( value.value( "enginePid" ), 1, JsonIntegerMax ) )
         return false; // Metadata only; never used to find/terminate a process.
     if ( value.contains( "scriptSha256" ) ) {
         // The packs' files and the user's scripts (PreviewDecoderSettings::ProfileLuaLimit).
