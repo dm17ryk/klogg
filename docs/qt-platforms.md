@@ -79,12 +79,51 @@ waited 15 minutes and were cancelled without starting. These jobs moved to
 Deployment targets and package names are unchanged. `macos-15-intel` is
 unaffected.
 
+On 2026-11-26 the hosted Apple Silicon runners ran short of capacity. Jobs
+on `macos-15`, `macos-26` and `macos-latest` waited, and GitHub failed many of
+them with "The job was not acquired by Runner of type hosted even after multiple
+attempts" and the notice "Due to capacity constraints, jobs targeting macOS arm64
+runners may experience longer queue times". `macos-14` is retired ("The
+configuration 'macos-14-arm64-us-default' is not supported"). `macos-15-intel`
+started in under two minutes (#193). Release validation therefore runs on
+`macos-15-intel`: it only mounts DMGs and checks files.
+
 Modern Qt 6.12 builds are **manual-install packages**. They do not produce an
 automatic-update ZIP, since older installed updater clients do not understand
 a package's minimum macOS version. Automatic updates, including updates from a
 manually installed modern build, use the compatible Qt 6.10.1 bundle. Install a
 subsequent `-qt612.dmg` manually to retain Qt 6.12. A modern updater channel needs
 a separately deployed compatibility-aware updater contract.
+
+### Hosted macOS runner outages
+
+`timeout-minutes` only bounds a job that runs; a job waiting for a runner can
+stay queued for hours. The Mac jobs in `CI Build` stop after 150 minutes of
+running. A stuck Apple Silicon queue is handled by this rule:
+
+1. A Mac arm64 job with no runner after 60 minutes counts as an outage. Open
+   an issue, or comment on the open one, with the run links.
+2. If only one label is affected, switch labels: set the repository variable
+   `CILOGG_MACOS_ARM64_RUNNER` (Settings, Secrets and variables, Actions,
+   Variables) to `macos-15`, `macos-26` or `macos-latest`, whichever allocates,
+   then cancel the stuck run and run it again. The two arm64 jobs of `CI Build`
+   read it; the path-filtered workflows (DMG packaging, workbench parity and
+   benchmarks, plugin examples) keep their labels. Delete the variable once
+   `macos-26` allocates again.
+3. While no Apple Silicon label allocates, a pull request may merge when every
+   other job passed and its macOS arm64 jobs, in any workflow, were cancelled
+   without a runner. The pull request says so and links the issue.
+4. A release during the outage: once every other job of the master `CI Build`
+   run has passed, cancel the run. Then start `Make CI Release` with
+   `ci-run-id` set to that run and `allow-missing-macos-arm64` checked. The
+   workflow refuses the run unless its only unsuccessful jobs are Mac arm64
+   jobs that never got a runner; a job that ran and failed still blocks the
+   release. Only the packages of those jobs may be missing; the package of an
+   arm64 job that succeeded is still required. The release notes name the
+   missing arm64 packages.
+5. Without `allow-missing-macos-arm64`, a release needs all four macOS
+   packages, and a run named by `ci-run-id` must be successful. Make a release
+   with the arm64 packages as soon as their jobs run again.
 
 References: [Qt 6.12 supported platforms](https://doc.qt.io/qt-6.12/supported-platforms.html),
 [Qt Linux deployment](https://doc.qt.io/qt-6.12/linux-deployment.html),
