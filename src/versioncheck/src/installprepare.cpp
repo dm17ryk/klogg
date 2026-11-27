@@ -348,6 +348,8 @@ bool recordable( const std::wstring& name )
 struct Listing {
     std::vector<fs::path> files;
     std::vector<fs::path> folders;
+    // Reparse points, listed apart: the installer would write through one.
+    std::vector<fs::path> links;
     // False when the folder could not be read to its end.
     bool complete = true;
 };
@@ -366,8 +368,13 @@ Listing listDirectory( const fs::path& directory )
     }
     do {
         const std::wstring name = data.cFileName;
-        if ( name == L"." || name == L".."
-             || ( data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT ) || !recordable( name ) )
+        if ( name == L"." || name == L".." )
+            continue;
+        if ( data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT ) {
+            listing.links.push_back( directory / name );
+            continue;
+        }
+        if ( !recordable( name ) )
             continue;
         if ( data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY )
             listing.folders.push_back( directory / name );
@@ -414,6 +421,7 @@ bool removeFile( const fs::path& file, std::string* error )
 struct Listing {
     std::vector<fs::path> files;
     std::vector<fs::path> folders;
+    std::vector<fs::path> links;
     bool complete = true;
 };
 
@@ -430,7 +438,11 @@ Listing listDirectory( const fs::path& directory )
     for ( fs::directory_iterator it( directory, error ), end; !error && it != end;
           it.increment( error ) ) {
         std::error_code status;
-        if ( it->is_symlink( status ) || !recordable( it->path().filename().native() ) )
+        if ( it->is_symlink( status ) ) {
+            listing.links.push_back( it->path() );
+            continue;
+        }
+        if ( !recordable( it->path().filename().native() ) )
             continue;
         if ( it->is_directory( status ) )
             listing.folders.push_back( it->path() );
@@ -536,6 +548,33 @@ bool holdsInstallation( const fs::path& directory, bool* complete = nullptr )
     return std::any_of( files.begin(), files.end(), [ &manifest ]( const fs::path& file ) {
         return isCiloggExecutable( file ) || isMovedAside( file ) || lowerName( file ) == manifest;
     } );
+}
+
+// Links and junctions where the installer writes: a folder cilogg.nsi installs, a file it
+// installs at the top (or the manifest), and anything inside such a folder. The installer would
+// write through one, to files no record holds.
+std::vector<fs::path> linksInInstallation( const fs::path& directory )
+{
+    const auto manifest = lowerAscii( ManifestFileName );
+    std::vector<fs::path> links;
+    const auto top = listDirectory( directory );
+    for ( const auto& link : top.links ) {
+        if ( listed( OwnedFolders, lowerName( link ) ) || isOwnedTopLevelFile( link )
+             || lowerName( link ) == manifest )
+            links.push_back( link );
+    }
+    std::vector<fs::path> pending;
+    for ( const auto& folder : top.folders ) {
+        if ( listed( OwnedFolders, lowerName( folder ) ) )
+            pending.push_back( folder );
+    }
+    while ( !pending.empty() ) {
+        const auto listing = listDirectory( pending.back() );
+        pending.pop_back();
+        links.insert( links.end(), listing.links.begin(), listing.links.end() );
+        pending.insert( pending.end(), listing.folders.begin(), listing.folders.end() );
+    }
+    return links;
 }
 
 bool liesInsideDirectory( const fs::path& path, const fs::path& directory )
@@ -1471,7 +1510,9 @@ int runPrepare( const fs::path& directory, const fs::path& report, const Log& lo
         }
     }
     const auto manifestPath = directory / ManifestFileName;
-    if ( fs::exists( manifestPath, error ) ) {
+    // A record that cannot be checked is read like one that exists: then its read fails, and it
+    // is kept, never taken as absent.
+    if ( pathState( manifestPath ) != PathState::Missing ) {
         // An earlier installation stopped (for example, it was killed). Stopped while copying,
         // it is undone: the previous version is put back. Stopped while deleting the old copies,
         // the new version is complete and the cleanup is finished.
@@ -1511,6 +1552,13 @@ int runPrepare( const fs::path& directory, const fs::path& report, const Log& lo
         // An installation not seen would be taken for a first one and overwritten unbacked.
         log( "The folder " + toUtf8( directory )
              + " could not be read to its end; nothing is installed" );
+        return ManifestFailedExitCode;
+    }
+    const auto links = linksInInstallation( directory );
+    if ( !links.empty() ) {
+        for ( const auto& link : links )
+            log( "A link or junction where the installer writes: " + toUtf8( link ) );
+        log( "Nothing is installed: the installer would write through it, outside the record" );
         return ManifestFailedExitCode;
     }
     if ( !holds ) {
@@ -1588,7 +1636,7 @@ int runFinish( const fs::path& directory, const Log& log )
 {
     const auto manifestPath = directory / ManifestFileName;
     std::error_code error;
-    if ( !fs::exists( manifestPath, error ) ) {
+    if ( pathState( manifestPath ) == PathState::Missing ) {
         log( "No files were moved aside" );
         return PreparedExitCode;
     }
@@ -1630,7 +1678,7 @@ int runRollback( const fs::path& directory, const Log& log )
 {
     const auto manifestPath = directory / ManifestFileName;
     std::error_code error;
-    if ( !fs::exists( manifestPath, error ) ) {
+    if ( pathState( manifestPath ) == PathState::Missing ) {
         log( "No files were moved aside" );
         return PreparedExitCode;
     }

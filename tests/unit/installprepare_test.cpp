@@ -965,7 +965,11 @@ TEST_CASE( "A junction in the installation folder never leads the installer outs
                    prepare::formatManifestLine(
                        { junction / "victim.dll", junction / "victim.dll.cilogg-old" } )
                        + "\n" + finishing );
-        REQUIRE( prepare::runPrepare( root, {}, recorder( lines ) ) == prepare::PreparedExitCode );
+        // The record is dropped; then nothing is installed: the installer would write its
+        // plugins through the junction, to files outside the installation and its record.
+        REQUIRE( prepare::runPrepare( root, {}, recorder( lines ) )
+                 == prepare::ManifestFailedExitCode );
+        REQUIRE_FALSE( fs::exists( root / prepare::ManifestFileName ) );
         REQUIRE( readText( outside / "victim.dll" ) == "protected library" );
         REQUIRE( readText( outside / "victim.dll.cilogg-old" ) == "protected copy" );
         REQUIRE( prepare::runRollback( root, recorder( lines ) ) == prepare::PreparedExitCode );
