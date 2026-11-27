@@ -112,7 +112,9 @@ reads 8192 items of TShark's output". The worker reads and drops the rest of
 TShark's output for that message, so the engine stays warm for the next one. If
 the result limit then cuts the rows again, the `bytes` limit counts the rows
 read as `totalRows` and names the PDML limit in `tree`. A message whose part
-read holds no row of the tree fails with that reason. A tree deeper than 32
+read holds no row of the tree fails with that reason. A Lua error item past the
+part read is not seen; a Lua error TShark reports on its diagnostics still fails
+the preview. A tree deeper than 32
 items fails (`depth_limit`), and so do TShark diagnostics past 64 KiB
 (`diagnostic_limit`); the status names the limit, and Automatic mode then shows
 its JSON preview, as after any TShark/Lua failure (#182).

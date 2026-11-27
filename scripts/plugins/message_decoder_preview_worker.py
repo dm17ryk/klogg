@@ -60,6 +60,7 @@ LUA_FILE_LIMIT = 1024 * 1024
 STDERR_LIMIT = 64 * 1024
 # A tree's depth in items (the host shows rows up to depth 32).
 PDML_DEPTH_LIMIT = 32
+PACKET_START = b"<packet>"
 PACKET_END = b"</packet>"
 # The `limit` of a tree cut at a PDML limit (#198), and its result's reason.
 PDML_ITEMS = {"name": "pdmlItems", "reason": "pdml_item_limit", "maximum": PDML_NODE_LIMIT}
@@ -466,7 +467,9 @@ def render_fields(packets, limit=FIELD_LIMIT):
 class EngineProcess:
     """Continuously drain two pipes with strict retained-byte bounds."""
 
-    def __init__(self, owner, arguments, cwd, env):
+    def __init__(self, owner, arguments, cwd, env, framed=False):
+        # `framed`: the engine's PDML stream, read packet by packet and cut at PDML_LIMIT (#198).
+        self.framed = framed
         self.process = owner.spawn(
             [str(arg) for arg in arguments],
             cwd=cwd,
@@ -503,8 +506,15 @@ class EngineProcess:
                         self.eof[index] = True
                         self.condition.notify_all()
                         return
-                    if index == 0:
+                    if index == 0 and self.framed:
                         self.take_pdml(block)
+                    elif index == 0 and len(self.buffers[0]) + len(block) > PDML_LIMIT:
+                        # A tool's output (text2pcap, tshark -G) past the limit fails.
+                        self.failure = "output_limit"
+                        self.condition.notify_all()
+                        return
+                    elif index == 0:
+                        self.buffers[0].extend(block)
                     elif len(self.buffers[1]) + len(block) > STDERR_LIMIT:
                         # Its own reason (#198): the diagnostics, not the PDML, passed a limit.
                         self.failure = "diagnostic_limit"
@@ -534,10 +544,15 @@ class EngineProcess:
         buffer.extend(block)
         if len(buffer) <= PDML_LIMIT:
             return
-        end = buffer.find(PACKET_END)
-        if 0 <= end <= PDML_LIMIT - len(PACKET_END):
+        # The limit counts the packet's bytes from `<packet>` to its end tag, so the session's
+        # PDML header before the first packet does not count (review of #204).
+        start = max(buffer.find(PACKET_START), 0)
+        if len(buffer) - start <= PDML_LIMIT:
+            return
+        end = buffer.find(PACKET_END, start)
+        if 0 <= end and end + len(PACKET_END) - start <= PDML_LIMIT:
             return  # A whole packet within the limit; what follows it is at most `</pdml>`.
-        self.cut = bytes(buffer[:PDML_LIMIT])
+        self.cut = bytes(buffer[: start + PDML_LIMIT])
         if end < 0:
             self.tail = bytes(buffer[-(len(PACKET_END) - 1):])
             self.discarding = True
@@ -737,6 +752,7 @@ class PreviewWorker:
             [profile["tshark"], "-n", *extension, "-l", "-r", "-", "-T", "pdml"],
             self.root,
             self.env,
+            framed=True,
         )
         self.processes.append(self.engine)
 
@@ -893,6 +909,7 @@ def main(argv=None):
                         "request_limit",
                         "response_limit",
                         "input_limit",
+                        "output_limit",
                         "pdml_item_limit",
                         "pdml_byte_limit",
                         "depth_limit",

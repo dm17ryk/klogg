@@ -826,6 +826,8 @@ TEST_CASE( "TShark results fit 2048 rows, take the request's result limit and na
     CHECK( failed( "depth_limit" ) == "TShark's tree is deeper than the worker's limit of 32 levels." );
     CHECK( failed( "diagnostic_limit" )
            == "TShark's diagnostics passed the worker's limit of 64 KiB." );
+    CHECK( failed( "output_limit" )
+           == "A Wireshark tool's output passed the worker's limit of 4 MiB." );
     CHECK( failed( "lua_failure" ).isEmpty() );
     CHECK( PreviewService::limitText( { { "limited", true },
                                         { "limit", QVariantMap{ { "name", "rows" },

@@ -947,6 +947,9 @@ QString PreviewService::limitText( const QVariantMap& result )
         if ( reason == "depth_limit" )
             return QStringLiteral( "TShark's tree is deeper than the worker's limit of %1 levels." )
                 .arg( TsharkPreviewClient::PdmlDepthLimit );
+        if ( reason == "output_limit" )
+            return QStringLiteral( "A Wireshark tool's output passed the worker's limit of %1 MiB." )
+                .arg( TsharkPreviewClient::PdmlByteLimit / ( 1024 * 1024 ) );
         if ( reason == "diagnostic_limit" )
             return QStringLiteral( "TShark's diagnostics passed the worker's limit of %1 KiB." )
                 .arg( TsharkPreviewClient::DiagnosticByteLimit / 1024 );

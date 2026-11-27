@@ -85,7 +85,11 @@ def normalize_pdml_prefix(data, *, node_limit, depth_limit, whole=True):
     `node_limit` items and `items_cut` is true. `whole` false means `data` is a prefix cut off at
     a byte limit: its incomplete end is dropped instead of failing. Nodes are as normalize_pdml
     builds them. An item deeper than `depth_limit` fails (`depth_limit`)."""
-    text = codecs.getincrementaldecoder("utf-8")().decode(data, final=whole)
+    try:
+        # Not final for a prefix: a character cut at the byte limit is dropped, not invalid.
+        text = codecs.getincrementaldecoder("utf-8")().decode(data, final=whole)
+    except UnicodeError as error:
+        raise ProofError("invalid_pdml") from error
     if "<!DOCTYPE" in text.upper() or "<!ENTITY" in text.upper() or "\x00" in text:
         raise ProofError("invalid_pdml")
     parser = ET.XMLPullParser(events=("start", "end"))

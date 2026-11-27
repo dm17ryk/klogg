@@ -181,6 +181,9 @@ class WireTests(unittest.TestCase):
     def test_pdml_prefix_cut_at_a_byte_limit_drops_its_incomplete_end(self):
         data = '<pdml><packet><proto name="p"><field name="a" show="é"/><field name="b" show="é"/>'
         data = data.encode("utf-8")
+        # Each prefix keeps the items whose start tags it holds whole, and no more.
+        starts = [data.index(tag) + len(tag) for tag in
+                  (b'<proto name="p">', b'show="\xc3\xa9"/>', b'<field name="b" show="\xc3\xa9"/>')]
         for end in range(len(b"<pdml><packet>"), len(data) + 1):
             with self.subTest(end=end):
                 packets, cut = wire.normalize_pdml_prefix(
@@ -188,6 +191,8 @@ class WireTests(unittest.TestCase):
                 )
                 self.assertFalse(cut)
                 self.assertEqual(len(packets), 1)
+                self.assertEqual(worker.count_rows(packets),
+                                 sum(1 for start in starts if start <= end))
         packets, _ = wire.normalize_pdml_prefix(data, node_limit=8192, depth_limit=32, whole=False)
         self.assertEqual([c["attributes"]["show"] for c in packets[0]["children"][0]["children"]],
                          ["é", "é"])
@@ -199,6 +204,9 @@ class WireTests(unittest.TestCase):
             (b"<pdml></pdml>", {}, "invalid_pdml"),
             (b"<pdml><packet>", {}, "invalid_pdml"),  # A whole document must be complete.
             (b"<pdml><packet><a></b></packet></pdml>", {"whole": False}, "invalid_pdml"),
+            # Invalid UTF-8 is a PDML error, whole or cut (review of #204).
+            (b'<pdml><packet><f a="\xff"/></packet></pdml>', {}, "invalid_pdml"),
+            (b'<pdml><packet><f a="\xff"/></packet></pdml>', {"whole": False}, "invalid_pdml"),
             (b"<pdml><packet><field><field/></field></packet></pdml>", {"depth_limit": 1},
              "depth_limit"),
         ]:
@@ -556,6 +564,70 @@ class ResponseBudgetTests(unittest.TestCase):
         self.assertLessEqual(encoding.call_count, len(value["fields"]) + 3)
 
 
+class PdmlCutEvaluationTests(unittest.TestCase):
+    """Issue #198 without a real engine: what evaluate() makes of a tree cut at a PDML limit."""
+
+    class Engine:
+        def __init__(self, data, cut):
+            self.data = (data, cut)
+            self.process = type("Process", (), {"pid": 4242, "stdin": io.BytesIO()})()
+
+        def packet(self, deadline):
+            return self.data
+
+    def evaluate(self, data, cut=False, protocol=""):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        session = worker.PreviewWorker(Path(temp.name))
+        self.addCleanup(session.close)
+        engine = self.Engine(data, cut)
+        value = request(profile=dict(request()["profile"], protocol=protocol))
+        with patch.object(session, "start", lambda profile, deadline: setattr(session, "engine", engine)), \
+                patch.object(session, "command",
+                             lambda arguments, deadline: Path(arguments[-1]).write_bytes(b"pcap")), \
+                patch.object(worker, "capture_record", return_value=(b"", b"")):
+            return session.evaluate(value)
+
+    @staticmethod
+    def tree(fields, transport=True):
+        frame = b'<proto name="frame"><field name="frame.len" show="1"/></proto>' if transport else b""
+        return (b"<pdml><packet>" + frame + b'<proto name="p" showname="P">'
+                + b'<field name="p.x" show="1" value="01"/>' * fields + b"</proto></packet></pdml>")
+
+    def test_an_item_cut_shows_the_first_rows_and_counts_the_rows_read(self):
+        result = self.evaluate(self.tree(9000))
+        self.assertEqual((result["state"], result["reason"], result["limited"], result["complete"]),
+                         ("completed", "pdml_item_limit", True, False))
+        self.assertEqual(len(result["fields"]), worker.FIELD_LIMIT)
+        # 8192 items: the packet, frame and its field, the protocol and 8188 fields.
+        self.assertEqual(result["limit"], {"name": "pdmlItems", "maximum": 8192,
+                                           "shownRows": 2048, "readRows": 8189})
+        self.assertEqual(result["enginePid"], 4242)
+
+    def test_a_byte_cut_shows_the_rows_read_and_names_the_byte_limit(self):
+        data = self.tree(100)[:-len(b'"/></proto></packet></pdml>') - 30]
+        result = self.evaluate(data, cut=True)
+        self.assertEqual(result["reason"], "pdml_byte_limit")
+        self.assertEqual(result["limit"]["name"], "pdmlBytes")
+        self.assertEqual(result["limit"]["maximum"], worker.PDML_LIMIT)
+        self.assertEqual(result["limit"]["shownRows"], len(result["fields"]))
+        self.assertEqual(result["limit"]["readRows"], len(result["fields"]))
+        self.assertLess(len(result["fields"]), 101)
+        # The item limit wins when it falls within the bytes read.
+        self.assertEqual(self.evaluate(self.tree(9000)[:-20], cut=True)["reason"],
+                         "pdml_item_limit")
+
+    def test_a_cut_before_any_row_or_the_protocol_fails_at_that_limit(self):
+        transport_only = b'<pdml><packet><proto name="frame"><field name="frame.len" show="1"/>'
+        with self.assertRaisesRegex(wire.ProofError, "pdml_byte_limit"):
+            self.evaluate(transport_only, cut=True)
+        with self.assertRaisesRegex(wire.ProofError, "pdml_item_limit"):
+            self.evaluate(self.tree(9000), protocol="later")
+        # Without a cut these keep their own reasons.
+        with self.assertRaisesRegex(wire.ProofError, "protocol_not_found"):
+            self.evaluate(self.tree(3), protocol="later")
+
+
 class ProcessTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -570,9 +642,9 @@ class ProcessTests(unittest.TestCase):
             child.close_streams()
             self.assertIsNotNone(child.process.returncode)
 
-    def child(self, code):
+    def child(self, code, framed=True):
         child = worker.EngineProcess(
-            self.owner, [sys.executable, "-c", code], self.temp.name, os.environ.copy()
+            self.owner, [sys.executable, "-c", code], self.temp.name, os.environ.copy(), framed
         )
         self.children.append(child)
         return child
@@ -591,17 +663,24 @@ class ProcessTests(unittest.TestCase):
     def test_stdout_and_stderr_flood_are_bounded(self):
         # Issue #198: past the PDML limit the engine's output is read and dropped (the packet
         # never ends here, so the request times out); past the diagnostics limit it fails.
-        for stream, reason in (("stdout", "execution_timeout"), ("stderr", "diagnostic_limit")):
-            with self.subTest(stream=stream):
+        # A tool's output (not the engine's PDML stream) past the limit still fails.
+        for stream, framed, reason in (("stdout", True, "execution_timeout"),
+                                       ("stdout", False, "output_limit"),
+                                       ("stderr", True, "diagnostic_limit")):
+            with self.subTest(stream=stream, framed=framed):
                 child = self.child(
                     "import sys,time; sys." + stream
-                    + '.buffer.write(b"x"*%d); time.sleep(60)' % (worker.PDML_LIMIT + 65536)
+                    + '.buffer.write(b"x"*%d); time.sleep(60)' % (worker.PDML_LIMIT + 65536),
+                    framed,
                 )
                 with self.assertRaisesRegex(wire.ProofError, reason):
-                    child.packet(time.monotonic() + 5)
+                    child.packet(time.monotonic() + (2 if reason == "execution_timeout" else 5))
                 self.assertLessEqual(len(child.buffers[0]), worker.PDML_LIMIT)
-                self.assertLessEqual(len(child.cut or b""), worker.PDML_LIMIT)
                 self.assertLessEqual(len(child.buffers[1]), worker.STDERR_LIMIT)
+                if reason == "execution_timeout":
+                    # The engine's stream keeps the first PDML_LIMIT bytes and drops the rest.
+                    self.assertEqual(len(child.cut), worker.PDML_LIMIT)
+                    self.assertTrue(child.discarding)
 
     def test_a_packet_past_the_pdml_limit_is_cut_and_the_next_one_stays_in_step(self):
         # Issue #198: the engine is not failed; its next packet is read whole.
@@ -615,8 +694,8 @@ class ProcessTests(unittest.TestCase):
         )
         data, cut = child.packet(time.monotonic() + 10)
         self.assertTrue(cut)
-        self.assertEqual(len(data), len(b"<pdml>") + worker.PDML_LIMIT
-                         - len(b'<?xml version="1.0"?>\n<pdml version="0">\n'))
+        # The limit counts the packet's bytes, not the session's PDML header (review of #204).
+        self.assertEqual(len(data), len(b"<pdml>") + worker.PDML_LIMIT)
         packets, items_cut = wire.normalize_pdml_prefix(
             data, node_limit=worker.PDML_NODE_LIMIT, depth_limit=32, whole=False
         )
@@ -644,6 +723,18 @@ class ProcessTests(unittest.TestCase):
         self.assertEqual(engine.cut, b"<packet>" + b"x" * 10 + b"</pack")
         self.assertFalse(engine.discarding)
         self.assertEqual(bytes(engine.buffers[0]), b"<packet>n</packet>")
+        # The PDML header before the first packet does not count; a packet ending exactly at
+        # the limit is whole.
+        engine.buffers[0], engine.cut = bytearray(), None
+        header = b'<?xml version="1.0"?>\n<pdml version="0">\n'
+        with patch.object(worker, "PDML_LIMIT", 24):
+            engine.take_pdml(header + b"<packet>" + b"x" * 7 + b"</packet>")
+        self.assertIsNone(engine.cut)
+        # One byte less: the end tag is cut.
+        with patch.object(worker, "PDML_LIMIT", 23):
+            engine.take_pdml(b"\n")
+        self.assertEqual(engine.cut, header + b"<packet>" + b"x" * 7 + b"</packet")
+        self.assertEqual(bytes(engine.buffers[0]), b"\n")
 
     def test_lua_load_error_is_detected_even_with_exit_zero(self):
         child = self.child('import sys; print("Lua Error: private source",file=sys.stderr)')
