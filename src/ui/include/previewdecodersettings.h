@@ -65,6 +65,9 @@ public:
     static constexpr int ProtocolRouteLimit = 32;
 
     static PreviewDecoderSettings& instance();
+    // Whether `value` can be a route's named dissector or the default one: a letter, then up to
+    // 127 letters, digits, `_`, `.` or `-`.
+    static bool isDissectorName( const QString& value );
     // The user's saved configuration, without pack contributions.
     QVariantMap configuration() const;
     bool setConfiguration( const QVariantMap& configuration, QString* error = nullptr );
