@@ -64,6 +64,19 @@ xcopy %CILOGG_WORKSPACE%\%CILOGG_BUILD_ROOT%\msvc_19.44_cxx17_64_md_release\tbbm
 xcopy %CILOGG_WORKSPACE%\%CILOGG_BUILD_ROOT%\msvc_19.44_cxx17_32_md_release\tbbmalloc_proxy.dll %CILOGG_WORKSPACE%\release\ /y
 xcopy %CILOGG_WORKSPACE%\%CILOGG_BUILD_ROOT%\msvc_19.44_cxx17_32_md_release\tbbmalloc_proxy.pdb %CILOGG_WORKSPACE%\release\ /y
 
+rem The arm64 package is built with clang-cl: its TBB lands in clang_<version>_cxx17_64_md_<config> (#209).
+for /d %%D in ("%CILOGG_WORKSPACE%\%CILOGG_BUILD_ROOT%\clang_*_cxx17_64_md_*") do (
+  for %%F in (tbb12 tbbmalloc tbbmalloc_proxy) do (
+    if exist "%%D\%%F.dll" xcopy "%%D\%%F.dll" %CILOGG_WORKSPACE%\release\ /y
+    if exist "%%D\%%F.pdb" xcopy "%%D\%%F.pdb" %CILOGG_WORKSPACE%\release\ /y
+  )
+)
+rem cilogg.exe and cilogg_grep.exe load it: a package without it does not start.
+if not exist "%CILOGG_WORKSPACE%\release\tbb12.dll" (
+  echo ERROR: tbb12.dll was not found in any TBB build folder for %CILOGG_ARCH%
+  exit /b 1
+)
+
 xcopy %CILOGG_WORKSPACE%\%CILOGG_BUILD_ROOT%\generated\documentation.html %CILOGG_WORKSPACE%\release\ /y
 xcopy %CILOGG_WORKSPACE%\COPYING %CILOGG_WORKSPACE%\release\ /y
 xcopy %CILOGG_WORKSPACE%\NOTICE %CILOGG_WORKSPACE%\release\ /y
