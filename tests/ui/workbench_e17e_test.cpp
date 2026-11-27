@@ -20,7 +20,6 @@
 #include <QHeaderView>
 #include <QJsonDocument>
 #include <QMenu>
-#include <QProcess>
 #include <QSignalSpy>
 #include <QStyle>
 #include <QStyleOption>
@@ -28,8 +27,17 @@
 #include <QTest>
 #include <QTreeView>
 #include <catch2/catch.hpp>
+#include <cstring>
 #include <functional>
 #include <memory>
+#include <vector>
+#ifdef Q_OS_WIN
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <winioctl.h>
+#endif
 
 using cilogg::plugins::PluginManager;
 
@@ -41,9 +49,13 @@ bool waitFor( const std::function<bool()>& predicate, int timeout = 5000 )
     return QTest::qWaitFor( predicate, timeout );
 }
 
-// The native file system model lists folders on its own thread, which a busy machine (or a
-// virus scanner on new temporary files) can hold up for seconds.
-constexpr int FileSystemWait = 20000;
+// The native file system model lists folders on its own thread, and Qt starts that thread at low
+// priority (QFileInfoGatherer: start( LowPriority )). While other processes keep every core busy,
+// Windows runs a starved low-priority thread only now and then (a short boost every few seconds),
+// so listing a folder of four entries took longer than 20 s there (#172). A virus scanner looking
+// at the new temporary files adds to it. The waits end as soon as the listing is in; this deadline
+// only stops a wait that would never end.
+constexpr int FileSystemWait = 60000;
 
 QJsonObject treeNode( const QString& id, const QJsonArray& cells, const QJsonObject& extra = {} )
 {
@@ -774,8 +786,10 @@ TEST_CASE( "E17e file trees: roots, filters, selection, value and events", "[ui]
         result.sort();
         return result;
     };
-    REQUIRE( waitFor( [ & ] { return names( model->index( 0, 0 ) ) == QStringList{ "a.bin", "sub" }; },
-                      FileSystemWait ) );
+    const bool listed = waitFor(
+        [ & ] { return names( model->index( 0, 0 ) ) == QStringList{ "a.bin", "sub" }; }, FileSystemWait );
+    INFO( "listed below the root: " << names( model->index( 0, 0 ) ).join( ", " ).toStdString() );
+    REQUIRE( listed );
     // Selecting a file reports the paths (forward slashes) and puts them in the inputs.
     const auto file = model->indexOfPath( rootPath + "/a.bin" );
     REQUIRE( file.isValid() );
@@ -1325,18 +1339,92 @@ TEST_CASE( "E17e a double-click on a check box does not activate; update_nodes o
 }
 
 namespace {
-// A directory link: a junction on Windows (it needs no rights), a symbolic link elsewhere.
+#ifdef Q_OS_WIN
+// The mount point layout of REPARSE_DATA_BUFFER (ntifs.h, not in the user-mode headers).
+struct MountPointReparseBuffer {
+    DWORD reparseTag;
+    WORD reparseDataLength;
+    WORD reserved;
+    WORD substituteNameOffset;
+    WORD substituteNameLength;
+    WORD printNameOffset;
+    WORD printNameLength;
+    // The two names follow, each with its terminating null.
+};
+
+// Makes `link` (a new, empty folder) a junction to `target` in this process. A `mklink /J` run
+// through cmd.exe failed now and then on a busy machine (#161): a process start that a scanner
+// holds up, with nothing kept to tell why.
+QString makeJunction( const QString& target, const QString& link )
+{
+    // The substitute name is the NT path of the target; the print name is what `dir` shows.
+    const auto print = QDir::toNativeSeparators( QDir::cleanPath( QFileInfo( target ).absoluteFilePath() ) );
+    const auto substitute = QStringLiteral( "\\??\\" ) + print;
+    const auto substituteBytes = static_cast<WORD>( substitute.size() * sizeof( wchar_t ) );
+    const auto printBytes = static_cast<WORD>( print.size() * sizeof( wchar_t ) );
+    const auto pathBytes = substituteBytes + sizeof( wchar_t ) + printBytes + sizeof( wchar_t );
+    std::vector<char> buffer( sizeof( MountPointReparseBuffer ) + pathBytes, 0 );
+    auto* header = reinterpret_cast<MountPointReparseBuffer*>( buffer.data() );
+    header->reparseTag = IO_REPARSE_TAG_MOUNT_POINT;
+    header->reparseDataLength = static_cast<WORD>( 4 * sizeof( WORD ) + pathBytes );
+    header->substituteNameOffset = 0;
+    header->substituteNameLength = substituteBytes;
+    header->printNameOffset = static_cast<WORD>( substituteBytes + sizeof( wchar_t ) );
+    header->printNameLength = printBytes;
+    auto* names = buffer.data() + sizeof( MountPointReparseBuffer );
+    std::memcpy( names, substitute.utf16(), substituteBytes );
+    std::memcpy( names + header->printNameOffset, print.utf16(), printBytes );
+
+    if ( !QDir().mkdir( link ) ) {
+        return QStringLiteral( "cannot create the folder %1" ).arg( link );
+    }
+    const auto nativeLink = QDir::toNativeSeparators( link );
+    const HANDLE handle = CreateFileW( reinterpret_cast<const wchar_t*>( nativeLink.utf16() ),
+                                       GENERIC_WRITE, 0, nullptr, OPEN_EXISTING,
+                                       FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+                                       nullptr );
+    if ( handle == INVALID_HANDLE_VALUE ) {
+        const auto error = GetLastError();
+        QDir().rmdir( link );
+        return QStringLiteral( "CreateFileW( %1 ) failed: error %2" ).arg( nativeLink ).arg( error );
+    }
+    DWORD returned = 0;
+    const bool set = DeviceIoControl( handle, FSCTL_SET_REPARSE_POINT, buffer.data(),
+                                      static_cast<DWORD>( buffer.size() ), nullptr, 0, &returned,
+                                      nullptr );
+    const auto error = set ? 0 : GetLastError();
+    CloseHandle( handle );
+    if ( !set ) {
+        QDir().rmdir( link );
+        return QStringLiteral( "FSCTL_SET_REPARSE_POINT on %1 failed: error %2" )
+            .arg( nativeLink )
+            .arg( error );
+    }
+    if ( !QFileInfo( link ).isJunction() ) {
+        return QStringLiteral( "%1 is no junction after FSCTL_SET_REPARSE_POINT" ).arg( nativeLink );
+    }
+    return {};
+}
+#endif
+
+// A directory link: a junction on Windows (it needs no rights), a symbolic link elsewhere. A
+// failure says why in the next assertion's message.
 bool linkDirectory( const QString& target, const QString& link )
 {
 #ifdef Q_OS_WIN
-    QProcess process;
-    process.start( QStringLiteral( "cmd.exe" ),
-                   { QStringLiteral( "/c" ), QStringLiteral( "mklink" ), QStringLiteral( "/J" ),
-                     QDir::toNativeSeparators( link ), QDir::toNativeSeparators( target ) } );
-    return process.waitForFinished( 10000 ) && process.exitCode() == 0
-           && QFileInfo( link ).isJunction();
+    const auto error = makeJunction( target, link );
+    if ( !error.isEmpty() ) {
+        UNSCOPED_INFO( "linkDirectory( " << target.toStdString() << ", " << link.toStdString()
+                                         << " ): " << error.toStdString() );
+    }
+    return error.isEmpty();
 #else
-    return QFile::link( target, link );
+    const bool linked = QFile::link( target, link );
+    if ( !linked ) {
+        UNSCOPED_INFO( "linkDirectory( " << target.toStdString() << ", " << link.toStdString()
+                                         << " ): QFile::link failed" );
+    }
+    return linked;
 #endif
 }
 
