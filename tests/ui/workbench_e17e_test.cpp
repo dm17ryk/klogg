@@ -788,7 +788,8 @@ TEST_CASE( "E17e file trees: roots, filters, selection, value and events", "[ui]
     };
     const bool listed = waitFor(
         [ & ] { return names( model->index( 0, 0 ) ) == QStringList{ "a.bin", "sub" }; }, FileSystemWait );
-    INFO( "listed below the root: " << names( model->index( 0, 0 ) ).join( ", " ).toStdString() );
+    UNSCOPED_INFO( "listed below the root: "
+                   << names( model->index( 0, 0 ) ).join( ", " ).toStdString() );
     REQUIRE( listed );
     // Selecting a file reports the paths (forward slashes) and puts them in the inputs.
     const auto file = model->indexOfPath( rootPath + "/a.bin" );
@@ -1380,7 +1381,11 @@ QString makeJunction( const QString& target, const QString& link )
     }
     const auto nativeLink = QDir::toNativeSeparators( link );
     const HANDLE handle = CreateFileW( reinterpret_cast<const wchar_t*>( nativeLink.utf16() ),
-                                       GENERIC_WRITE, 0, nullptr, OPEN_EXISTING,
+                                       // Shared: a scanner, the indexer or a file system watcher
+                                       // may have the new folder open too.
+                                       GENERIC_WRITE,
+                                       FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                       nullptr, OPEN_EXISTING,
                                        FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
                                        nullptr );
     if ( handle == INVALID_HANDLE_VALUE ) {
@@ -1401,6 +1406,7 @@ QString makeJunction( const QString& target, const QString& link )
             .arg( error );
     }
     if ( !QFileInfo( link ).isJunction() ) {
+        QDir().rmdir( link );
         return QStringLiteral( "%1 is no junction after FSCTL_SET_REPARSE_POINT" ).arg( nativeLink );
     }
     return {};
