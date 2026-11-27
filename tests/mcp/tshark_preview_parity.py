@@ -120,11 +120,13 @@ def exercise(cli, command, _finish, _rows, _normalized, catalog, artifacts):
     assert a["offsetSpace"] == "engine_data_source_unresolved", a
     assert a["messageCompleteness"] == a["messageIntegrity"] == "not_reported", a
     fields = a["fields"]
-    values = lambda name: [f["columns"][1] for f in fields if f["attributes"].get("name") == name]
+    # The engine's raw show values; the Value column shows the display text instead (#181).
+    values = lambda name: [f["attributes"].get("show") for f in fields if f["attributes"].get("name") == name]
     assert values("cilogg_md01_probe.item") == ["65", "66"], fields
     assert values("cilogg_md01_probe.generated") == ["9007199254740993"], fields
     transformed = [f for f in fields if f["attributes"].get("name") == "cilogg_md01_probe.transformed"]
-    assert len(transformed) == 1 and transformed[0]["columns"][1:3] == ["41:42", "4142"], transformed
+    assert len(transformed) == 1 and transformed[0]["attributes"]["show"] == "41:42", transformed
+    assert transformed[0]["columns"][2] == "4142", transformed
     assert transformed[0]["positionOrigin"] == "engine_data_source_unresolved", transformed
     explicit, _ = pair("preview_message", dict(request, decoder="json"))
     assert explicit["backend"] == "json_preview", explicit
@@ -197,7 +199,8 @@ def exercise(cli, command, _finish, _rows, _normalized, catalog, artifacts):
             result, _ = pair("preview_message", sample)
             assert result["backend"] == "tshark_lua" and result["available"], result
             for name, expected in case["expect"].items():
-                actual = [f["columns"][1] for f in result["fields"] if f["attributes"].get("name") == name]
+                actual = [f["attributes"].get("show") for f in result["fields"]
+                          if f["attributes"].get("name") == name]
                 assert actual == expected, (case["id"], name, actual, expected)
             for name, expected in case.get("expectRaw", {}).items():
                 actual = [f["attributes"].get("value") for f in result["fields"]
@@ -268,7 +271,7 @@ def exercise(cli, command, _finish, _rows, _normalized, catalog, artifacts):
     again_cli, again_mcp = pair("preview_message", request)
     for result in (recovered_cli, recovered_mcp, again_cli, again_mcp):
         assert result["backend"] == "tshark_lua" and result["available"] and result["complete"], result
-        items = [f["columns"][1] for f in result["fields"]
+        items = [f["attributes"].get("show") for f in result["fields"]
                  if f["attributes"].get("name") == "cilogg_md01_probe.item"]
         assert items == ["65", "66"], result
     assert recovered_cli["enginePid"] == again_cli["enginePid"]
@@ -292,7 +295,7 @@ def exercise(cli, command, _finish, _rows, _normalized, catalog, artifacts):
                 assert result["backend"] == "tshark_lua" and result["available"], result
                 assert not result.get("fallbackReason"), result
                 for name, expected in case["expect"].items():
-                    actual = [field["columns"][1] for field in result["fields"]
+                    actual = [field["attributes"].get("show") for field in result["fields"]
                               if field["attributes"].get("name") == name]
                     assert actual == expected, (case["id"], name, actual, expected)
                 for name, expected in case.get("expectRaw", {}).items():
@@ -325,7 +328,7 @@ def exercise(cli, command, _finish, _rows, _normalized, catalog, artifacts):
         assert result["backend"] == "tshark_lua" and result["available"] and result["complete"]
         assert not result.get("fallbackReason") and not result["limited"]
         assert len(result["fields"]) == 3
-        assert [row["columns"][1] for row in result["fields"][1:]] == ["65", "66"]
+        assert [row["attributes"]["show"] for row in result["fields"][1:]] == ["65", "66"]
     large = pair("preview_message", dict(budget_request, text="AB" * 192))
     for result, reference in zip(large, small):
         require_budget_prefix(result, reference["fields"])

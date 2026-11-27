@@ -102,6 +102,55 @@ class WireTests(unittest.TestCase):
         self.assertEqual(fields[2]["attributes"]["generated"], "true")
         self.assertEqual([field["depth"] for field in fields], [0, 1, 1])
 
+    def test_rows_show_the_dissectors_display_text(self):
+        # Issue #181: Value is the display text (showname after its "label: "), Raw keeps the
+        # raw value, and text-only items are labelled by their text.
+        packets = wire.normalize_pdml(
+            """<pdml><packet><proto name="probe" showname="Probe, Version: 1" size="5" pos="0">
+        <field name="_ws.lua.text" showname="Header: two bytes" size="2" pos="0" show="" value="">
+        <field name="probe.status" showname="Status: Battery OK (0)" size="1" pos="0" show="0" value="00"/>
+        <field name="probe.model" showname="Model: 13 (Synthetic model 13)" size="1" pos="1" show="13" value="0d"/>
+        </field>
+        <field name="probe.flag" showname=".... ...1 = Flag: True" size="1" pos="1" show="True" value="1"/>
+        <field name="probe.name" showname="Name […]: abc" size="3" pos="2" show="abcdef" value="616263"/>
+        <field name="probe.more" showname="More: Battery OK (0) […]" size="1" pos="2" show="0" value="00"/>
+        <field name="probe.generated" showname="Generated: Ready (7)" size="0" pos="0" show="7"/>
+        <field name="probe.count" showname="Count: 3" size="0" pos="0" show="3"/>
+        <field name="probe.long" showname="Long: abcde…" size="10" pos="0" show="abcdefghij" value="6162636465666768696a"/>
+        <field show="Plain legacy text" size="1" pos="4" value="00"/>
+        <field show="Bare legacy text" size="0" pos="4"/>
+        </proto></packet></pdml>""".encode("utf-8"),
+            node_limit=2048,
+            depth_limit=32,
+        )
+        fields, limited = worker.render_fields(packets)
+        self.assertFalse(limited)
+        self.assertEqual(
+            [field["columns"] for field in fields],
+            [
+                # A protocol keeps its whole display text.
+                ["probe", "Probe, Version: 1", "", "0", "5"],
+                ["Header: two bytes", "", "", "0", "2"],
+                ["probe.status", "Battery OK (0)", "00", "0", "1"],
+                ["probe.model", "13 (Synthetic model 13)", "0d", "1", "1"],
+                ["probe.flag", "True", "1", "1", "1"],
+                # A label Wireshark cut off keeps the whole raw text.
+                ["probe.name", "abcdef", "616263", "2", "3"],
+                # The same marker in a value (appended text) is part of the display text.
+                ["probe.more", "Battery OK (0) […]", "00", "2", "1"],
+                # Without raw bytes, Raw keeps the raw show value, also when Value reads the same.
+                ["probe.generated", "Ready (7)", "7", "0", "0"],
+                ["probe.count", "3", "3", "0", "0"],
+                # A value Wireshark cut off ("…" after a prefix of show) shows the whole show.
+                ["probe.long", "abcdefghij", "6162636465666768696a", "0", "10"],
+                ["Plain legacy text", "", "00", "4", "1"],
+                # A text-only item's text is its name; Raw holds raw bytes only.
+                ["Bare legacy text", "", "", "4", "0"],
+            ],
+        )
+        self.assertEqual(fields[1]["attributes"]["name"], "_ws.lua.text")
+        self.assertEqual([field["depth"] for field in fields], [0, 1, 2, 2] + [1] * 8)
+
     def test_pdml_limits_and_dtd_are_explicit_errors(self):
         for data, limits, reason in [
             (b"<!DOCTYPE pdml><pdml><packet/></pdml>", {}, "invalid_pdml"),
@@ -451,6 +500,35 @@ class NativePreviewTests(unittest.TestCase):
                 field["attributes"].get("name", "").startswith("frame") for field in first["fields"]
             )
         )
+
+    def test_lua_display_text_reaches_the_value_column(self):
+        # Issue #181 on a real engine: a value string, appended text and text-only subtrees.
+        script = Path(self.temp.name) / "display_probe.lua"
+        script.write_text(
+            'local p = Proto("cilogg_display", "CILogg display probe")\n'
+            'local status = ProtoField.uint8("cilogg_display.status", "Status", base.DEC,\n'
+            '    { [0] = "Battery OK", [1] = "Battery low" })\n'
+            'local model = ProtoField.uint8("cilogg_display.model", "Model", base.DEC)\n'
+            "p.fields = { status, model }\n"
+            "function p.dissector(tvb, pinfo, tree)\n"
+            "    local root = tree:add(p, tvb())\n"
+            '    local header = root:add(tvb(0, 2), "Header: two bytes")\n'
+            "    header:add(status, tvb(0, 1))\n"
+            '    header:add(model, tvb(1, 1)):append_text(" (Synthetic model 13)")\n'
+            '    root:add(tvb(2), "Plain text label")\n'
+            "    return tvb:len()\n"
+            "end\n",
+            encoding="utf-8",
+        )
+        self.profile.update(lua=[str(script)], dissector="cilogg_display", protocol="cilogg_display")
+        result = self.evaluate(payloadBase64=base64.b64encode(bytes([0, 13, 0x61])).decode())
+        self.assertTrue(result["available"], result)
+        rows = [field["columns"][:3] for field in result["fields"]]
+        self.assertIn(["Header: two bytes", "", ""], rows)
+        self.assertIn(["cilogg_display.status", "Battery OK (0)", "00"], rows)
+        self.assertIn(["cilogg_display.model", "13 (Synthetic model 13)", "0d"], rows)
+        self.assertIn(["Plain text label", "", ""], rows)
+        self.assertFalse(any(row[0] == "_ws.lua.text" for row in rows), rows)
 
     def test_route_change_keeps_session_and_scripts_are_frozen(self):
         snapshot = Path(self.temp.name) / "probe.lua"
