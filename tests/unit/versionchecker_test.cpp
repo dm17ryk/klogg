@@ -656,6 +656,33 @@ TEST_CASE( "An installed update that could not put files back is reported once",
     REQUIRE_FALSE( again.wait( 200 ) );
 }
 
+TEST_CASE( "A new version left by an incomplete restore reports it", "[updater]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    const QDir rootDir( root.path() );
+    const auto launched = makeTransaction( root.path(), "26.04.2.1203", thisInstallation() );
+    writeTransaction( rootDir.filePath( LaunchedName ), launched );
+    // The rollback could not move the new cilogg.exe aside: it starts, but the folder may mix
+    // files of both versions.
+    writeFile( QFileInfo( launched.helperLogPath )
+                   .dir()
+                   .filePath( cilogg::update_protocol::InstallResultFileName ),
+               "token=" + launched.transactionToken.toLatin1()
+                   + "\nmode=windows-setup\nphase=installer\ncode="
+                   + QByteArray::number( cilogg::update_protocol::InstallerRestoreIncompleteExitCode )
+                   + "\n" );
+
+    const auto checker = makeOfflineChecker( root.path(), "26.04.2.1203" );
+    QSignalSpy reported( checker.get(), &VersionChecker::installFailed );
+    checker->activate();
+    REQUIRE( reported.wait( 2000 ) );
+    const auto message = reported.at( 0 ).at( 0 ).toString();
+    REQUIRE( message.contains( "did not complete" ) );
+    REQUIRE( message.contains( "Run the installer again" ) );
+    REQUIRE_FALSE( QFile::exists( rootDir.filePath( LaunchedName ) ) );
+}
+
 TEST_CASE( "A completed exit-time install clears its record silently", "[updater]" )
 {
     QTemporaryDir root;

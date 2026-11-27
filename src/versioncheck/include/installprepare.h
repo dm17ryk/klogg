@@ -135,7 +135,8 @@ std::vector<MovedFile> finish( const std::filesystem::path& directory,
 // `leftInPlace`. Entries an earlier pass restored are skipped. Returns the entries that could
 // not be restored for now (another attempt may succeed); a file lost meanwhile and an entry
 // outside the installation folder are logged and dropped, as nothing can ever act on them.
-// `addedKept` receives how many added files could not be removed (another attempt may succeed).
+// `addedKept` receives how many added files could not be removed, plus one when a folder could not
+// be read to its end (another attempt may succeed); the record is then kept.
 std::vector<MovedFile> rollback( const std::filesystem::path& directory,
                                  const std::vector<MovedFile>& moved, const Log& log,
                                  bool removeAdded = false,

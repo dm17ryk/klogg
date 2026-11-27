@@ -276,7 +276,17 @@ try {
     foreach ($expected in @('Running from the installation folder: cilogg.exe', 'Moved aside ', 'installed in ')) {
         if (!$update.Log.Contains($expected)) { throw "The installer log does not contain '$expected'`n$($update.Log)" }
     }
+    # Agents keep starting servers: once the update is done, every start must succeed again, from
+    # the new files. (While files are replaced, a start may fail; that is counted, not required.)
+    $atUpdateEnd = (Get-Content -LiteralPath $supervisorLog -Raw).Length
+    Start-Sleep -Seconds 3
     $supervisorText = Get-Content -LiteralPath $supervisorLog -Raw
+    $afterUpdate = $supervisorText.Substring([Math]::Min($atUpdateEnd, $supervisorText.Length))
+    $startsAfter = ([regex]::Matches($afterUpdate, '(?m) started ')).Count
+    $failedAfter = ([regex]::Matches($afterUpdate, '(?m) start-failed ')).Count
+    if ($startsAfter -eq 0 -or $failedAfter -ne 0) {
+        throw "MCP servers did not restart from the updated folder: $startsAfter started, $failedAfter failed`n$afterUpdate"
+    }
     $restarts = ([regex]::Matches($supervisorText, '(?m) started ')).Count
     $failedStarts = ([regex]::Matches($supervisorText, '(?m) start-failed ')).Count
     $results.Add([pscustomobject]@{ case = 'update-while-running'; exitCode = $update.ExitCode

@@ -594,6 +594,21 @@ bool deleteOrSchedule( const fs::path& file, const fs::path& directory, const Lo
     return false;
 }
 
+// Whether a path exists, told apart from a check that failed: fs::exists() with an error_code
+// returns false for both.
+enum class PathState { Present, Missing, Unknown };
+
+PathState pathState( const fs::path& path )
+{
+    std::error_code error;
+    const auto status = fs::symlink_status( path, error );
+    if ( status.type() == fs::file_type::not_found )
+        return PathState::Missing;
+    if ( error || status.type() == fs::file_type::none )
+        return PathState::Unknown;
+    return PathState::Present;
+}
+
 // True when a file holds the name `path`, also one that is being deleted.
 bool nameTaken( const fs::path& path )
 {
@@ -951,10 +966,11 @@ namespace {
 // and nothing else. Returns the originals it looked at, put back or not; those it could not put
 // back are added to `notPutBack`, for another attempt.
 std::vector<fs::path> putBackWithoutOriginal( const fs::path& directory, const Log& log,
-                                              std::vector<MovedFile>& notPutBack )
+                                              std::vector<MovedFile>& notPutBack,
+                                              bool* listedAll )
 {
     std::map<fs::path, std::pair<fs::path, fs::file_time_type>> newest;
-    for ( const auto& file : installationFiles( directory ) ) {
+    for ( const auto& file : installationFiles( directory, listedAll ) ) {
         const auto fileName = toUtf8( file.filename() );
         const auto suffixLength = movedAsideSuffixLength( lowerAscii( fileName ) );
         if ( suffixLength == 0 )
@@ -1103,8 +1119,14 @@ PrepareResult moveAside( const fs::path& directory, const Log& log,
                          const std::function<void( const MovedFile& )>& onMoved )
 {
     PrepareResult result;
-    if ( !holdsInstallation( directory ) ) {
-        log( "No CILogg installation in " + toUtf8( directory ) + "; nothing is moved aside" );
+    bool listedTop = true;
+    if ( !holdsInstallation( directory, &listedTop ) ) {
+        // Unsure (the folder was not read to its end): a caller must not take it as prepared.
+        result.listedAll = listedTop;
+        if ( listedTop )
+            log( "No CILogg installation in " + toUtf8( directory ) + "; nothing is moved aside" );
+        else
+            log( "The folder " + toUtf8( directory ) + " could not be read to its end" );
         return result;
     }
     std::vector<fs::path> executables;
@@ -1188,11 +1210,19 @@ std::vector<MovedFile> finish( const fs::path& directory, const std::vector<Move
     std::size_t kept = 0;
     std::size_t restored = 0;
     std::vector<MovedFile> notReplaced;
+    std::vector<MovedFile> unsure;
     for ( const auto& file : moved ) {
-        std::error_code error;
-        if ( !fs::exists( file.movedTo, error ) )
+        const auto copyState = pathState( file.movedTo );
+        if ( copyState == PathState::Missing )
             continue; // handled by an earlier pass
-        if ( fs::exists( file.original, error ) ) {
+        const auto originalState = pathState( file.original );
+        if ( copyState == PathState::Unknown || originalState == PathState::Unknown ) {
+            // Cannot be told now (a scanner, a permission error): kept for another pass.
+            log( "Cannot check " + toUtf8( file.original ) + "; tried again later" );
+            unsure.push_back( file );
+            continue;
+        }
+        if ( originalState == PathState::Present ) {
             if ( deleteOrSchedule( file.movedTo, directory, log ) )
                 ++deleted;
             else
@@ -1229,7 +1259,7 @@ std::vector<MovedFile> finish( const fs::path& directory, const std::vector<Move
         for ( const auto& entry : notPutBack )
             notReplaced.push_back( entry.first );
     }
-    std::vector<MovedFile> left;
+    std::vector<MovedFile> left = unsure;
     for ( const auto& [ file, error ] : notPutBack ) {
         log( "Cannot put back " + toUtf8( file.original ) + ": " + error );
         // Retried by the next update.
@@ -1321,6 +1351,13 @@ std::vector<MovedFile> rollback( const fs::path& directory, const std::vector<Mo
     std::size_t lost = 0;
     for ( auto file = moved.rbegin(); file != moved.rend(); ++file ) {
         std::error_code error;
+        if ( pathState( file->movedTo ) == PathState::Unknown
+             || pathState( file->original ) == PathState::Unknown ) {
+            // Cannot be told now (a scanner, a permission error): kept for another pass.
+            log( "Cannot check " + toUtf8( file->original ) + "; tried again later" );
+            left.push_back( *file );
+            continue;
+        }
         if ( !fs::exists( file->movedTo, error ) ) {
             // Restored by an earlier pass, unless the original is gone too: then nothing can
             // bring it back, and the next installation writes it again.
@@ -1366,13 +1403,19 @@ std::vector<MovedFile> rollback( const fs::path& directory, const std::vector<Mo
     // that previous file waits under a moved-aside name with its original missing. It is put
     // back, and is never taken for an added file.
     auto keep = leftInPlace;
-    const auto unrecorded = putBackWithoutOriginal( directory, log, left );
+    bool listedAll = true;
+    const auto unrecorded = putBackWithoutOriginal( directory, log, left, &listedAll );
     keep.insert( keep.end(), unrecorded.begin(), unrecorded.end() );
-    if ( removeAdded ) {
-        const auto kept = removeNewFiles( directory, moved, keep, log );
-        if ( addedKept )
-            *addedKept = kept;
+    std::size_t unsure = 0;
+    if ( !listedAll ) {
+        // A file moved aside without a record may be among those not listed.
+        log( "A folder of " + toUtf8( directory ) + " could not be read to its end" );
+        ++unsure;
     }
+    if ( removeAdded )
+        unsure += removeNewFiles( directory, moved, keep, log );
+    if ( addedKept )
+        *addedKept = unsure;
     return left;
 }
 
@@ -1527,10 +1570,11 @@ int runPrepare( const fs::path& directory, const fs::path& report, const Log& lo
     }
     // Nothing was copied yet: the blocked files are the previous version's too.
     const auto& untouched = result.blocked;
-    const auto left = rollback( directory, result.moved, log, false, untouched );
+    std::size_t unsure = 0;
+    const auto left = rollback( directory, result.moved, log, false, untouched, &unsure );
     manifest.close();
     writeReport( report, result.blocked, blockers, log );
-    if ( !left.empty() ) {
+    if ( !left.empty() || unsure > 0 ) {
         // Kept whole, with its marks: another pass skips what is restored already.
         log( "Kept " + toUtf8( manifestPath ) + "; run setup again" );
         return RollbackIncompleteExitCode;
@@ -1571,7 +1615,9 @@ int runFinish( const fs::path& directory, const Log& log )
     }
     const auto notPutBack = finish( directory, readManifest( directory, *record, log ), log );
     if ( notPutBack.empty() ) {
-        discardManifest( manifestPath, log );
+        // A record that stays would make the next setup finish this cleanup again first.
+        if ( !discardManifest( manifestPath, log ) )
+            return FinishIncompleteExitCode;
         return PreparedExitCode;
     }
     // Only what still has to be put back stays recorded: the next update puts it back first.
@@ -1597,7 +1643,8 @@ int runRollback( const fs::path& directory, const Log& log )
         log( "The update's cleanup had started; completing it instead of undoing the update" );
         const auto notPutBack = finish( directory, readManifest( directory, *record, log ), log );
         if ( notPutBack.empty() ) {
-            discardManifest( manifestPath, log );
+            if ( !discardManifest( manifestPath, log ) )
+                return FinishedInsteadIncompleteExitCode;
             return FinishedInsteadExitCode;
         }
         writeManifest( manifestPath, notPutBack, FinishingMarker );

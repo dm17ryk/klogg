@@ -1735,15 +1735,27 @@ void VersionChecker::reconcileLaunchedUpdate()
         }
         LOG_INFO << "Exit-time install of " << launched->release.version
                  << " completed; clearing its record";
-        if ( QFile::remove( path ) && haveResult
-             && result.phase == QLatin1String( cilogg::update_protocol::InstallerPhase )
-             && result.code == cilogg::update_protocol::InstallerFinishIncompleteExitCode ) {
+        // Also when the installer could not fully restore the previous version and left the new
+        // executable in place: the folder may then hold files of both versions.
+        const bool installerPhase
+            = haveResult && result.phase == QLatin1String( cilogg::update_protocol::InstallerPhase );
+        const bool finishIncomplete
+            = installerPhase
+              && result.code == cilogg::update_protocol::InstallerFinishIncompleteExitCode;
+        const bool restoreIncomplete
+            = installerPhase
+              && result.code == cilogg::update_protocol::InstallerRestoreIncompleteExitCode;
+        if ( QFile::remove( path ) && ( finishIncomplete || restoreIncomplete ) ) {
             auto details = QDir::toNativeSeparators( launched->helperLogPath );
             if ( !result.installerLog.isEmpty() )
                 details += QStringLiteral( "\n" ) + QDir::toNativeSeparators( result.installerLog );
+            const auto summary
+                = finishIncomplete
+                      ? tr( "CILogg %1 was installed when CILogg last exited." )
+                      : tr( "The update to CILogg %1 did not complete when CILogg last exited." );
             const auto message
-                = tr( "CILogg %1 was installed when CILogg last exited.\n\n%2\n\nDetails: %3" )
-                      .arg( launched->release.version,
+                = tr( "%1\n\n%2\n\nDetails: %3" )
+                      .arg( summary.arg( launched->release.version ),
                             describeInstallResult( result.code, result.phase ), details );
             LOG_WARNING << "Exit-time install of " << launched->release.version
                         << " completed with a warning: " << message;
