@@ -804,14 +804,41 @@ bool discardManifest( const fs::path& path, const Log& log )
 }
 
 // Keeps only `entries`; `marker` (FinishingMarker or none) says how the next run treats them.
-void writeManifest( const fs::path& path, const std::vector<MovedFile>& entries,
-                    const char* marker = nullptr )
+// Replaces the record as a whole: the new one is written next to it and through to the disk,
+// then renamed over it. When any step fails, the previous record stays (another pass skips the
+// entries it already handled), and false is returned.
+bool writeManifest( const fs::path& path, const std::vector<MovedFile>& entries,
+                    const char* marker, const Log& log )
 {
-    std::ofstream file( path, std::ios::binary | std::ios::trunc );
-    for ( const auto& entry : entries )
-        file << formatManifestLine( entry ) << "\n";
-    if ( marker )
-        file << marker << "\n";
+    auto replacement = path;
+    replacement += ".new";
+    std::error_code error;
+    {
+        std::ofstream file( replacement, std::ios::binary | std::ios::trunc );
+        for ( const auto& entry : entries )
+            file << formatManifestLine( entry ) << "\n";
+        if ( marker )
+            file << marker << "\n";
+        file.flush();
+        if ( !file ) {
+            log( "Cannot write " + toUtf8( replacement ) + "; the previous record stays" );
+            fs::remove( replacement, error );
+            return false;
+        }
+    }
+    if ( !writeThrough( replacement, log ) ) {
+        fs::remove( replacement, error );
+        return false;
+    }
+    fs::rename( replacement, path, error );
+    if ( error ) {
+        log( "Cannot replace " + toUtf8( path ) + ": " + error.message()
+             + "; the previous record stays" );
+        std::error_code ignored;
+        fs::remove( replacement, ignored );
+        return false;
+    }
+    return true;
 }
 
 void writeReport( const fs::path& report, const std::vector<fs::path>& blocked,
@@ -1554,7 +1581,7 @@ int runPrepare( const fs::path& directory, const fs::path& report, const Log& lo
                  + " files" );
             const auto notPutBack = finish( directory, earlier, log );
             if ( !notPutBack.empty() ) {
-                writeManifest( manifestPath, notPutBack, FinishingMarker );
+                writeManifest( manifestPath, notPutBack, FinishingMarker, log );
                 log( "Kept " + toUtf8( manifestPath ) + "; run setup again" );
                 return RollbackIncompleteExitCode;
             }
@@ -1704,7 +1731,7 @@ int runFinish( const fs::path& directory, const Log& log )
         return PreparedExitCode;
     }
     // Only what still has to be put back stays recorded: the next update puts it back first.
-    writeManifest( manifestPath, notPutBack, FinishingMarker );
+    writeManifest( manifestPath, notPutBack, FinishingMarker, log );
     log( "Kept " + toUtf8( manifestPath ) + "; the next update puts these files back" );
     return FinishIncompleteExitCode;
 }
@@ -1730,7 +1757,7 @@ int runRollback( const fs::path& directory, const Log& log )
                 return FinishedInsteadIncompleteExitCode;
             return FinishedInsteadExitCode;
         }
-        writeManifest( manifestPath, notPutBack, FinishingMarker );
+        writeManifest( manifestPath, notPutBack, FinishingMarker, log );
         log( "Kept " + toUtf8( manifestPath ) + "; the next update puts these files back" );
         return FinishedInsteadIncompleteExitCode;
     }
