@@ -731,7 +731,8 @@ bool discardManifest( const fs::path& path, const Log& log )
     {
         std::ofstream file( path, std::ios::binary | std::ios::trunc );
         file.flush();
-        if ( file && fs::file_size( path, error ) == 0 && !error )
+        // Through to the disk: after a power loss, the old record with its marks must not return.
+        if ( file && fs::file_size( path, error ) == 0 && !error && writeThrough( path, log ) )
             return true;
     }
     log( "Cannot empty " + toUtf8( path ) );
@@ -1160,7 +1161,9 @@ std::size_t removeNewFiles( const fs::path& directory, const std::vector<MovedFi
         known.insert( pathKey( path ) );
     std::vector<fs::path> added;
     std::size_t matched = 0;
-    for ( const auto& file : installationFiles( directory ) ) {
+    bool listedAll = true;
+    const auto files = installationFiles( directory, &listedAll );
+    for ( const auto& file : files ) {
         if ( isMovedAside( file ) )
             continue;
         if ( known.count( pathKey( file ) ) > 0 )
@@ -1172,7 +1175,7 @@ std::size_t removeNewFiles( const fs::path& directory, const std::vector<MovedFi
     // added files from previous ones, so nothing is removed.
     if ( matched == 0 && !moved.empty() ) {
         log( "The record matches no file of " + toUtf8( directory ) + "; no file is removed" );
-        return 0;
+        return listedAll ? 0 : 1;
     }
     std::size_t removed = 0;
     std::size_t kept = 0;
@@ -1189,6 +1192,11 @@ std::size_t removeNewFiles( const fs::path& directory, const std::vector<MovedFi
     }
     if ( removed > 0 )
         log( "Removed " + std::to_string( removed ) + " files the installation had added" );
+    // Files not listed may be added ones too.
+    if ( !listedAll ) {
+        log( "A folder of " + toUtf8( directory ) + " could not be read to its end" );
+        ++kept;
+    }
     // Kept files would be found by the previous version: the record stays, to try again.
     return kept;
 }
@@ -1294,8 +1302,9 @@ int runPrepare( const fs::path& directory, const fs::path& report, const Log& lo
         log( "Installation folder " + toUtf8( directory ) + " does not exist yet" );
         fs::create_directories( directory, error );
         if ( !fs::is_directory( directory, error ) ) {
+            // Without a record, a failed copy could not be undone: nothing is installed.
             log( "Cannot create " + toUtf8( directory ) );
-            return PreparedExitCode;
+            return ManifestFailedExitCode;
         }
     }
     const auto manifestPath = directory / ManifestFileName;

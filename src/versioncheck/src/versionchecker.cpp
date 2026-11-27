@@ -52,6 +52,8 @@ constexpr auto RestoreFilePrefix = "pending-update.restore-";
 // A claimed transaction whose helper neither holds the updater lock nor left a result is
 // still given this long to start before it counts as abandoned.
 constexpr qint64 AbandonedClaimAgeMs = 2 * 60 * 1000;
+// How often a started new version checks again for the result of the install that started it.
+constexpr int CompletedRecheckMs = 2000;
 // A claim that fails for another reason than "busy" or "gone" (typically a sharing violation
 // while security software reads the record) is retried briefly at exit.
 constexpr int ClaimRenameAttempts = 5;
@@ -1707,8 +1709,16 @@ void VersionChecker::reconcileLaunchedUpdate()
                  << "; left untouched";
         return;
     case PendingDisposition::Completed: {
-        LOG_INFO << "Exit-time install of " << launched->release.version
-                 << " completed; clearing its record";
+        // The new executable is in place, but the helper may still be finishing (deleting old
+        // copies) and may yet roll back or report a warning: the record waits for its result.
+        // Checked again soon: a record left behind would stop the next exit-time install.
+        if ( isUpdaterRunning() ) {
+            LOG_INFO << "Exit-time install of " << launched->release.version
+                     << " is still finishing (the updater lock is held); its record is kept";
+            QTimer::singleShot( CompletedRecheckMs, this,
+                                &VersionChecker::reconcileLaunchedUpdate );
+            return;
+        }
         // Installed, yet the installer may have reported that files of the previous version it
         // does not replace could not be put back. Only the process that removes the record
         // reports it.
@@ -1716,6 +1726,15 @@ void VersionChecker::reconcileLaunchedUpdate()
         const bool haveResult = readInstallResult(
             QFileInfo( launched->helperLogPath ).absolutePath(), launched->transactionToken,
             &result );
+        if ( !haveResult && qAbs( claimAgeMs( *launched, path ) ) < AbandonedClaimAgeMs ) {
+            LOG_INFO << "Exit-time install of " << launched->release.version
+                     << " has no result yet; its record is kept";
+            QTimer::singleShot( CompletedRecheckMs, this,
+                                &VersionChecker::reconcileLaunchedUpdate );
+            return;
+        }
+        LOG_INFO << "Exit-time install of " << launched->release.version
+                 << " completed; clearing its record";
         if ( QFile::remove( path ) && haveResult
              && result.phase == QLatin1String( cilogg::update_protocol::InstallerPhase )
              && result.code == cilogg::update_protocol::InstallerFinishIncompleteExitCode ) {

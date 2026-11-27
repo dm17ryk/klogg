@@ -661,8 +661,13 @@ TEST_CASE( "A completed exit-time install clears its record silently", "[updater
     QTemporaryDir root;
     REQUIRE( root.isValid() );
     const auto launchedPath = QDir( root.path() ).filePath( LaunchedName );
-    writeTransaction( launchedPath,
-                      makeTransaction( root.path(), "26.04.2.1203", thisInstallation() ) );
+    const auto launched = makeTransaction( root.path(), "26.04.2.1203", thisInstallation() );
+    writeTransaction( launchedPath, launched );
+    writeFile( QFileInfo( launched.helperLogPath )
+                   .dir()
+                   .filePath( cilogg::update_protocol::InstallResultFileName ),
+               "token=" + launched.transactionToken.toLatin1()
+                   + "\nmode=windows-setup\nphase=relaunch\ncode=0\n" );
 
     const auto checker = makeOfflineChecker( root.path(), "26.04.2.1203" );
     QSignalSpy failed( checker.get(), &VersionChecker::installFailed );
@@ -670,6 +675,38 @@ TEST_CASE( "A completed exit-time install clears its record silently", "[updater
     REQUIRE_FALSE( failed.wait( 200 ) );
     REQUIRE_FALSE( QFile::exists( launchedPath ) );
     REQUIRE( checker->state() == UpdateState::Idle );
+}
+
+TEST_CASE( "A new version started while its install finishes waits for the result", "[updater]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    const QDir rootDir( root.path() );
+    const auto launchedPath = rootDir.filePath( LaunchedName );
+    const auto launched = makeTransaction( root.path(), "26.04.2.1203", thisInstallation() );
+    writeTransaction( launchedPath, launched );
+    // The helper still runs the installer, which is deleting the old copies.
+    cilogg::update_files::ExclusiveFileLock helperLock;
+    REQUIRE( helperLock.acquire( helperLockPath( root.path() ), 4242 ) );
+
+    const auto checker = makeOfflineChecker( root.path(), "26.04.2.1203" );
+    QSignalSpy reported( checker.get(), &VersionChecker::installFailed );
+    checker->activate();
+    REQUIRE_FALSE( reported.wait( 300 ) );
+    REQUIRE( QFile::exists( launchedPath ) );
+
+    // The installer then reports files it could not put back, and the helper ends.
+    writeFile( QFileInfo( launched.helperLogPath )
+                   .dir()
+                   .filePath( cilogg::update_protocol::InstallResultFileName ),
+               "token=" + launched.transactionToken.toLatin1()
+                   + "\nmode=windows-setup\nphase=installer\ncode="
+                   + QByteArray::number( cilogg::update_protocol::InstallerFinishIncompleteExitCode )
+                   + "\n" );
+    helperLock.release();
+    REQUIRE( reported.wait( 10000 ) );
+    REQUIRE( reported.at( 0 ).at( 0 ).toString().contains( "could not be put back" ) );
+    REQUIRE_FALSE( QFile::exists( launchedPath ) );
 }
 
 TEST_CASE( "The helper retries only transient installer launch failures", "[updater]" )
