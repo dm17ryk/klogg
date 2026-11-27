@@ -404,6 +404,8 @@ public:
 
 private:
     MonitoredFileStatus doCheckFileChanges();
+    // Logs and journals the message (%1 = file name) without letting a failure escape.
+    void recordBestEffort( const QString& messageWithFileName ) const;
 };
 
 class LogDataWorker : public QObject {
