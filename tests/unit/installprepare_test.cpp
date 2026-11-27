@@ -363,6 +363,16 @@ TEST_CASE( "A rollback puts back a file moved aside without a record", "[install
     writeText( root / prepare::ManifestFileName,
                prepare::formatManifestLine( result.moved.front() ) + "\n" );
 
+#ifdef Q_OS_WIN
+    {
+        // A scanner holds the unrecorded copy: the rollback is incomplete and keeps its record.
+        ExclusiveHandle scanner( result.moved.back().movedTo );
+        REQUIRE( scanner.isOpen() );
+        REQUIRE( prepare::runRollback( root, recorder( lines ) )
+                 == prepare::RollbackIncompleteExitCode );
+        REQUIRE( fs::exists( root / prepare::ManifestFileName ) );
+    }
+#endif
     REQUIRE( prepare::runRollback( root, recorder( lines ) ) == prepare::PreparedExitCode );
     REQUIRE( readText( root / "cilogg.exe" ) == "old executable" );
     REQUIRE( readText( root / "Qt6Core.dll" ) == "old library" );
@@ -724,6 +734,32 @@ TEST_CASE( "Another program's DLL in use in the same folder does not block the i
     REQUIRE( fs::exists( root / "other.dll" ) );
     REQUIRE( prepare::runRollback( root, recorder( lines ) ) == prepare::PreparedExitCode );
     REQUIRE( readText( root / "cilogg.exe" ) == "old executable" );
+    // Unchanged: its copy is deleted.
+    REQUIRE( movedAsideFiles( root ).empty() );
+}
+
+TEST_CASE( "A DLL held during prepare is restored if the installation overwrote it",
+           "[installprepare]" )
+{
+    QTemporaryDir temporary;
+    REQUIRE( temporary.isValid() );
+    const auto root = nativePath( temporary.path() );
+    writeText( root / "cilogg.exe", "old executable" );
+    writeText( root / "Qt6Core.dll", "old library" );
+    std::vector<std::string> lines;
+    {
+        // Security software holds the library through every move attempt.
+        ExclusiveHandle scanner( root / "Qt6Core.dll" );
+        REQUIRE( scanner.isOpen() );
+        REQUIRE( prepare::runPrepare( root, {}, recorder( lines ) ) == prepare::PreparedExitCode );
+    }
+    // Released, the library is overwritten; then another file fails to copy.
+    writeText( root / "Qt6Core.dll", "new library" );
+    REQUIRE( prepare::runRollback( root, recorder( lines ) ) == prepare::PreparedExitCode );
+    REQUIRE( readText( root / "Qt6Core.dll" ) == "old library" );
+    REQUIRE( readText( root / "cilogg.exe" ) == "old executable" );
+    REQUIRE( movedAsideFiles( root ).empty() );
+    REQUIRE_FALSE( fs::exists( root / prepare::ManifestFileName ) );
 }
 
 TEST_CASE( "An incomplete rollback keeps its whole record for another pass", "[installprepare]" )

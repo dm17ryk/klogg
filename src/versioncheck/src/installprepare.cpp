@@ -1,6 +1,7 @@
 #include "installprepare.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <chrono>
 #include <cstring>
@@ -523,11 +524,15 @@ std::vector<fs::path> installationFiles( const fs::path& directory, bool* comple
 }
 
 // Whether `directory` holds a CILogg installation, or what an interrupted update of one left. A
-// first installation into a folder holding anything else moves nothing there.
-bool holdsInstallation( const fs::path& directory )
+// first installation into a folder holding anything else moves nothing there. `complete`
+// (optional) is false when the folder could not be read to its end: the answer is then unsure.
+bool holdsInstallation( const fs::path& directory, bool* complete = nullptr )
 {
     const auto manifest = lowerAscii( ManifestFileName );
-    const auto files = listDirectory( directory ).files;
+    const auto listing = listDirectory( directory );
+    if ( complete )
+        *complete = listing.complete;
+    const auto& files = listing.files;
     return std::any_of( files.begin(), files.end(), [ &manifest ]( const fs::path& file ) {
         return isCiloggExecutable( file ) || isMovedAside( file ) || lowerName( file ) == manifest;
     } );
@@ -943,8 +948,10 @@ bool isInUse( const fs::path& file )
 
 namespace {
 // Puts back the newest moved-aside copy of every file of `directory` whose original is missing,
-// and nothing else. Returns the originals it looked at, put back or not.
-std::vector<fs::path> putBackWithoutOriginal( const fs::path& directory, const Log& log )
+// and nothing else. Returns the originals it looked at, put back or not; those it could not put
+// back are added to `notPutBack`, for another attempt.
+std::vector<fs::path> putBackWithoutOriginal( const fs::path& directory, const Log& log,
+                                              std::vector<MovedFile>& notPutBack )
 {
     std::map<fs::path, std::pair<fs::path, fs::file_time_type>> newest;
     for ( const auto& file : installationFiles( directory ) ) {
@@ -966,12 +973,71 @@ std::vector<fs::path> putBackWithoutOriginal( const fs::path& directory, const L
     for ( const auto& [ original, copy ] : newest ) {
         originals.push_back( original );
         std::string renameError;
-        if ( renameInside( copy.first, original, directory, &renameError ) == RenameResult::Renamed )
+        if ( renameInside( copy.first, original, directory, &renameError ) == RenameResult::Renamed ) {
             log( "Put back " + toUtf8( original ) + ", moved aside without a record" );
-        else
+        }
+        else {
             log( "Cannot put back " + toUtf8( original ) + ": " + renameError );
+            if ( renameError != OutsideError )
+                notPutBack.push_back( { original, copy.first } );
+        }
     }
     return originals;
+}
+
+// Whether two files hold the same bytes.
+bool sameContent( const fs::path& first, const fs::path& second )
+{
+    std::error_code error;
+    const auto size = fs::file_size( first, error );
+    if ( error || fs::file_size( second, error ) != size || error )
+        return false;
+    std::ifstream a( first, std::ios::binary );
+    std::ifstream b( second, std::ios::binary );
+    if ( !a || !b )
+        return false;
+    std::array<char, 65536> left{};
+    std::array<char, 65536> right{};
+    while ( a && b ) {
+        a.read( left.data(), static_cast<std::streamsize>( left.size() ) );
+        b.read( right.data(), static_cast<std::streamsize>( right.size() ) );
+        if ( a.gcount() != b.gcount()
+             || !std::equal( left.begin(), left.begin() + a.gcount(), right.begin() ) )
+            return false;
+    }
+    return a.eof() && b.eof();
+}
+
+// Copies `original` to the first free moved-aside name next to it, for a file that cannot be
+// moved: the copy is the previous version a rollback restores.
+bool copyToFreeName( const fs::path& original, const fs::path& directory, fs::path* copyPath,
+                     std::string* error )
+{
+    for ( int copy = 1; copy <= MaxMovedAsideCopies; ++copy ) {
+        auto name = original.filename();
+        name += MovedAsideSuffix;
+        if ( copy > 1 )
+            name += "-" + std::to_string( copy );
+        const auto target = original.parent_path() / name;
+        if ( nameTaken( target ) )
+            continue;
+        if ( !staysInside( original, directory ) || !staysInside( target, directory ) ) {
+            *error = OutsideError;
+            return false;
+        }
+        std::error_code code;
+        if ( fs::copy_file( original, target, fs::copy_options::none, code ) ) {
+            *copyPath = target;
+            return true;
+        }
+        // Never a partial copy left behind for a rollback to restore.
+        *error = code.message();
+        std::error_code ignored;
+        fs::remove( target, ignored );
+        return false;
+    }
+    *error = "every moved-aside name is still in use";
+    return false;
 }
 } // namespace
 
@@ -1093,15 +1159,21 @@ PrepareResult moveAside( const fs::path& directory, const Log& log,
         }
     }
     for ( const auto& [ file, error ] : failed ) {
-        // A top-level DLL may belong to another program in the same folder: leave it where it is.
-        // If it is one of CILogg's, writing the new one fails and the installation is undone.
-        // Only one the installer could not overwrite either: a DLL it could write would be
-        // replaced without a copy to restore.
+        // A top-level DLL may belong to another program in the same folder, which keeps it open:
+        // it stays where it is, and a copy is the previous version a rollback restores should
+        // the installation overwrite it once it is released. Unchanged, the copy is just deleted.
         if ( file.parent_path() == directory && lowerExtension( file ) == ".dll"
-             && error != OutsideError && isInUse( file ) ) {
-            log( "Left in place (" + error + "): " + toUtf8( file ) );
-            result.leftInPlace.push_back( file );
-            continue;
+             && error != OutsideError ) {
+            fs::path copyPath;
+            std::string copyError;
+            if ( copyToFreeName( file, directory, &copyPath, &copyError ) ) {
+                log( "Copied instead of moved (" + error + "): " + toUtf8( file ) );
+                result.moved.push_back( { file, copyPath } );
+                if ( onMoved )
+                    onMoved( result.moved.back() );
+                continue;
+            }
+            log( "Cannot copy " + toUtf8( file ) + ": " + copyError );
         }
         log( "Cannot move aside " + toUtf8( file ) + ": " + error );
         result.blocked.push_back( file );
@@ -1258,6 +1330,12 @@ std::vector<MovedFile> rollback( const fs::path& directory, const std::vector<Mo
             }
             continue;
         }
+        if ( fs::exists( file->original, error ) && sameContent( file->original, file->movedTo ) ) {
+            // Unchanged (a file prepare copied because it could not be moved, and the
+            // installation did not overwrite): the copy is not needed.
+            deleteOrSchedule( file->movedTo, directory, log );
+            continue;
+        }
         if ( fs::exists( file->original, error ) ) {
             // A new file was (partly) installed in its place: move it aside as well.
             fs::path newCopy;
@@ -1288,7 +1366,7 @@ std::vector<MovedFile> rollback( const fs::path& directory, const std::vector<Mo
     // that previous file waits under a moved-aside name with its original missing. It is put
     // back, and is never taken for an added file.
     auto keep = leftInPlace;
-    const auto unrecorded = putBackWithoutOriginal( directory, log );
+    const auto unrecorded = putBackWithoutOriginal( directory, log, left );
     keep.insert( keep.end(), unrecorded.begin(), unrecorded.end() );
     if ( removeAdded ) {
         const auto kept = removeNewFiles( directory, moved, keep, log );
@@ -1384,7 +1462,15 @@ int runPrepare( const fs::path& directory, const fs::path& report, const Log& lo
         if ( !discardManifest( manifestPath, log ) )
             return RollbackIncompleteExitCode;
     }
-    if ( !holdsInstallation( directory ) ) {
+    bool listedTop = true;
+    const bool holds = holdsInstallation( directory, &listedTop );
+    if ( !listedTop ) {
+        // An installation not seen would be taken for a first one and overwritten unbacked.
+        log( "The folder " + toUtf8( directory )
+             + " could not be read to its end; nothing is installed" );
+        return ManifestFailedExitCode;
+    }
+    if ( !holds ) {
         log( "No CILogg installation in " + toUtf8( directory ) + "; nothing is moved aside" );
         return recordFirstInstallation( directory, manifestPath, log );
     }
@@ -1403,8 +1489,6 @@ int runPrepare( const fs::path& directory, const fs::path& report, const Log& lo
         manifest.flush();
         recorded = recorded && static_cast<bool>( manifest );
     } );
-    for ( const auto& file : result.leftInPlace )
-        manifest << LeftInPlacePrefix << withoutSeparators( exactUtf8( file ) ) << "\n";
     // A file the listing missed would be overwritten without a copy to restore: nothing is
     // installed then.
     if ( !result.listedAll )
@@ -1442,8 +1526,7 @@ int runPrepare( const fs::path& directory, const fs::path& report, const Log& lo
         log( "Cannot record the moved files in " + toUtf8( manifestPath ) );
     }
     // Nothing was copied yet: the blocked files are the previous version's too.
-    auto untouched = result.leftInPlace;
-    untouched.insert( untouched.end(), result.blocked.begin(), result.blocked.end() );
+    const auto& untouched = result.blocked;
     const auto left = rollback( directory, result.moved, log, false, untouched );
     manifest.close();
     writeReport( report, result.blocked, blockers, log );

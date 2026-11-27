@@ -103,8 +103,6 @@ struct PrepareResult {
     std::vector<MovedFile> moved;
     // Files that could not be moved aside. The caller then puts `moved` back with rollback().
     std::vector<std::filesystem::path> blocked;
-    // Top-level DLLs that could not be moved and may be another program's: left where they were.
-    std::vector<std::filesystem::path> leftInPlace;
     // False when a folder of the installation could not be read to its end.
     bool listedAll = true;
 };
@@ -118,8 +116,10 @@ struct PrepareResult {
 // no CILogg installation is left alone. Links and junctions are never followed, and every rename
 // first checks that no folder on the way is one. `onMoved` sees each move as it happens, so a
 // manifest can be written before the next one. Files that cannot be moved are tried again after
-// a pause; a top-level DLL that still cannot be moved is left in place (it may be another
-// program's). A blocked file does not stop the pass: every blocked file is reported.
+// a pause; a top-level DLL that still cannot be moved (it may be another program's, held open)
+// stays in place and is copied instead: the copy is recorded like a moved file, so a rollback
+// can restore it, and is deleted when the file is unchanged. A blocked file does not stop the
+// pass: every blocked file is reported.
 PrepareResult moveAside( const std::filesystem::path& directory, const Log& log,
                          const std::function<void( const MovedFile& )>& onMoved = {} );
 
