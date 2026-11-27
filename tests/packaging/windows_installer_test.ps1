@@ -139,6 +139,16 @@ function Start-Owned([string]$path, [string]$arguments, [switch]$KeepInputOpen) 
     return $process
 }
 
+function Get-PeMachine([string]$path) {
+    # The Machine field of the PE header: 0x8664 x64, 0xAA64 arm64.
+    $bytes = [IO.File]::ReadAllBytes($path)
+    $peOffset = [BitConverter]::ToInt32($bytes, 0x3C)
+    if ($bytes.Length -lt $peOffset + 6 -or [BitConverter]::ToUInt32($bytes, $peOffset) -ne 0x00004550) {
+        throw "Not a Windows program: $path"
+    }
+    return [int][BitConverter]::ToUInt16($bytes, $peOffset + 4)
+}
+
 function Build-Installer {
     $outFile = Join-Path $workDirectory 'cilogg-installer-test-setup.exe'
     $script = Join-Path $repoRoot 'packaging\windows\cilogg.nsi'
@@ -193,6 +203,15 @@ $supervisorLog = Join-Path $workDirectory 'supervisor.log'
 $results = [Collections.Generic.List[object]]::new()
 $heldFile = $null
 try {
+    # Windows on arm64 also runs x64 programs: check that the package holds $Platform programs.
+    $expectedMachine = @{ 'x64' = 0x8664; 'arm64' = 0xAA64 }[$Platform.ToLowerInvariant()]
+    if ($null -eq $expectedMachine) { throw "Unknown platform: $Platform" }
+    foreach ($image in @('cilogg.exe', 'cilogg_portable.exe', 'cilogg_grep.exe', 'cilogg_updater.exe')) {
+        $machine = Get-PeMachine (Join-Path $PackageRoot "release\$image")
+        if ($machine -ne $expectedMachine) {
+            throw ("release\{0} is built for machine 0x{1:X4}, not {2} (0x{3:X4})" -f $image, $machine, $Platform, $expectedMachine)
+        }
+    }
     if ($CompileOnly) {
         # The cross-compiling arm64 build job: its binaries cannot run on the x64 runner. CI runs
         # this whole test on the same package on a native arm64 runner (Windows arm64 installer).

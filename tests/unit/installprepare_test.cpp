@@ -268,6 +268,62 @@ TEST_CASE( "A failed installation restores every file of the previous version",
     REQUIRE( readText( root / "cilogg.exe" ) == "old executable" );
 }
 
+#ifdef Q_OS_WIN
+TEST_CASE( "A rollback keeps its record while an added file cannot be removed",
+           "[installprepare]" )
+{
+    QTemporaryDir temporary;
+    REQUIRE( temporary.isValid() );
+    const auto root = nativePath( temporary.path() );
+    writeText( root / "cilogg.exe", "old executable" );
+    std::vector<std::string> lines;
+    REQUIRE( prepare::runPrepare( root, {}, recorder( lines ) ) == prepare::PreparedExitCode );
+    const auto manifest = root / prepare::ManifestFileName;
+    writeText( root / "cilogg.exe", "new executable" );
+    const auto added = root / "plugins" / "added.json";
+    writeText( added, "only in the new version" );
+
+    {
+        // Another process opened the added file: the previous version would find it.
+        ExclusiveHandle held( added );
+        REQUIRE( held.isOpen() );
+        REQUIRE( prepare::runRollback( root, recorder( lines ) )
+                 == prepare::RollbackIncompleteExitCode );
+        REQUIRE( readText( root / "cilogg.exe" ) == "old executable" );
+        REQUIRE( fs::exists( manifest ) );
+    }
+    REQUIRE( prepare::runRollback( root, recorder( lines ) ) == prepare::PreparedExitCode );
+    REQUIRE_FALSE( fs::exists( added ) );
+    REQUIRE_FALSE( fs::exists( manifest ) );
+    REQUIRE( readText( root / "cilogg.exe" ) == "old executable" );
+}
+
+TEST_CASE( "A rollback whose record cannot be deleted reports it", "[installprepare]" )
+{
+    QTemporaryDir temporary;
+    REQUIRE( temporary.isValid() );
+    const auto root = nativePath( temporary.path() );
+    writeText( root / "cilogg.exe", "old executable" );
+    std::vector<std::string> lines;
+    REQUIRE( prepare::runPrepare( root, {}, recorder( lines ) ) == prepare::PreparedExitCode );
+    const auto manifest = root / prepare::ManifestFileName;
+    writeText( root / "cilogg.exe", "new executable" );
+
+    {
+        // A scanner holds the record: it can be neither deleted nor emptied, and its marks
+        // would make a later run remove files added after this rollback.
+        ExclusiveHandle held( manifest );
+        REQUIRE( held.isOpen() );
+        REQUIRE( prepare::runRollback( root, recorder( lines ) )
+                 == prepare::RollbackIncompleteExitCode );
+        REQUIRE( readText( root / "cilogg.exe" ) == "old executable" );
+    }
+    REQUIRE( prepare::runRollback( root, recorder( lines ) ) == prepare::PreparedExitCode );
+    REQUIRE_FALSE( fs::exists( manifest ) );
+    REQUIRE( readText( root / "cilogg.exe" ) == "old executable" );
+}
+#endif
+
 TEST_CASE( "A first installation into another program's folder moves nothing",
            "[installprepare]" )
 {

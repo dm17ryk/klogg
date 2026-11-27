@@ -697,7 +697,8 @@ bool hasMarker( const fs::path& manifestPath, const char* marker )
 
 // Writes the cached data of `file` through to the disk, so that after a power loss it is not
 // older than the renames and deletions that follow it (the file system journals those at once).
-void writeThrough( const fs::path& file, const Log& log )
+// False when it may not have reached the disk.
+bool writeThrough( const fs::path& file, const Log& log )
 {
 #ifdef _WIN32
     const auto handle
@@ -710,10 +711,31 @@ void writeThrough( const fs::path& file, const Log& log )
         CloseHandle( handle );
     if ( !written )
         log( "Cannot write " + toUtf8( file ) + " through to the disk: " + systemErrorText( code ) );
+    return written;
 #else
     (void)file;
     (void)log;
+    return true;
 #endif
+}
+
+// Deletes a manifest nothing is left to do for. One that cannot be deleted is emptied: a record
+// without entries or marks makes the next run change nothing. False when it is neither.
+bool discardManifest( const fs::path& path, const Log& log )
+{
+    std::error_code removeError;
+    std::error_code error;
+    if ( fs::remove( path, removeError ) || !fs::exists( path, error ) )
+        return true;
+    log( "Cannot delete " + toUtf8( path ) + ": " + removeError.message() );
+    {
+        std::ofstream file( path, std::ios::binary | std::ios::trunc );
+        file.flush();
+        if ( file && fs::file_size( path, error ) == 0 && !error )
+            return true;
+    }
+    log( "Cannot empty " + toUtf8( path ) );
+    return false;
 }
 
 // Keeps only `entries`; `marker` (FinishingMarker or none) says how the next run treats them.
@@ -1127,6 +1149,7 @@ fs::path::string_type pathKey( const fs::path& path )
 
 // After the previous files are back: every other file of the installation was written by the
 // failed installation (prepare moved all of them aside), unless prepare left it in place.
+// Returns how many of them could not be removed.
 std::size_t removeNewFiles( const fs::path& directory, const std::vector<MovedFile>& moved,
                             const std::vector<fs::path>& leftInPlace, const Log& log )
 {
@@ -1152,11 +1175,13 @@ std::size_t removeNewFiles( const fs::path& directory, const std::vector<MovedFi
         return 0;
     }
     std::size_t removed = 0;
+    std::size_t kept = 0;
     for ( const auto& file : added ) {
         fs::path newCopy;
         std::string error;
         if ( moveToFreeName( file, directory, &newCopy, &error ) != RenameResult::Renamed ) {
             log( "Cannot remove the new " + toUtf8( file ) + ": " + error );
+            ++kept;
             continue;
         }
         deleteOrSchedule( newCopy, directory, log );
@@ -1164,14 +1189,18 @@ std::size_t removeNewFiles( const fs::path& directory, const std::vector<MovedFi
     }
     if ( removed > 0 )
         log( "Removed " + std::to_string( removed ) + " files the installation had added" );
-    return removed;
+    // Kept files would be found by the previous version: the record stays, to try again.
+    return kept;
 }
 } // namespace
 
 std::vector<MovedFile> rollback( const fs::path& directory, const std::vector<MovedFile>& moved,
                                  const Log& log, bool removeAdded,
-                                 const std::vector<fs::path>& leftInPlace )
+                                 const std::vector<fs::path>& leftInPlace,
+                                 std::size_t* addedKept )
 {
+    if ( addedKept )
+        *addedKept = 0;
     std::vector<MovedFile> left;
     std::size_t lost = 0;
     for ( auto file = moved.rbegin(); file != moved.rend(); ++file ) {
@@ -1211,8 +1240,11 @@ std::vector<MovedFile> rollback( const fs::path& directory, const std::vector<Mo
              ? "Restored " + std::to_string( moved.size() ) + " files"
              : "Restored the previous files except " + std::to_string( left.size() )
                    + " to try again and " + std::to_string( lost ) + " lost" );
-    if ( removeAdded )
-        removeNewFiles( directory, moved, leftInPlace, log );
+    if ( removeAdded ) {
+        const auto kept = removeNewFiles( directory, moved, leftInPlace, log );
+        if ( addedKept )
+            *addedKept = kept;
+    }
     return left;
 }
 
@@ -1246,16 +1278,18 @@ int runPrepare( const fs::path& directory, const fs::path& report, const Log& lo
         else {
             log( "Restoring " + std::to_string( earlier.size() )
                  + " files an interrupted update moved aside" );
+            std::size_t addedKept = 0;
             const auto left
                 = rollback( directory, earlier, log, hasMarker( manifestPath, PreparedMarker ),
-                            readLeftInPlace( manifestPath ) );
-            if ( !left.empty() ) {
+                            readLeftInPlace( manifestPath ), &addedKept );
+            if ( !left.empty() || addedKept > 0 ) {
                 // Kept whole, with its marks: another pass skips what is restored already.
                 log( "Kept " + toUtf8( manifestPath ) + "; run setup again" );
                 return RollbackIncompleteExitCode;
             }
         }
-        fs::remove( manifestPath, error );
+        if ( !discardManifest( manifestPath, log ) )
+            return RollbackIncompleteExitCode;
     }
     if ( !holdsInstallation( directory ) ) {
         log( "No CILogg installation in " + toUtf8( directory ) + "; nothing is moved aside" );
@@ -1278,20 +1312,23 @@ int runPrepare( const fs::path& directory, const fs::path& report, const Log& lo
     } );
     for ( const auto& file : result.leftInPlace )
         manifest << LeftInPlacePrefix << withoutSeparators( exactUtf8( file ) ) << "\n";
+    // A file the listing missed would be overwritten without a copy to restore: nothing is
+    // installed then.
+    if ( !result.listedAll )
+        log( "A folder of the installation could not be read to its end; nothing is installed" );
     // Only a complete listing makes the manifest a complete record of the previous version. The
     // records reach the disk before their mark: a mark without them would make a rollback take
     // files it has no record of for added ones.
     if ( result.blocked.empty() && result.listedAll ) {
         manifest.flush();
-        writeThrough( manifestPath, log );
-        manifest << PreparedMarker << "\n";
+        if ( static_cast<bool>( manifest ) && writeThrough( manifestPath, log ) )
+            manifest << PreparedMarker << "\n";
+        else
+            log( "A failed installation keeps the files it added" );
     }
-    if ( !result.listedAll )
-        log( "A folder of the installation could not be read to its end; a failed installation "
-             "keeps the files it added" );
     manifest.flush();
     recorded = recorded && static_cast<bool>( manifest );
-    if ( result.blocked.empty() && recorded ) {
+    if ( result.blocked.empty() && result.listedAll && recorded ) {
         log( "Moved aside " + std::to_string( result.moved.size() ) + " files" );
         return PreparedExitCode;
     }
@@ -1304,7 +1341,7 @@ int runPrepare( const fs::path& directory, const fs::path& report, const Log& lo
         for ( const auto& process : blockers )
             log( "Uses a blocked file: " + describeForLog( process ) );
     }
-    else {
+    else if ( !recorded ) {
         log( "Cannot record the moved files in " + toUtf8( manifestPath ) );
     }
     // Nothing was copied yet: the blocked files are the previous version's too.
@@ -1318,7 +1355,8 @@ int runPrepare( const fs::path& directory, const fs::path& report, const Log& lo
         log( "Kept " + toUtf8( manifestPath ) + "; run setup again" );
         return RollbackIncompleteExitCode;
     }
-    fs::remove( manifestPath, error );
+    if ( !discardManifest( manifestPath, log ) )
+        return RollbackIncompleteExitCode;
     return result.blocked.empty() ? ManifestFailedExitCode : BlockedExitCode;
 }
 
@@ -1346,10 +1384,13 @@ int runFinish( const fs::path& directory, const Log& log )
     }
     // The mark reaches the disk before the first old copy is deleted: after a power loss, a
     // recovery that found deletions without it would undo a cleanup it can no longer undo.
-    writeThrough( manifestPath, log );
+    if ( !writeThrough( manifestPath, log ) ) {
+        log( "The old copies stay until setup runs again" );
+        return ManifestFailedExitCode;
+    }
     const auto notPutBack = finish( directory, readManifest( directory, manifestPath, log ), log );
     if ( notPutBack.empty() ) {
-        fs::remove( manifestPath, error );
+        discardManifest( manifestPath, log );
         return PreparedExitCode;
     }
     // Only what still has to be put back stays recorded: the next update puts it back first.
@@ -1382,15 +1423,18 @@ int runRollback( const fs::path& directory, const Log& log )
         log( "Kept " + toUtf8( manifestPath ) + "; the next update puts these files back" );
         return FinishedInsteadIncompleteExitCode;
     }
+    std::size_t addedKept = 0;
     const auto left = rollback( directory, readManifest( directory, manifestPath, log ), log,
                                 hasMarker( manifestPath, PreparedMarker ),
-                                readLeftInPlace( manifestPath ) );
-    if ( !left.empty() ) {
+                                readLeftInPlace( manifestPath ), &addedKept );
+    if ( !left.empty() || addedKept > 0 ) {
         // Kept whole, with its marks: another pass skips what is restored already.
         log( "Kept " + toUtf8( manifestPath ) + "; run setup again" );
         return RollbackIncompleteExitCode;
     }
-    fs::remove( manifestPath, error );
+    // A record left behind with its marks would make the next run remove files added later.
+    if ( !discardManifest( manifestPath, log ) )
+        return RollbackIncompleteExitCode;
     return PreparedExitCode;
 }
 
