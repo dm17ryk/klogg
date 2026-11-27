@@ -395,6 +395,11 @@ public:
     {
     }
 
+    // The check streams the indexed header/tail (or the whole indexed range) through xxhash, so
+    // it needs only a small read buffer. It runs on every change notification of a followed
+    // file, so it must not ask for a multi-megabyte block each time (#201).
+    static constexpr qint64 HashBlockSize = 64 * 1024;
+
     OperationResult run() override;
 
 private:

@@ -37,6 +37,7 @@
  */
 
 #include <chrono>
+#include <algorithm>
 #include <exception>
 #include <functional>
 #include <qglobal.h>
@@ -994,6 +995,23 @@ OperationResult CheckFileChangesOperation::run()
         }
         Q_EMIT fileCheckFinished( result );
         return result;
+    } catch ( const std::bad_alloc& ) {
+        // The system is out of memory (commit), which is not a CILogg defect (#201). Reporting
+        // the file as changed would start a full reindex, which needs far more memory than this
+        // check, so keep the current index and let the next change notification check again.
+        try {
+            LOG_WARNING << "CheckFileChangesOperation: not enough memory to check "
+                        << fileName_.toStdString() << ", keeping the current index";
+            cilogg::diagnostics::ActivityJournal::record(
+                QStringLiteral( "file" ),
+                QStringLiteral( "not enough memory to check %1 for changes; will retry on the "
+                                "next change" )
+                    .arg( fileName_ ) );
+        } catch ( const std::exception& ) {
+            // Logging needs memory too; the deferred check below is what matters.
+        }
+        Q_EMIT fileCheckFinished( MonitoredFileStatus::Unchanged );
+        return MonitoredFileStatus::Unchanged;
     } catch ( const std::exception& err ) {
         const auto errorString
             = QString( "CheckFileChangesOperation failed: %1" ).arg( err.what() );
@@ -1015,9 +1033,12 @@ MonitoredFileStatus CheckFileChangesOperation::doCheckFileChanges()
         return MonitoredFileStatus::Truncated;
     }
     else {
-        QFile file( fileName_ );
+        const auto filePtr = createFile();
+        auto& file = *filePtr;
 
-        QByteArray buffer{ IndexingBlockSize, Qt::Uninitialized };
+        // Every hashed range lies inside the indexed size, so a small file needs no more than that.
+        const auto bufferSize = std::clamp<qint64>( indexedHash.size, 1, HashBlockSize );
+        QByteArray buffer{ static_cast<int>( bufferSize ), Qt::Uninitialized };
 
         bool isFileModified = false;
         const auto& config = Configuration::get();
