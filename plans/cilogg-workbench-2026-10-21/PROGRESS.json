@@ -12,7 +12,7 @@
       "language": "C++17",
       "coreQtCompatibility": "Qt5/Qt6",
       "localQt": "6.10.1",
-      "localQtDir": "C:/Essence_SC/qt6.10.1",
+      "localQtDir": "C:/Qt/6.10.1/msvc2022_64",
       "ciQt": "6.12 on selected supported targets; legacy macOS retained",
       "buildRoot": "build_root",
       "freshBuildRun": false

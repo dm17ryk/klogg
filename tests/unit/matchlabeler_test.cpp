@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include <catch2/catch.hpp>
 
+#include <QStringList>
+
 #include "matchlabeler.h"
 
 namespace {
@@ -14,6 +16,16 @@ PredefinedFilter filter( const QString& name, const QString& pattern, bool useRe
 {
     return PredefinedFilter{ name, name, pattern, useRegex };
 }
+
+// What matched `line`, joined with ", ": the first column of the cell's tooltip.
+QString names( const MatchLabeler& labeler, const QString& line )
+{
+    QStringList found;
+    for ( const auto& match : labeler.matches( line ) ) {
+        found.append( match.name );
+    }
+    return found.join( ", " );
+}
 } // namespace
 
 TEST_CASE( "labels_predefined_filters", "[workbench][U14]" )
@@ -24,10 +36,10 @@ TEST_CASE( "labels_predefined_filters", "[workbench][U14]" )
     const auto labeler
         = MatchLabeler::fromSearch( regexSearch( "Panel Ready|ERR(OR)?:" ), filters );
     REQUIRE_FALSE( labeler.isEmpty() );
-    REQUIRE( labeler.label( "12:00 Panel Ready" ) == "Panel ready" );
-    REQUIRE( labeler.label( "12:01 ERROR: modem" ) == "Errors" );
-    REQUIRE( labeler.label( "12:02 Panel Ready after ERR: reset" ) == "Panel ready, Errors" );
-    REQUIRE( labeler.label( "12:03 nothing" ).isEmpty() );
+    REQUIRE( names( labeler, "12:00 Panel Ready" ) == "Panel ready" );
+    REQUIRE( names( labeler, "12:01 ERROR: modem" ) == "Errors" );
+    REQUIRE( names( labeler, "12:02 Panel Ready after ERR: reset" ) == "Panel ready, Errors" );
+    REQUIRE( names( labeler, "12:03 nothing" ).isEmpty() );
     REQUIRE( labeler.preferredColumnChars() >= QString( "Panel ready" ).size() );
 }
 
@@ -43,12 +55,12 @@ TEST_CASE( "labels_regex_alternatives", "[workbench][U14]" )
 
     // Empty alternatives match everything and name nothing.
     const auto withEmpty = MatchLabeler::fromSearch( regexSearch( "a||b|" ) );
-    REQUIRE( withEmpty.label( "only b here" ) == "b" );
-    REQUIRE( withEmpty.label( "a and b" ) == "a, b" );
+    REQUIRE( names( withEmpty, "only b here" ) == "b" );
+    REQUIRE( names( withEmpty, "a and b" ) == "a, b" );
 
     const auto labeler = MatchLabeler::fromSearch( regexSearch( "WARN|ERROR", false ) );
-    REQUIRE( labeler.label( "error: disk" ) == "ERROR" );
-    REQUIRE( labeler.label( "warn and error" ) == "WARN, ERROR" );
+    REQUIRE( names( labeler, "error: disk" ) == "ERROR" );
+    REQUIRE( names( labeler, "warn and error" ) == "WARN, ERROR" );
 }
 
 TEST_CASE( "labels_boolean_terms", "[workbench][U14]" )
@@ -57,14 +69,15 @@ TEST_CASE( "labels_boolean_terms", "[workbench][U14]" )
                                                   false );
     const auto labeler = MatchLabeler::fromSearch( search );
     REQUIRE_FALSE( labeler.isEmpty() );
-    REQUIRE( labeler.label( "socket timeout after 5 s" ) == "timeout" );
-    REQUIRE( labeler.label( "connect retry" ) == "connect" );
+    REQUIRE( names( labeler, "socket timeout after 5 s" ) == "timeout" );
+    REQUIRE( names( labeler, "connect retry" ) == "connect" );
 }
 
 TEST_CASE( "labels_single_term_shows_match", "[workbench][U14]" )
 {
     const auto labeler = MatchLabeler::fromSearch( regexSearch( "id=\\d+" ) );
     REQUIRE( labeler.label( "event id=4711 done" ) == "id=4711" );
+    REQUIRE( names( labeler, "event id=4711 done" ) == "id=\\d+" );
     // A match of the whole line says nothing new; the pattern is shown instead.
     REQUIRE( labeler.label( "id=1" ) == "id=\\d+" );
 
@@ -85,8 +98,8 @@ TEST_CASE( "labels_single_predefined_filter_by_name", "[workbench][U14]" )
     const auto labeler = MatchLabeler::fromSearch( regexSearch( "WARN" ),
                                                    { filter( "Warnings", "WARN", false ) } );
     REQUIRE_FALSE( labeler.isEmpty() );
-    REQUIRE( labeler.label( "12:00 WARN low battery" ) == "Warnings" );
-    REQUIRE( labeler.label( "12:01 ERROR modem" ).isEmpty() );
+    REQUIRE( names( labeler, "12:00 WARN low battery" ) == "Warnings" );
+    REQUIRE( names( labeler, "12:01 ERROR modem" ).isEmpty() );
     REQUIRE( labeler.preferredColumnChars() >= QString( "Warnings" ).size() );
 }
 
@@ -99,26 +112,26 @@ TEST_CASE( "labels_keep_inline_options_across_alternatives", "[workbench][U14]" 
 
     // A top-level (?i) applies to the alternatives after it, as in the search itself.
     const auto labeler = MatchLabeler::fromSearch( regexSearch( "(?i)warn|error" ) );
-    REQUIRE( labeler.label( "ERROR modem lost" ) == "error" );
-    REQUIRE( labeler.label( "Warn: low battery" ) == "warn" );
+    REQUIRE( names( labeler, "ERROR modem lost" ) == "error" );
+    REQUIRE( names( labeler, "Warn: low battery" ) == "warn" );
 
     // A setting in a later alternative carries on from there only.
     const auto later = MatchLabeler::fromSearch( regexSearch( "warn|(?i)error|fail" ) );
-    REQUIRE( later.label( "WARN" ).isEmpty() );
-    REQUIRE( later.label( "Error" ) == "error" );
-    REQUIRE( later.label( "FAIL" ) == "fail" );
+    REQUIRE( names( later, "WARN" ).isEmpty() );
+    REQUIRE( names( later, "Error" ) == "error" );
+    REQUIRE( names( later, "FAIL" ) == "fail" );
 
     // A scoped "(?i:...)" group does not reach the alternatives after it.
     const auto scoped = MatchLabeler::fromSearch( regexSearch( "(?i:warn)|error" ) );
-    REQUIRE( scoped.label( "ERROR" ).isEmpty() );
-    REQUIRE( scoped.label( "WARN" ) == "(?i:warn)" );
+    REQUIRE( names( scoped, "ERROR" ).isEmpty() );
+    REQUIRE( names( scoped, "WARN" ) == "(?i:warn)" );
 
     // Predefined filters combined into one expression inherit the same way, plain-text ones too.
     const auto filters = MatchLabeler::fromSearch(
         regexSearch( "(?i)warn|ERROR" ),
         { filter( "Any warning", "(?i)warn", true ), filter( "Errors", "ERROR", false ) } );
-    REQUIRE( filters.label( "error: disk" ) == "Errors" );
-    REQUIRE( filters.label( "WARN error" ) == "Any warning, Errors" );
+    REQUIRE( names( filters, "error: disk" ) == "Errors" );
+    REQUIRE( names( filters, "WARN error" ) == "Any warning, Errors" );
 
     // "(*...)" settings belong at the start of a pattern: such a pattern stays whole.
     const auto verbs = MatchLabeler::fromSearch( regexSearch( "(*UCP)alpha|beta" ) );
@@ -131,19 +144,19 @@ TEST_CASE( "labels_same_text_different_mode", "[workbench][U14]" )
     const QString alternatives = "warn|error";
     const auto asRegex = MatchLabeler::fromSearch(
         RegularExpressionPattern( alternatives, true, false, false, false ) );
-    REQUIRE( asRegex.label( "error: disk" ) == "error" );
+    REQUIRE( names( asRegex, "error: disk" ) == "error" );
     const auto asPlain = MatchLabeler::fromSearch(
         RegularExpressionPattern( alternatives, true, false, false, true ) );
-    REQUIRE( asPlain.label( "error: disk" ).isEmpty() );
-    REQUIRE( asPlain.label( "x warn|error y" ) == "warn|error" );
+    REQUIRE( names( asPlain, "error: disk" ).isEmpty() );
+    REQUIRE( names( asPlain, "x warn|error y" ) == "warn|error" );
 
     const QString terms = R"("warn" or "error")";
     const auto asBoolean
         = MatchLabeler::fromSearch( RegularExpressionPattern( terms, true, false, true, false ) );
-    REQUIRE( asBoolean.label( "error: disk" ) == "error" );
+    REQUIRE( names( asBoolean, "error: disk" ) == "error" );
     const auto asLiteralRegex
         = MatchLabeler::fromSearch( RegularExpressionPattern( terms, true, false, false, false ) );
-    REQUIRE( asLiteralRegex.label( "error: disk" ).isEmpty() );
+    REQUIRE( names( asLiteralRegex, "error: disk" ).isEmpty() );
 
     // An inverse search names nothing, whatever the mode.
     REQUIRE( MatchLabeler::fromSearch(
@@ -166,26 +179,26 @@ TEST_CASE( "labels_filter_alternative_that_matched", "[workbench][U14]" )
     const auto unnamed
         = MatchLabeler::fromSearch( regexSearch( pattern ), { filter( "", pattern, true ) } );
     REQUIRE_FALSE( unnamed.isEmpty() );
-    CHECK( unnamed.label( "Par(48)EHCP0290000" ) == "EHCP" );
-    CHECK( unnamed.label( "08:36:41.893 [TX] - GET VERSION:00;" ) == "[TX]" );
-    CHECK( unnamed.label( "(C_PROC:) WiFi up" ) == "C_PROC:, WiFi" );
-    CHECK( unnamed.label( "nothing" ).isEmpty() );
+    CHECK( names( unnamed, "Par(48)EHCP0290000" ) == "EHCP" );
+    CHECK( names( unnamed, "08:36:41.893 [TX] - GET VERSION:00;" ) == "[TX]" );
+    CHECK( names( unnamed, "(C_PROC:) WiFi up" ) == "C_PROC:, WiFi" );
+    CHECK( names( unnamed, "nothing" ).isEmpty() );
 
     // A filter with a name of its own keeps the name in front.
     const auto named
         = MatchLabeler::fromSearch( regexSearch( pattern ), { filter( "Panel", pattern, true ) } );
-    CHECK( named.label( "Par(48)EHCP0290000" ) == "Panel: EHCP" );
-    CHECK( named.preferredColumnChars() >= QString( "Panel: C_PROC:" ).size() );
+    CHECK( names( named, "Par(48)EHCP0290000" ) == "Panel: EHCP" );
+    CHECK( named.preferredColumnChars() >= QString( "C_PROC:" ).size() );
 
     // Inline options before an alternative still apply to the alternatives after it.
     const auto options = MatchLabeler::fromSearch( regexSearch( "(?i)warn|error" ),
                                                    { filter( "", "(?i)warn|error", true ) } );
-    CHECK( options.label( "ERROR: disk" ) == "error" );
+    CHECK( names( options, "ERROR: disk" ) == "error" );
 
     // A filter of one alternative still names the filter.
     const auto single
         = MatchLabeler::fromSearch( regexSearch( "(EHCP)" ), { filter( "Ehcp", "(EHCP)", true ) } );
-    CHECK( single.label( "x EHCP y" ) == "Ehcp" );
+    CHECK( names( single, "x EHCP y" ) == "Ehcp" );
 }
 
 namespace {
@@ -215,36 +228,36 @@ TEST_CASE( "labels_boolean_search_of_predefined_filters", "[workbench][U14]" )
     const auto labeler = MatchLabeler::fromSearch( search, {}, known );
     REQUIRE_FALSE( labeler.isEmpty() );
 
-    CHECK( labeler.label( "16/11/2026 02:24:56.322 [RX] - #12 4823 INFO:NET Socket bound to WiFi "
-                          "(resolved)" )
+    CHECK( names( labeler, "16/11/2026 02:24:56.322 [RX] - #12 4823 INFO:NET Socket bound to WiFi "
+                           "(resolved)" )
            == "Modem: WiFi" );
-    CHECK( labeler.label( "16/11/2026 02:23:15.273 [RX] - #22 1668 ERROR:VoIP SipTask Exiting... "
-                          "State: 0" )
+    CHECK( names( labeler, "16/11/2026 02:23:15.273 [RX] - #22 1668 ERROR:VoIP SipTask Exiting... "
+                           "State: 0" )
            == "Errors: ERROR" );
-    CHECK( labeler.label( "16/11/2026 02:25:06.248 [RX] - #12 4469 ERROR:NET Failed socket "
-                          "connect errno (116)" )
+    CHECK( names( labeler, "16/11/2026 02:25:06.248 [RX] - #12 4469 ERROR:NET Failed socket "
+                           "connect errno (116)" )
            == "Errors: ERROR" );
-    CHECK( labeler.label( "16/11/2026 02:23:15.196 [TX] - VOIP: config proxy 192.168.1.10:5070 ;" )
+    CHECK( names( labeler, "16/11/2026 02:23:15.196 [TX] - VOIP: config proxy 192.168.1.10:5070 ;" )
            == "Modem: [TX]" );
-    CHECK( labeler.label( "12:00:01 I (2210) wifi: started" ).isEmpty() ); // case-sensitive
-    CHECK( labeler.label( "12:00:01 E (2210) net: no route" ) == "Errors: E (" );
-    CHECK( labeler.label( "16/11/2026 02:23:49.488 [RX] - EHCP0480409 ERROR" )
+    CHECK( names( labeler, "12:00:01 I (2210) wifi: started" ).isEmpty() ); // case-sensitive
+    CHECK( names( labeler, "12:00:01 E (2210) net: no route" ) == "Errors: E (" );
+    CHECK( names( labeler, "16/11/2026 02:23:49.488 [RX] - EHCP0480409 ERROR" )
            == "Errors: ERROR, Modem: EHCP" );
     // The lookahead keeps "+CME ERROR: 553" out of the errors.
-    CHECK( labeler.label( "16/11/2026 02:23:20.454 [RX] - +CME ERROR: 553" ).isEmpty() );
-    CHECK( labeler.preferredColumnChars() >= QString( "Errors: ERROR" ).size() );
+    CHECK( names( labeler, "16/11/2026 02:23:20.454 [RX] - +CME ERROR: 553" ).isEmpty() );
+    CHECK( labeler.preferredColumnChars() >= QString( "WARNING.*R" ).size() );
 
     // The same labels while the selection is known.
     const auto selected = MatchLabeler::fromSearch( search, { known.at( 1 ), known.at( 2 ) } );
-    CHECK( selected.label( "x ERROR:VoIP" ) == "Errors: ERROR" );
-    CHECK( selected.label( "x [TX] - y" ) == "Modem: [TX]" );
+    CHECK( names( selected, "x ERROR:VoIP" ) == "Errors: ERROR" );
+    CHECK( names( selected, "x [TX] - y" ) == "Modem: [TX]" );
 
     // The filtered pane's filter of the same report has one more alternative.
     const QString paneModem = ModemPattern + "|(TXCTL)";
     const auto pane = MatchLabeler::fromSearch(
         booleanSearch( quotedOr( { ErrorsPattern, paneModem } ) ), {},
         { filter( "Errors", ErrorsPattern, true ), filter( "Modem", paneModem, true ) } );
-    CHECK( pane.label( "x TXCTL 0x01" ) == "Modem: TXCTL" );
+    CHECK( names( pane, "x TXCTL 0x01" ) == "Modem: TXCTL" );
 }
 
 TEST_CASE( "labels_boolean_terms_split_into_alternatives", "[workbench][U14]" )
@@ -252,27 +265,27 @@ TEST_CASE( "labels_boolean_terms_split_into_alternatives", "[workbench][U14]" )
     // A quoted term that is no predefined filter names the alternative that matched.
     const auto typed
         = MatchLabeler::fromSearch( booleanSearch( quotedOr( { "timeout", ModemPattern } ) ) );
-    CHECK( typed.label( "Socket bound to WiFi" ) == "WiFi" );
-    CHECK( typed.label( "read timeout" ) == "timeout" );
-    CHECK( typed.label( "[TX] timeout" ) == "timeout, [TX]" );
+    CHECK( names( typed, "Socket bound to WiFi" ) == "WiFi" );
+    CHECK( names( typed, "read timeout" ) == "timeout" );
+    CHECK( names( typed, "[TX] timeout" ) == "timeout, [TX]" );
 
     // An unnamed filter is named by its alternatives alone.
     const auto unnamed = MatchLabeler::fromSearch( booleanSearch( quotedOr( { ModemPattern } ) ),
                                                    {}, { filter( "", ModemPattern, true ) } );
-    CHECK( unnamed.label( "Par(48)EHCP029" ) == "EHCP" );
+    CHECK( names( unnamed, "Par(48)EHCP029" ) == "EHCP" );
 
     // A plain-text filter is quoted escaped; it is still found, and never split.
     const auto plain
         = MatchLabeler::fromSearch( booleanSearch( quotedOr( { R"(a\.b\|c)", "ERROR" } ) ), {},
                                     { filter( "Dots", "a.b|c", false ) } );
-    CHECK( plain.label( "x a.b|c y" ) == "Dots" );
-    CHECK( plain.label( "ERROR" ) == "ERROR" );
+    CHECK( names( plain, "x a.b|c y" ) == "Dots" );
+    CHECK( names( plain, "ERROR" ) == "ERROR" );
 
     // With regex search off, the terms are plain text: nothing is split.
     const auto literal = MatchLabeler::fromSearch(
         RegularExpressionPattern( quotedOr( { "a|b" } ), true, false, true, true ), {},
         { filter( "Bar", "a|b", true ) } );
-    CHECK( literal.label( "x a|b y" ) == "Bar" );
+    CHECK( names( literal, "x a|b y" ) == "Bar" );
 }
 
 TEST_CASE( "labels_stay_bounded", "[workbench][U14]" )
@@ -325,14 +338,14 @@ TEST_CASE( "labels_regex_term_with_the_text_of_a_plain_filter", "[workbench][U14
     const auto labeler
         = MatchLabeler::fromSearch( booleanSearch( quotedOr( { "Error (code)", "x" } ) ), {},
                                     { filter( "Paren", "Error (code)", false ) } );
-    CHECK( labeler.label( "Error code 5" ) == "Error (code)" );
+    CHECK( names( labeler, "Error code 5" ) == "Error (code)" );
 }
 
 TEST_CASE( "labels_typed_alternatives_without_group_parentheses", "[workbench][U14]" )
 {
     const auto labeler = MatchLabeler::fromSearch( regexSearch( R"((EHCP)|(WiFi)|(a)(b))" ) );
-    CHECK( labeler.label( "x EHCP" ) == "EHCP" );
-    CHECK( labeler.label( "ab" ) == "(a)(b)" );
+    CHECK( names( labeler, "x EHCP" ) == "EHCP" );
+    CHECK( names( labeler, "ab" ) == "(a)(b)" );
     CHECK( MatchLabeler::alternativeDisplayName( "(x|y)" ) == "x|y" );
     CHECK( MatchLabeler::alternativeDisplayName( "(?:x)" ) == "(?:x)" );
     CHECK( MatchLabeler::alternativeDisplayName( R"((a\)))" ) == "a)" );
@@ -347,16 +360,16 @@ TEST_CASE( "labels_terms_of_filters_with_the_same_pattern", "[workbench][U14]" )
     const auto ambiguous = MatchLabeler::fromSearch(
         booleanSearch( quotedOr( { "ERROR", "WARN" } ) ), {},
         { filter( "Errors A", "ERROR", true ), filter( "Errors B", "ERROR", true ) } );
-    CHECK( ambiguous.label( "x ERROR y" ) == "ERROR" );
+    CHECK( names( ambiguous, "x ERROR y" ) == "ERROR" );
     // The same name twice is not ambiguous.
     const auto same = MatchLabeler::fromSearch(
         booleanSearch( quotedOr( { "ERROR" } ) ), {},
         { filter( "Errors", "ERROR", true ), filter( "Errors", "ERROR", true ) } );
-    CHECK( same.label( "x ERROR y" ) == "Errors" );
+    CHECK( names( same, "x ERROR y" ) == "Errors" );
     // A search built from one of them, with the selection known, names that one.
     const auto selected = MatchLabeler::fromSearch( booleanSearch( quotedOr( { "ERROR" } ) ),
                                                     { filter( "Errors B", "ERROR", true ) } );
-    CHECK( selected.label( "x ERROR y" ) == "Errors B" );
+    CHECK( names( selected, "x ERROR y" ) == "Errors B" );
 }
 
 TEST_CASE( "labels_one_quoted_term_of_alternatives", "[workbench][U14]" )
@@ -367,8 +380,8 @@ TEST_CASE( "labels_one_quoted_term_of_alternatives", "[workbench][U14]" )
         = MatchLabeler::fromSearch( booleanSearch( quotedOr( { R"(ERR\d+|WARN)" } ) ) );
     const auto typed = MatchLabeler::fromSearch( regexSearch( R"(ERR\d+|WARN)" ) );
     for ( const auto* labeler : { &quoted, &typed } ) {
-        CHECK( labeler->label( "x ERR42 y" ) == R"(ERR\d+)" );
-        CHECK( labeler->label( "WARN only" ) == "WARN" );
+        CHECK( names( *labeler, "x ERR42 y" ) == R"(ERR\d+)" );
+        CHECK( names( *labeler, "WARN only" ) == "WARN" );
         CHECK( labeler->preferredColumnChars() >= QString( R"(ERR\d+)" ).size() );
     }
     // One quoted term of one alternative still shows the matched text.
@@ -382,21 +395,21 @@ TEST_CASE( "labels_free_spacing_and_lookahead_alternatives", "[workbench][U14]" 
     const QString extended = "(?x)foo # ignored | fake\n|bar";
     const auto quoted
         = MatchLabeler::fromSearch( booleanSearch( quotedOr( { extended, "zzz" } ) ) );
-    CHECK( quoted.label( "foo fake" ) == extended );
+    CHECK( names( quoted, "foo fake" ) == extended );
     const auto typed = MatchLabeler::fromSearch( regexSearch( extended ) );
     CHECK( typed.label( "x foo y" ) == "foo" );
     // "(?-x)" turns it off: that pattern is split as usual.
     const auto off = MatchLabeler::fromSearch( regexSearch( "(?-x)warn|error" ) );
-    CHECK( off.label( "error 5" ) == "error" );
+    CHECK( names( off, "error 5" ) == "error" );
 
     // Alternatives that differ only by a lookahead keep it in their names.
     const auto lookahead = MatchLabeler::fromSearch( regexSearch( "foo(?=bar)|foo(?=baz)" ) );
-    CHECK( lookahead.label( "foobar" ) == "foo(?=bar)" );
-    CHECK( lookahead.label( "foobaz" ) == "foo(?=baz)" );
+    CHECK( names( lookahead, "foobar" ) == "foo(?=bar)" );
+    CHECK( names( lookahead, "foobaz" ) == "foo(?=baz)" );
     const auto named
         = MatchLabeler::fromSearch( booleanSearch( quotedOr( { "foo(?=bar)|foo(?=baz)" } ) ), {},
                                     { filter( "Foo", "foo(?=bar)|foo(?=baz)", true ) } );
-    CHECK( named.label( "foobaz" ) == "Foo: foo(?=baz)" );
+    CHECK( names( named, "foobaz" ) == "Foo: foo(?=baz)" );
 }
 
 TEST_CASE( "labels_backreferences_and_quoted_literals", "[workbench][U14]" )
@@ -406,13 +419,99 @@ TEST_CASE( "labels_backreferences_and_quoted_literals", "[workbench][U14]" )
     const QString backreference = R"((?<x>a)|(?<y>b)\1)";
     const auto whole
         = MatchLabeler::fromSearch( booleanSearch( quotedOr( { backreference, "zzz" } ) ) );
-    CHECK( whole.label( "a bb" ) == backreference );
+    CHECK( names( whole, "a bb" ) == backreference );
 
     // "\Q...\E" quotes a '|': it is part of the literal, not an alternative boundary.
     CHECK( MatchLabeler::splitTopLevelAlternatives( R"(\Qa|b\E|c)" )
            == QStringList{ R"(\Qa|b\E)", "c" } );
     const auto quoted
         = MatchLabeler::fromSearch( booleanSearch( quotedOr( { R"(\Qa|b\E|c)", "zzz" } ) ) );
-    CHECK( quoted.label( "x a|b y" ) == R"(\Qa|b\E)" );
-    CHECK( quoted.label( "c" ) == "c" );
+    CHECK( names( quoted, "x a|b y" ) == R"(\Qa|b\E)" );
+    CHECK( names( quoted, "c" ) == "c" );
+}
+
+TEST_CASE( "matched_by_cell_shows_the_matched_text", "[workbench][U14]" )
+{
+    // #184: the cell shows the text that matched on the line; the filter and the alternative
+    // that matched it are in the tooltip.
+    const QList<PredefinedFilter> known{ filter( "Errors", ErrorsPattern, true ),
+                                         filter( "Modem", ModemPattern, true ) };
+    const auto labeler = MatchLabeler::fromSearch(
+        booleanSearch( quotedOr( { ErrorsPattern, ModemPattern } ) ), {}, known );
+    // The anchor, the lookahead and the ".*" before "ERROR" are not shown.
+    CHECK( labeler.label( "16/11/2026 02:23:15.273 [RX] - #22 1668 ERROR:VoIP SipTask Exiting" )
+           == "ERROR" );
+    CHECK( labeler.label( "x Socket bound to WiFi (resolved)" ) == "WiFi" );
+    CHECK( labeler.label( "16/11/2026 02:23:15.196 [TX] - VOIP: config" ) == "[TX]" );
+    CHECK( labeler.label( "12:00:01 E (2210) net: no route" ) == "E (" );
+    CHECK( labeler.label( "nothing here" ).isEmpty() );
+
+    const auto both = labeler.annotate( "16/11/2026 02:23:49.488 [RX] - EHCP0480409 ERROR" );
+    CHECK( both.text == "ERROR, EHCP" );
+    CHECK( both.toolTip.contains( "<td>Errors: ERROR&nbsp;&nbsp;</td><td>ERROR</td>" ) );
+    CHECK( both.toolTip.contains( "<td>Modem: EHCP&nbsp;&nbsp;</td><td>EHCP</td>" ) );
+    const auto none = labeler.annotate( "nothing here" );
+    CHECK( none.text.isEmpty() );
+    CHECK( none.toolTip.isEmpty() );
+
+    // A filter of one alternative: its matched text, not its name.
+    const QString modulePattern = R"(LTE \w+-\w+)";
+    const auto module = MatchLabeler::fromSearch(
+        regexSearch( modulePattern ),
+        { filter( "Module Version and Type LTE", modulePattern, true ) } );
+    const auto moduleLine = module.annotate( "12:00 modem LTE CAT4-EU1 ready" );
+    CHECK( moduleLine.text == "LTE CAT4-EU1" );
+    CHECK( moduleLine.toolTip.contains(
+        "<td>Module Version and Type LTE&nbsp;&nbsp;</td><td>LTE CAT4-EU1</td>" ) );
+}
+
+TEST_CASE( "matched_by_cell_lists_each_text_once", "[workbench][U14]" )
+{
+    // Two filters with the same text: the cell says it once, the tooltip names both.
+    const auto twice
+        = MatchLabeler::fromSearch( regexSearch( "WARN|WARN" ), { filter( "A", "WARN", false ),
+                                                                  filter( "B", "WARN", false ) } );
+    const auto annotation = twice.annotate( "12:00 WARN low battery" );
+    CHECK( annotation.text == "WARN" );
+    CHECK( annotation.toolTip.contains( "<td>A&nbsp;&nbsp;</td><td>WARN</td>" ) );
+    CHECK( annotation.toolTip.contains( "<td>B&nbsp;&nbsp;</td><td>WARN</td>" ) );
+
+    // Markup in the text is shown as text.
+    const auto markup
+        = MatchLabeler::fromSearch( regexSearch( "<b>" ), { filter( "Bold", "<b>", false ) } );
+    const auto bold = markup.annotate( "x <b> y" );
+    CHECK( bold.text == "<b>" );
+    CHECK( bold.toolTip.contains( "<td>&lt;b&gt;</td>" ) );
+
+    // Many matches: the tooltip stays bounded and says how many more there are.
+    QStringList alternatives;
+    QString line;
+    for ( char letter = 'a'; letter <= 'z'; ++letter ) {
+        alternatives.append( QString( 3, QChar( letter ) ) );
+        line += QString( 3, QChar( letter ) ) + ' ';
+    }
+    const auto many = MatchLabeler::fromSearch( regexSearch( alternatives.join( '|' ) ) );
+    const auto manyRows = many.annotate( line ).toolTip;
+    CHECK( manyRows.count( "<tr>" ) == MatchLabeler::MaxToolTipRows + 2 );
+    CHECK( manyRows.contains( "and 10 more" ) );
+}
+
+TEST_CASE( "matched_by_text_of_whole_line_and_odd_patterns", "[workbench][U14]" )
+{
+    // ".*" around the text is not shown.
+    const auto around = MatchLabeler::fromSearch( regexSearch( "^.*ERROR.*$" ),
+                                                  { filter( "Errors", "^.*ERROR.*$", true ) } );
+    CHECK( around.label( "x ERROR y" ) == "ERROR" );
+    // A match of the whole line shows the pattern.
+    const QString pair = R"(\w+ \d+)";
+    const auto whole
+        = MatchLabeler::fromSearch( regexSearch( pair ), { filter( "Pair", pair, true ) } );
+    CHECK( whole.label( "abc 12" ) == pair );
+    // An option setting between the items keeps the expression as written: "(?i)" still
+    // reaches the lookahead, so the line matches.
+    const auto options = MatchLabeler::fromSearch( regexSearch( "^.*a(?i)b(?=X)" ) );
+    CHECK( options.label( "zzz aBx" ) == "zzz aB" );
+    // A group of the name the labeler uses gives the text to show.
+    const auto named = MatchLabeler::fromSearch( regexSearch( R"(^.*(?<cilogg_matched>id)=\d)" ) );
+    CHECK( named.label( "x id=4 y" ) == "id" );
 }

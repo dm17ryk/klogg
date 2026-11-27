@@ -18,6 +18,43 @@ bool integer( const QJsonValue& value, double minimum, double maximum )
     return value.isDouble() && std::isfinite( number ) && std::floor( number ) == number
            && number >= minimum && number <= maximum;
 }
+// A row's columns as the worker derives them from the item's PDML attributes (#181, see
+// display_columns in message_decoder_preview_worker.py): Name, the display text (showname after
+// "label: ") as Value, Raw, Pos and Size. Text-only items are named by their text, a protocol
+// keeps its showname, and a label or value Wireshark cut off keeps the raw show value.
+QJsonArray displayColumns( const QJsonObject& attributes, bool protocol )
+{
+    static const QStringList textOnlyNames{ "", "_ws.lua.text", "text" };
+    static const QString truncatedLabel = QStringLiteral( " [" ) + QChar( 0x2026 ) + ']';
+    const auto text = [ & ]( const char* key ) { return attributes.value( key ).toString(); };
+    auto name = text( "name" );
+    const auto show = text( "show" );
+    const auto showname = text( "showname" );
+    QString value;
+    const bool textOnly
+        = !protocol && textOnlyNames.contains( name ) && !( showname + show ).isEmpty();
+    if ( textOnly )
+        name = showname.isEmpty() ? show : showname;
+    else if ( protocol || !attributes.contains( "showname" ) || !showname.contains( ": " ) )
+        value = attributes.contains( "show" ) ? show : showname;
+    else {
+        // Wireshark marks a cut label with " […]" right after the field's name ("Name […]: ...")
+        // and a cut value with "…" after a prefix of the value; the same text elsewhere is the
+        // dissector's own (appended text).
+        const auto separator = showname.indexOf( ": " );
+        value = showname.mid( separator + 2 );
+        const bool cutValue = value.endsWith( QChar( 0x2026 ) ) && show != value
+                              && show.startsWith( value.chopped( 1 ) );
+        if ( !show.isEmpty()
+             && ( showname.left( separator ).endsWith( truncatedLabel ) || cutValue ) )
+            value = show;
+    }
+    // The raw bytes, or else the raw show value; a text-only item's text is its name already.
+    const auto raw = attributes.contains( "value" ) ? text( "value" )
+                     : textOnly                     ? QString()
+                                                    : show;
+    return { name, value, raw, text( "pos" ), text( "size" ) };
+}
 bool validResponse( const QJsonObject& value, const QString& id )
 {
     if ( !integer( value.value( "version" ), 1, 1 ) || value.value( "id" ) != id
@@ -101,21 +138,11 @@ bool validResponse( const QJsonObject& value, const QString& id )
         for ( auto attr = attributes.begin(); attr != attributes.end(); ++attr )
             if ( attr.key().size() > 128 || !boundedString( attr.value() ) )
                 return false;
+        // The row carries no item kind, so a field's or a protocol's derivation is accepted.
         const auto columns = entry.value( "columns" ).toArray();
-        const QList<QJsonValue> expected{
-            attributes.value( "name" ).isUndefined() ? QJsonValue( "" )
-                                                     : attributes.value( "name" ),
-            attributes.contains( "show" )                  ? attributes.value( "show" )
-            : attributes.value( "showname" ).isUndefined() ? QJsonValue( "" )
-                                                           : attributes.value( "showname" ),
-            attributes.value( "value" ).isUndefined() ? QJsonValue( "" )
-                                                      : attributes.value( "value" ),
-            attributes.value( "pos" ).isUndefined() ? QJsonValue( "" ) : attributes.value( "pos" ),
-            attributes.value( "size" ).isUndefined() ? QJsonValue( "" ) : attributes.value( "size" )
-        };
-        for ( int i = 0; i < 5; ++i )
-            if ( columns.at( i ) != expected.at( i ) )
-                return false;
+        if ( columns != displayColumns( attributes, false )
+             && columns != displayColumns( attributes, true ) )
+            return false;
     }
     return true;
 }
