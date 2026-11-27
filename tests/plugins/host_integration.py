@@ -83,9 +83,15 @@ class ProcessTree:
                 raise error
 
     def add(self, process: subprocess.Popen) -> None:
-        """Adds a process started with popen_options, before it starts children of its own."""
+        """Adds a process started with popen_options, before it starts children of its own.
+
+        A process that cannot join the tree is killed before the error is raised: outside the
+        tree, nothing would end it.
+        """
         self.processes.append(process)
-        if self.job:
+        if not self.job:
+            return
+        try:
             handle = _kernel32.OpenProcess(_PROCESS_SET_QUOTA_AND_TERMINATE, False, process.pid)
             if not handle:
                 raise ctypes.WinError(ctypes.get_last_error())
@@ -94,6 +100,10 @@ class ProcessTree:
                     raise ctypes.WinError(ctypes.get_last_error())
             finally:
                 _kernel32.CloseHandle(handle)
+        except OSError:
+            process.kill()
+            process.wait(timeout=30)
+            raise
 
     def alive(self) -> int:
         """How many processes of the tree still run."""
@@ -111,7 +121,9 @@ class ProcessTree:
                 os.killpg(process.pid, 0)
                 count += 1
             except ProcessLookupError:
-                pass
+                pass  # the group is gone
+            except PermissionError:
+                count += 1  # macOS: a group of zombies not reaped yet still counts
         return count
 
     def wait_until_ended(self, seconds: float) -> bool:
