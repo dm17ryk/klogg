@@ -42,6 +42,9 @@ public:
     static QVariantMap evaluateAndWait( PreviewEvaluationRequest request,
                                         QObject* cancellationOwner = nullptr );
     static void cancel( QProcess* process );
+    // Requests not finished yet. A cancelled request keeps its place until the event loop has
+    // reaped its worker; evaluate() refuses a third one with "preview_busy".
+    static int activeRequestCount();
     static QString tooltipHtml( const QVariantMap& result );
     // Which limit cut a limited result, and by how much (#183), e.g. "390 of 768 rows: result
     // limit 1024 KiB, the whole result needs 1650 KiB". Empty when the result names no limit.

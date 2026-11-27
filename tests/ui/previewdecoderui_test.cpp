@@ -29,25 +29,6 @@
 #include "previewmessagetab.h"
 #include "tsharkpreviewclient.h"
 
-TEST_CASE( "Preview exposes independent decoder modes and cancellation", "[ui][previewdecoderui]" )
-{
-    PreviewMessageTab tab( "01020304", "Auto", 1 );
-    auto* mode = tab.findChild<QComboBox*>( "previewDecoderMode" );
-    REQUIRE( mode );
-    CHECK( mode->findData( "auto" ) >= 0 );
-    CHECK( mode->findData( "json" ) >= 0 );
-    CHECK( mode->findData( "tshark" ) >= 0 );
-    REQUIRE( tab.findChild<QPushButton*>( "previewRun" ) );
-    REQUIRE( tab.findChild<QPushButton*>( "previewCancel" ) );
-    REQUIRE( tab.findChild<QTreeWidget*>( "previewFields" ) );
-    mode->setCurrentIndex( mode->findData( "tshark" ) );
-    tab.findChild<QPushButton*>( "previewRun" )->click();
-    QTest::mouseClick( tab.findChild<QPushButton*>( "previewCancel" ), Qt::LeftButton );
-    CHECK( tab.findChild<QLabel*>( "previewStatus" )
-               ->text()
-               .contains( "cancel", Qt::CaseInsensitive ) );
-}
-
 namespace {
 struct RestoreDecoder {
     QVariantMap config = PreviewDecoderSettings::instance().configuration();
@@ -56,6 +37,37 @@ struct RestoreDecoder {
         PreviewDecoderSettings::instance().setConfiguration( config );
     }
 };
+} // namespace
+
+TEST_CASE( "Preview exposes independent decoder modes and cancellation", "[ui][previewdecoderui]" )
+{
+    // Known settings: the saved ones (the portable cilogg.conf next to the tests) may be what an
+    // aborted earlier run left, an enabled decoder among them (#173).
+    RestoreDecoder restore;
+    REQUIRE( PreviewDecoderSettings::instance().setConfiguration( {} ) );
+    {
+        PreviewMessageTab tab( "01020304", "Auto", 1 );
+        auto* mode = tab.findChild<QComboBox*>( "previewDecoderMode" );
+        REQUIRE( mode );
+        CHECK( mode->findData( "auto" ) >= 0 );
+        CHECK( mode->findData( "json" ) >= 0 );
+        CHECK( mode->findData( "tshark" ) >= 0 );
+        REQUIRE( tab.findChild<QPushButton*>( "previewRun" ) );
+        REQUIRE( tab.findChild<QPushButton*>( "previewCancel" ) );
+        REQUIRE( tab.findChild<QTreeWidget*>( "previewFields" ) );
+        mode->setCurrentIndex( mode->findData( "tshark" ) );
+        tab.findChild<QPushButton*>( "previewRun" )->click();
+        QTest::mouseClick( tab.findChild<QPushButton*>( "previewCancel" ), Qt::LeftButton );
+        CHECK( tab.findChild<QLabel*>( "previewStatus" )
+                   ->text()
+                   .contains( "cancel", Qt::CaseInsensitive ) );
+    }
+    // A cancelled request keeps its place until the event loop reaps its worker. Leaving them
+    // behind made the next preview tab's request "preview_busy" (#173).
+    REQUIRE( QTest::qWaitFor( [] { return PreviewService::activeRequestCount() == 0; }, 10000 ) );
+}
+
+namespace {
 struct RestorePreviews {
     QByteArray bytes = PreviewRepository::serialize( PreviewManager::instance().all(),
                                                      PreviewManager::instance().blocks() );
@@ -128,8 +140,12 @@ TEST_CASE( "JSON pane uses supervised carrier selection and rejects stale delive
     RestorePreviews definitions;
     REQUIRE( PreviewDecoderSettings::instance().setConfiguration( {} ) );
     loadCarrier();
+    // An earlier test's cancelled requests keep their places until their workers are reaped and
+    // would make this one "preview_busy" (#173); one that never ends fails here.
+    REQUIRE( QTest::qWaitFor( [] { return PreviewService::activeRequestCount() == 0; }, 10000 ) );
     PreviewMessageTab tab( "prefix:0102", "Auto", 1 );
     REQUIRE( QTest::qWaitFor( [ & ] { return !tab.result().isEmpty(); }, 10000 ) );
+    INFO( "reason: " << tab.result().value( "reason" ).toString().toStdString() );
     CHECK( tab.result().value( "backend" ) == "json_preview" );
     CHECK( tab.result().value( "previewName" ) == "Carrier" );
     CHECK( tab.findChild<QTreeWidget*>( "previewFields" )->columnCount() == 5 );

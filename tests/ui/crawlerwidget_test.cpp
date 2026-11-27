@@ -608,9 +608,16 @@ TEST_CASE( "Real Lua hover and Send to Preview retain selected EHCI assembly",
         REQUIRE( pane.grab().save( paneCapture ) );
 }
 
+namespace {
+void hover( AbstractLogView* view, const QPoint& point ); // defined below
+} // namespace
+
 TEST_CASE( "Hover preview maps main and filtered rows without changing selection",
            "[ui][previewhover]" )
 {
+    // A tooltip an earlier test left open is gone first: the wait below looks at the one tooltip.
+    QToolTip::hideText();
+    REQUIRE( QTest::qWaitFor( [] { return !QToolTip::isVisible(); }, 1500 ) );
     const auto restorePreviews = installHoverPreview();
     QTemporaryFile file;
     REQUIRE( file.open() );
@@ -625,6 +632,9 @@ TEST_CASE( "Hover preview maps main and filtered rows without changing selection
     visitor.resizeAndShow( 800, 600 );
     visitor.setSearchPattern( "match" );
     visitor.runSearch();
+    // The filtered view is complete before the hover: results that land while the preview is
+    // asked for change the view under the mouse (#166).
+    REQUIRE( waitUiState( [ & ] { return visitor.getLogFilteredNbLines().get() == 2; } ) );
     auto* main = visitor.crawler->findChild<LogMainView*>( "logMainView" );
     auto* filtered = visitor.crawler->findChild<FilteredView*>();
     REQUIRE( main );
@@ -640,16 +650,20 @@ TEST_CASE( "Hover preview maps main and filtered rows without changing selection
         QTest::mouseClick( view->viewport(), Qt::LeftButton, Qt::NoModifier, point );
         const auto selection = view->getSelectedText();
         QSignalSpy requested( view, &AbstractLogView::linePreviewRequested );
-        QCursor::setPos( view->viewport()->mapToGlobal( point ) );
-        QHelpEvent event( QEvent::ToolTip, point, view->viewport()->mapToGlobal( point ) );
-        QApplication::sendEvent( view->viewport(), &event );
+        // The cursor's move (with its enter and leave events) is delivered before Qt asks for the
+        // tooltip. Queued, it came after the ask in a long suite run, where an earlier test's
+        // window or widget still had the mouse, and its leave event ended the preview (#166).
+        hover( view, point );
         REQUIRE( requested.size() == 1 );
         CHECK( requested.front().at( 0 ).toULongLong() == ( view == main ? 0 : 1 ) );
         CHECK( view->getSelectedText() == selection );
-        REQUIRE( QTest::qWaitFor( [&] {
+        const bool shown = QTest::qWaitFor( [&] {
             return QToolTip::isVisible() && QToolTip::text().contains( "Hover fixture" )
                 && QToolTip::text().contains( view == main ? "first" : "match one" );
-        }, 10000 ) );
+        }, 10000 );
+        INFO( "tooltip visible: " << QToolTip::isVisible()
+                                  << ", text: " << QToolTip::text().toStdString() );
+        REQUIRE( shown );
         const auto screenshot = qEnvironmentVariable( "CILOGG_PREVIEW_TOOLTIP_SCREENSHOT" );
         if ( view == main && !screenshot.isEmpty() ) {
             for ( auto* widget : QApplication::topLevelWidgets() )
