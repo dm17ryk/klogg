@@ -942,7 +942,8 @@ QString PreviewService::limitText( const QVariantMap& result )
     if ( result.value( "backend" ) == "tshark_lua" && result.value( "state" ) == "failed" ) {
         const auto reason = result.value( "reason" ).toString();
         if ( reason == "pdml_item_limit" || reason == "pdml_byte_limit" )
-            return QStringLiteral( "TShark's output has no row in the %1 the worker reads." )
+            // No decoded row, or not the selected protocol, in the part read (review of #204).
+            return QStringLiteral( "No row to show in the %1 of TShark's output the worker reads." )
                 .arg( pdmlAmount( reason == "pdml_item_limit" ? "pdmlItems" : "pdmlBytes" ) );
         if ( reason == "depth_limit" )
             return QStringLiteral( "TShark's tree is deeper than the worker's limit of %1 levels." )
@@ -951,7 +952,7 @@ QString PreviewService::limitText( const QVariantMap& result )
             return QStringLiteral( "A Wireshark tool's output passed the worker's limit of %1 MiB." )
                 .arg( TsharkPreviewClient::PdmlByteLimit / ( 1024 * 1024 ) );
         if ( reason == "diagnostic_limit" )
-            return QStringLiteral( "TShark's diagnostics passed the worker's limit of %1 KiB." )
+            return QStringLiteral( "A Wireshark tool's diagnostics passed the worker's limit of %1 KiB." )
                 .arg( TsharkPreviewClient::DiagnosticByteLimit / 1024 );
         return {};
     }

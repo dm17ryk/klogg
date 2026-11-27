@@ -652,6 +652,8 @@ TEST_CASE( "Native framed client rejects malformed output and recovers within bo
         // A PDML limit that contradicts its result (#198).
         { "pdml_read", "worker_protocol_error" }, { "pdml_maximum", "worker_protocol_error" },
         { "pdml_reason", "worker_protocol_error" }, { "pdml_tree", "worker_protocol_error" },
+        { "pdml_bytes_rows", "worker_protocol_error" },
+        { "pdml_tree_rows", "worker_protocol_error" },
         { "limit_low", "worker_protocol_error" }, { "limit_row_max", "worker_protocol_error" },
         { "limit_failed", "worker_protocol_error" }, { "limit_extra", "worker_protocol_error" },
         { "limit_missing", "worker_protocol_error" }
@@ -814,7 +816,7 @@ TEST_CASE( "TShark results fit 2048 rows, take the request's result limit and na
     result = run( "pdml_items_failed" );
     CHECK( result.value( "reason" ) == "pdml_item_limit" );
     CHECK( PreviewService::limitText( result )
-           == "TShark's output has no row in the 8192 items the worker reads." );
+           == "No row to show in the 8192 items of TShark's output the worker reads." );
     const auto failed = []( const char* reason ) {
         return PreviewService::limitText( { { "backend", "tshark_lua" },
                                             { "state", "failed" },
@@ -822,10 +824,10 @@ TEST_CASE( "TShark results fit 2048 rows, take the request's result limit and na
                                             { "limited", true } } );
     };
     CHECK( failed( "pdml_byte_limit" )
-           == "TShark's output has no row in the 4 MiB the worker reads." );
+           == "No row to show in the 4 MiB of TShark's output the worker reads." );
     CHECK( failed( "depth_limit" ) == "TShark's tree is deeper than the worker's limit of 32 levels." );
     CHECK( failed( "diagnostic_limit" )
-           == "TShark's diagnostics passed the worker's limit of 64 KiB." );
+           == "A Wireshark tool's diagnostics passed the worker's limit of 64 KiB." );
     CHECK( failed( "output_limit" )
            == "A Wireshark tool's output passed the worker's limit of 4 MiB." );
     CHECK( failed( "lua_failure" ).isEmpty() );

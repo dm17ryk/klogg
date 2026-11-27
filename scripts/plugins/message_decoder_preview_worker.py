@@ -832,7 +832,8 @@ class PreviewWorker:
             tree = selected_protocols(packets)
             if not tree:
                 if pdml_cut:
-                    raise ProofError(pdml_cut["reason"])  # The protocol may follow the cut.
+                    # The protocol may follow the cut: no row to show in the part read.
+                    raise ProofError(pdml_cut["reason"])
                 LOG.warning("preview_protocol_not_found id=%s", request["id"])
                 raise ProofError("protocol_not_found")
             fields, limited = render_fields(tree)

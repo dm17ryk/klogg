@@ -57,21 +57,23 @@ bool validLimit( const QJsonObject& value )
     const bool rows = integer( limit.value( "shownRows" ), 0, TsharkPreviewClient::FieldLimit )
                       && shown == static_cast<double>( value.value( "fields" ).toArray().size() );
     if ( name == "pdmlItems" || name == "pdmlBytes" ) {
-        // The rows shown are the part read up to the row limit; the items read include the
-        // packet's own, so they hold fewer rows than the item limit.
-        const bool items = name == "pdmlItems";
+        // The rows shown are the part read up to the row limit. The worker reads at most the
+        // item limit, the packet's own item included, so the part read holds fewer rows (a byte
+        // cut within fewer items too: the item limit would have cut first).
         const auto read = limit.value( "readRows" ).toDouble();
         return rows && shown >= 1
                && maximum
-                      == ( items ? TsharkPreviewClient::PdmlItemLimit
-                                 : TsharkPreviewClient::PdmlByteLimit )
-               && integer( limit.value( "readRows" ), shown,
-                           items ? TsharkPreviewClient::PdmlItemLimit - 1 : JsonIntegerMax )
+                      == ( name == "pdmlItems" ? TsharkPreviewClient::PdmlItemLimit
+                                               : TsharkPreviewClient::PdmlByteLimit )
+               && integer( limit.value( "readRows" ), shown, TsharkPreviewClient::PdmlItemLimit - 1 )
                && shown == std::min( read, static_cast<double>( TsharkPreviewClient::FieldLimit ) );
     }
     // A cut shows fewer rows than the tree has. A row cut shows exactly the row limit; a byte
-    // cut has a limit a request may choose, and the result needed more than it.
-    const bool cut = rows && integer( limit.value( "totalRows" ), shown + 1, JsonIntegerMax );
+    // cut has a limit a request may choose, and the result needed more than it. A byte cut of a
+    // tree cut at a PDML limit counts the rows read, fewer than the item limit.
+    const bool cut = rows
+                     && integer( limit.value( "totalRows" ), shown + 1,
+                                 tree ? TsharkPreviewClient::PdmlItemLimit - 1 : JsonIntegerMax );
     if ( name == "rows" )
         return cut && maximum == TsharkPreviewClient::FieldLimit && shown == maximum;
     return cut
