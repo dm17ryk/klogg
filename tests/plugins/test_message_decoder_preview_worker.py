@@ -673,8 +673,14 @@ class ProcessTests(unittest.TestCase):
                     + '.buffer.write(b"x"*%d); time.sleep(60)' % (worker.PDML_LIMIT + 65536),
                     framed,
                 )
+                if reason == "execution_timeout":
+                    # Wait for the cut first, so a slow runner cannot time out before it.
+                    give_up = time.monotonic() + 30
+                    with child.condition:
+                        while child.cut is None and time.monotonic() < give_up:
+                            child.condition.wait(0.05)
                 with self.assertRaisesRegex(wire.ProofError, reason):
-                    child.packet(time.monotonic() + (2 if reason == "execution_timeout" else 5))
+                    child.packet(time.monotonic() + (0.5 if reason == "execution_timeout" else 30))
                 self.assertLessEqual(len(child.buffers[0]), worker.PDML_LIMIT)
                 self.assertLessEqual(len(child.buffers[1]), worker.STDERR_LIMIT)
                 if reason == "execution_timeout":
