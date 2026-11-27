@@ -24,11 +24,19 @@ def comparable(value):
 
 
 def require_visible_failure(result, reason):
-    """Failures in Auto must never be replaced by a successful JSON fallback."""
+    """Explicit TShark failures are the result: never replaced by a JSON fallback."""
     assert result.get("reason") == reason, result
     assert result.get("backend") != "json_preview", result
     assert not result.get("available") and not result.get("complete"), result
     assert not result.get("fallbackReason") and "json_preview" not in result.get("decoderAttempts", []), result
+
+
+def require_json_fallback(result, reasons):
+    """Automatic mode shows the JSON preview after a TShark/Lua failure and names the failure."""
+    assert result.get("backend") == "json_preview" and result.get("available"), result
+    assert result.get("fallbackReason") in reasons, result
+    assert result.get("preferredBackend") == "tshark_lua", result
+    assert result.get("decoderAttempts") == ["tshark_lua", "json_preview"], result
 
 
 def require_budget_prefix(result, reference):
@@ -152,20 +160,24 @@ def exercise(cli, command, _finish, _rows, _normalized, catalog, artifacts):
     pair("set_preview_decoder", disabled)
     assert pair("preview_message", request)[0]["backend"] == "json_preview"
 
+    # A failed TShark/Lua route: Automatic shows the JSON preview, explicit TShark the failure.
+    def route_failure(case, reasons):
+        fallback, _ = pair("preview_message", case)
+        require_json_fallback(fallback, reasons)
+        failure, _ = pair("preview_message", dict(case, decoder="tshark"), success=False)
+        require_visible_failure(failure, fallback["fallbackReason"])
+
     malformed = copy.deepcopy(config)
     malformed["inputEncoding"] = "hex"
     pair("set_preview_decoder", malformed)
-    result, _ = pair("preview_message", dict(request, text="invalid hex", inputEncoding="hex"), success=False)
-    require_visible_failure(result, "invalid_hex")
+    route_failure(dict(request, text="invalid hex", inputEncoding="hex"), {"invalid_hex"})
     malformed["inputEncoding"] = "base64"
     pair("set_preview_decoder", malformed)
-    result, _ = pair("preview_message", dict(request, text="%%%", inputEncoding="base64"), success=False)
-    require_visible_failure(result, "invalid_base64")
+    route_failure(dict(request, text="%%%", inputEncoding="base64"), {"invalid_base64"})
     missing_protocol = copy.deepcopy(config)
     missing_protocol["previewRoutes"]["Mapped carrier"]["protocol"] = "cilogg_absent_protocol"
     pair("set_preview_decoder", missing_protocol)
-    result, _ = pair("preview_message", request, success=False)
-    require_visible_failure(result, "protocol_not_found")
+    route_failure(request, {"protocol_not_found"})
 
     external = os.environ.get("CILOGG_PREVIEW_ENGINE_CONFIG")
     if external:
@@ -244,8 +256,14 @@ def exercise(cli, command, _finish, _rows, _normalized, catalog, artifacts):
         if suffix == "stall":
             warm, _ = pair("preview_message", dict(request, text="Z"))
             assert warm["backend"] == "tshark_lua" and warm["available"], warm
-        result, _ = pair("preview_message", dict(request, timeoutMs=timeout), success=False)
-        require_visible_failure(result, reason)
+        # The engine's own deadline ends a stall as timeout or execution_timeout.
+        reasons = {reason, "execution_timeout"} if reason == "timeout" else {reason}
+        result, _ = pair("preview_message", dict(request, timeoutMs=timeout))
+        require_json_fallback(result, reasons)
+        result, _ = pair("preview_message", dict(request, decoder="tshark", timeoutMs=timeout),
+                         success=False)
+        require_visible_failure(result, result.get("reason"))
+        assert result.get("reason") in reasons, result
 
     # Reset the failed session, then prove actual decoding and warm reuse per transport.
     pair("set_preview_decoder", config)
