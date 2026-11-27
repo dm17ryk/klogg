@@ -339,8 +339,42 @@ TEST_CASE( "A first installation into another program's folder moves nothing",
     REQUIRE( readText( root / "tool.exe" ) == "another program" );
     REQUIRE( readText( root / "library.dll" ) == "another library" );
     REQUIRE( readText( root / "plugins" / "plugin.dll" ) == "another plugin" );
+    REQUIRE( movedAsideFiles( root ).empty() );
+    // The installation is recorded: a successful one only deletes the record.
+    REQUIRE( fs::exists( root / prepare::ManifestFileName ) );
+    writeText( root / "cilogg.exe", "new executable" );
+    REQUIRE( prepare::runFinish( root, recorder( lines ) ) == prepare::PreparedExitCode );
+    REQUIRE( readText( root / "cilogg.exe" ) == "new executable" );
+    REQUIRE( readText( root / "plugins" / "plugin.dll" ) == "another plugin" );
     REQUIRE_FALSE( fs::exists( root / prepare::ManifestFileName ) );
-    REQUIRE( prepare::moveAside( root, recorder( lines ) ).moved.empty() );
+}
+
+TEST_CASE( "A failed first installation removes only what it wrote", "[installprepare]" )
+{
+    QTemporaryDir temporary;
+    REQUIRE( temporary.isValid() );
+    const auto shared = nativePath( temporary.path() ) / "Tools";
+    writeText( shared / "tool.exe", "another program" );
+    writeText( shared / "library.dll", "another library" );
+    writeText( shared / "plugins" / "plugin.dll", "another plugin" );
+    const auto missing = nativePath( temporary.path() ) / "New folder";
+    std::vector<std::string> lines;
+
+    for ( const auto& root : { shared, missing } ) {
+        REQUIRE( prepare::runPrepare( root, {}, recorder( lines ) ) == prepare::PreparedExitCode );
+        // The copy wrote part of the installation, then failed.
+        writeText( root / "cilogg.exe", "new executable" );
+        writeText( root / "Qt6Core.dll", "new library" );
+        writeText( root / "plugins" / "added.json", "new plugin" );
+        REQUIRE( prepare::runRollback( root, recorder( lines ) ) == prepare::PreparedExitCode );
+        REQUIRE_FALSE( fs::exists( root / "cilogg.exe" ) );
+        REQUIRE_FALSE( fs::exists( root / "Qt6Core.dll" ) );
+        REQUIRE_FALSE( fs::exists( root / "plugins" / "added.json" ) );
+        REQUIRE_FALSE( fs::exists( root / prepare::ManifestFileName ) );
+    }
+    REQUIRE( readText( shared / "tool.exe" ) == "another program" );
+    REQUIRE( readText( shared / "library.dll" ) == "another library" );
+    REQUIRE( readText( shared / "plugins" / "plugin.dll" ) == "another plugin" );
 }
 
 TEST_CASE( "A moved-aside file whose original is missing is put back, never deleted",
@@ -409,7 +443,7 @@ TEST_CASE( "Prepare, finish and rollback keep their manifest inside the folder",
     REQUIRE_FALSE( fs::exists( manifest ) );
     REQUIRE( movedAsideFiles( root ).empty() );
 
-    // A folder that does not exist yet (a first installation) needs nothing.
+    // A folder that does not exist yet (a first installation) is created and recorded.
     REQUIRE( prepare::runPrepare( root / "new", {}, recorder( lines ) )
              == prepare::PreparedExitCode );
 }

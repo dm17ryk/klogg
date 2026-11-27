@@ -344,6 +344,22 @@ try {
     }
     $results.Add([pscustomobject]@{ case = 'first-install-into-shared-folder'; exitCode = $sharedInstall.ExitCode })
 
+    # 7. A first installation that fails (a folder in place of NOTICE) removes what it wrote and
+    #    nothing else.
+    $failedDirectory = Join-Path $workDirectory 'Failed first'
+    New-Item -ItemType Directory -Path (Join-Path $failedDirectory 'plugins') -Force | Out-Null
+    $failedLibrary = Join-Path $failedDirectory 'plugins\tool-plugin.dll'
+    Set-Content -LiteralPath $failedLibrary -Value 'another program' -Encoding ascii
+    New-Item -ItemType Directory -Path (Join-Path $failedDirectory 'NOTICE') | Out-Null
+    $failedFirst = Invoke-Installer $setup 'failed-first' $failedDirectory
+    if ($failedFirst.ExitCode -ne 3) { throw "A failed first installation should end with exit 3, got $($failedFirst.ExitCode)`n$($failedFirst.Log)" }
+    foreach ($written in @('cilogg.exe', 'COPYING')) {
+        if (Test-Path -LiteralPath (Join-Path $failedDirectory $written)) { throw "A failed first installation left $written`n$($failedFirst.Log)" }
+    }
+    if ((Get-Content -LiteralPath $failedLibrary -Raw).Trim() -ne 'another program') { throw "A failed first installation changed another program's file" }
+    if (Test-Path -LiteralPath (Join-Path $failedDirectory 'cilogg-update-moves.txt')) { throw 'A failed first installation left its manifest' }
+    $results.Add([pscustomobject]@{ case = 'failed-first-install-removed'; exitCode = $failedFirst.ExitCode })
+
     foreach ($result in $results) { Write-Output "PASS: $($result.case) $($result | ConvertTo-Json -Compress)" }
 } finally {
     if ($heldFile) { $heldFile.Dispose() }

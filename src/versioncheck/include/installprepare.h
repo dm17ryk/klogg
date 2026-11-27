@@ -144,7 +144,9 @@ std::vector<MovedFile> rollback( const std::filesystem::path& directory,
 
 // The installer modes of cilogg_updater. "prepare" first restores what an interrupted earlier
 // update left (from its manifest), then moves files aside and records them in the manifest; when
-// a file is blocked, a report lists it and the processes using it. "finish" and "rollback" read
+// a file is blocked, a report lists it and the processes using it. For a first installation it
+// records the files already in the folder, so that a rollback removes only what the installation
+// wrote. "finish" and "rollback" read
 // the manifest, which they check against `directory`, and delete it once nothing is left to do.
 int runPrepare( const std::filesystem::path& directory, const std::filesystem::path& report,
                 const Log& log );

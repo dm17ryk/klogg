@@ -1248,6 +1248,43 @@ std::vector<MovedFile> rollback( const fs::path& directory, const std::vector<Mo
     return left;
 }
 
+namespace {
+// A first installation: no previous version to restore, but a failed copy must not leave a part
+// of one behind. Every file of the folder now is recorded as left in place, so a rollback removes
+// only what the installation wrote. The records and their mark reach the disk before any copy.
+int recordFirstInstallation( const fs::path& directory, const fs::path& manifestPath,
+                             const Log& log )
+{
+    bool listedAll = true;
+    const auto present = installationFiles( directory, &listedAll );
+    if ( !listedAll ) {
+        log( "A folder of " + toUtf8( directory )
+             + " could not be read to its end; nothing is installed" );
+        return ManifestFailedExitCode;
+    }
+    {
+        std::ofstream manifest( manifestPath, std::ios::binary | std::ios::trunc );
+        for ( const auto& file : present )
+            manifest << LeftInPlacePrefix << withoutSeparators( exactUtf8( file ) ) << "\n";
+        manifest.flush();
+        bool recorded = static_cast<bool>( manifest ) && writeThrough( manifestPath, log );
+        if ( recorded ) {
+            manifest << PreparedMarker << "\n";
+            manifest.flush();
+            recorded = static_cast<bool>( manifest ) && writeThrough( manifestPath, log );
+        }
+        if ( recorded ) {
+            log( "First installation into " + toUtf8( directory ) + "; "
+                 + std::to_string( present.size() ) + " files there are left alone" );
+            return PreparedExitCode;
+        }
+    }
+    log( "Cannot record the first installation in " + toUtf8( manifestPath ) );
+    discardManifest( manifestPath, log );
+    return ManifestFailedExitCode;
+}
+} // namespace
+
 int runPrepare( const fs::path& directory, const fs::path& report, const Log& log )
 {
     std::error_code error;
@@ -1255,7 +1292,11 @@ int runPrepare( const fs::path& directory, const fs::path& report, const Log& lo
         fs::remove( report, error );
     if ( !fs::is_directory( directory, error ) ) {
         log( "Installation folder " + toUtf8( directory ) + " does not exist yet" );
-        return PreparedExitCode;
+        fs::create_directories( directory, error );
+        if ( !fs::is_directory( directory, error ) ) {
+            log( "Cannot create " + toUtf8( directory ) );
+            return PreparedExitCode;
+        }
     }
     const auto manifestPath = directory / ManifestFileName;
     if ( fs::exists( manifestPath, error ) ) {
@@ -1293,7 +1334,7 @@ int runPrepare( const fs::path& directory, const fs::path& report, const Log& lo
     }
     if ( !holdsInstallation( directory ) ) {
         log( "No CILogg installation in " + toUtf8( directory ) + "; nothing is moved aside" );
-        return PreparedExitCode;
+        return recordFirstInstallation( directory, manifestPath, log );
     }
     removeMovedAside( directory, log );
     for ( const auto& process : processesRunningFrom( directory ) )
@@ -1319,12 +1360,16 @@ int runPrepare( const fs::path& directory, const fs::path& report, const Log& lo
     // Only a complete listing makes the manifest a complete record of the previous version. The
     // records reach the disk before their mark: a mark without them would make a rollback take
     // files it has no record of for added ones.
+    // The mark reaches the disk too before any copy: without it, a recovery after a power loss
+    // would leave the files the installation added beside the previous version.
     if ( result.blocked.empty() && result.listedAll ) {
         manifest.flush();
-        if ( static_cast<bool>( manifest ) && writeThrough( manifestPath, log ) )
+        recorded = recorded && static_cast<bool>( manifest ) && writeThrough( manifestPath, log );
+        if ( recorded ) {
             manifest << PreparedMarker << "\n";
-        else
-            log( "A failed installation keeps the files it added" );
+            manifest.flush();
+            recorded = static_cast<bool>( manifest ) && writeThrough( manifestPath, log );
+        }
     }
     manifest.flush();
     recorded = recorded && static_cast<bool>( manifest );
