@@ -29,7 +29,7 @@ The exact values in the specification apply to every task: existing source gener
 
 ## What to open in Codex App
 
-1. Open the actual local `dm17ryk/klogg` repository in Codex App. On the recorded Windows setup this has been `D:\Essence_SC\lsrc\klogg`; use the user's actual checkout, not an assumed path.
+1. Open the actual local `dm17ryk/klogg` repository in Codex App. On the recorded Windows setup this has been a local path such as `D:\src\klogg`; use the user's actual checkout, not an assumed path.
 2. Use the installed package at `plans/cilogg-workbench-2026-10-21/`. The supplied `doc/CILogg_Codex_Implementation_Plan` copy was the import source; do not create another active ledger. Keep newer planning changes and reconcile them without overwriting unrelated work.
 3. Start with `START_IN_CODEX.md`, this guide, `00-product-spec.md`, `BASELINE.md` and `PROGRESS.json`.
 4. Read the recorded G01 reconciliation, then complete G02 and G03 before public feature work. For each next task read its owning subsystem section, shared contract definitions it consumes, and current source/tests. Read only the relevant sections instead of repeatedly loading the entire combined plan.
