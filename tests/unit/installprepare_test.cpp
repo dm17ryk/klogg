@@ -349,6 +349,27 @@ TEST_CASE( "A first installation into another program's folder moves nothing",
     REQUIRE_FALSE( fs::exists( root / prepare::ManifestFileName ) );
 }
 
+TEST_CASE( "A rollback puts back a file moved aside without a record", "[installprepare]" )
+{
+    QTemporaryDir temporary;
+    REQUIRE( temporary.isValid() );
+    const auto root = nativePath( temporary.path() );
+    writeText( root / "cilogg.exe", "old executable" );
+    writeText( root / "Qt6Core.dll", "old library" );
+    std::vector<std::string> lines;
+    const auto result = prepare::moveAside( root, recorder( lines ) );
+    REQUIRE( result.moved.size() == 2 );
+    // The helper was stopped after the second rename, before recording it.
+    writeText( root / prepare::ManifestFileName,
+               prepare::formatManifestLine( result.moved.front() ) + "\n" );
+
+    REQUIRE( prepare::runRollback( root, recorder( lines ) ) == prepare::PreparedExitCode );
+    REQUIRE( readText( root / "cilogg.exe" ) == "old executable" );
+    REQUIRE( readText( root / "Qt6Core.dll" ) == "old library" );
+    REQUIRE( movedAsideFiles( root ).empty() );
+    REQUIRE_FALSE( fs::exists( root / prepare::ManifestFileName ) );
+}
+
 TEST_CASE( "A failed first installation removes only what it wrote", "[installprepare]" )
 {
     QTemporaryDir temporary;

@@ -627,12 +627,28 @@ RenameResult moveToFreeName( const fs::path& original, const fs::path& directory
     return RenameResult::DestinationExists;
 }
 
-std::vector<MovedFile> readManifest( const fs::path& directory, const fs::path& manifestPath,
+// The whole manifest, or nothing when it cannot be read to its end (security software holding
+// it, a read error): then it is kept for the next attempt, never acted on in part. A stream does
+// not tell a read error from the end of the file, so the length read is checked against the
+// file's size.
+std::optional<std::string> readRecord( const fs::path& manifestPath, const Log& log )
+{
+    std::error_code error;
+    const auto size = fs::file_size( manifestPath, error );
+    std::ifstream file( manifestPath, std::ios::binary );
+    if ( !error && file.is_open() ) {
+        std::string text( ( std::istreambuf_iterator<char>( file ) ),
+                          std::istreambuf_iterator<char>() );
+        if ( text.size() == size )
+            return text;
+    }
+    log( "Cannot read " + toUtf8( manifestPath ) + " to its end; it is kept for the next attempt" );
+    return std::nullopt;
+}
+
+std::vector<MovedFile> readManifest( const fs::path& directory, const std::string& text,
                                      const Log& log )
 {
-    std::ifstream file( manifestPath, std::ios::binary );
-    const std::string text( ( std::istreambuf_iterator<char>( file ) ),
-                            std::istreambuf_iterator<char>() );
     std::vector<MovedFile> trusted;
     for ( const auto& moved : parseManifest( text ) ) {
         if ( !isMovedAsideNameOf( moved.original, moved.movedTo )
@@ -651,12 +667,9 @@ std::vector<MovedFile> readManifest( const fs::path& directory, const fs::path& 
 // written by the failed installation and is removed.
 constexpr char LeftInPlacePrefix[] = "#left\t";
 
-std::vector<fs::path> readLeftInPlace( const fs::path& manifestPath )
+std::vector<fs::path> readLeftInPlace( const std::string& text )
 {
     std::vector<fs::path> left;
-    std::ifstream input( manifestPath, std::ios::binary );
-    const std::string text( ( std::istreambuf_iterator<char>( input ) ),
-                            std::istreambuf_iterator<char>() );
     std::istringstream file( completeLines( text ) );
     std::string line;
     const std::string prefix = LeftInPlacePrefix;
@@ -671,20 +684,9 @@ std::vector<fs::path> readLeftInPlace( const fs::path& manifestPath )
     return left;
 }
 
-// A manifest that exists but cannot be read (security software holding it) must be kept, not
-// treated as empty.
-bool canRead( const fs::path& manifestPath, const Log& log )
+bool hasMarker( const std::string& text, const char* marker )
 {
-    std::ifstream file( manifestPath, std::ios::binary );
-    if ( file.is_open() )
-        return true;
-    log( "Cannot read " + toUtf8( manifestPath ) + "; it is kept for the next attempt" );
-    return false;
-}
-
-bool hasMarker( const fs::path& manifestPath, const char* marker )
-{
-    std::ifstream file( manifestPath, std::ios::binary );
+    std::istringstream file( text );
     std::string line;
     while ( std::getline( file, line ) ) {
         if ( !line.empty() && line.back() == '\r' )
@@ -938,6 +940,40 @@ bool isInUse( const fs::path& file )
     return false;
 #endif
 }
+
+namespace {
+// Puts back the newest moved-aside copy of every file of `directory` whose original is missing,
+// and nothing else. Returns the originals it looked at, put back or not.
+std::vector<fs::path> putBackWithoutOriginal( const fs::path& directory, const Log& log )
+{
+    std::map<fs::path, std::pair<fs::path, fs::file_time_type>> newest;
+    for ( const auto& file : installationFiles( directory ) ) {
+        const auto fileName = toUtf8( file.filename() );
+        const auto suffixLength = movedAsideSuffixLength( lowerAscii( fileName ) );
+        if ( suffixLength == 0 )
+            continue;
+        const auto original
+            = file.parent_path() / fromUtf8( fileName.substr( 0, fileName.size() - suffixLength ) );
+        std::error_code error;
+        if ( fs::exists( original, error ) )
+            continue;
+        const auto written = fs::last_write_time( file, error );
+        const auto found = newest.find( original );
+        if ( found == newest.end() || written > found->second.second )
+            newest[ original ] = { file, written };
+    }
+    std::vector<fs::path> originals;
+    for ( const auto& [ original, copy ] : newest ) {
+        originals.push_back( original );
+        std::string renameError;
+        if ( renameInside( copy.first, original, directory, &renameError ) == RenameResult::Renamed )
+            log( "Put back " + toUtf8( original ) + ", moved aside without a record" );
+        else
+            log( "Cannot put back " + toUtf8( original ) + ": " + renameError );
+    }
+    return originals;
+}
+} // namespace
 
 std::size_t removeMovedAside( const fs::path& directory, const Log& log )
 {
@@ -1248,8 +1284,14 @@ std::vector<MovedFile> rollback( const fs::path& directory, const std::vector<Mo
              ? "Restored " + std::to_string( moved.size() ) + " files"
              : "Restored the previous files except " + std::to_string( left.size() )
                    + " to try again and " + std::to_string( lost ) + " lost" );
+    // A move whose record was never written (the helper was stopped right after the rename):
+    // that previous file waits under a moved-aside name with its original missing. It is put
+    // back, and is never taken for an added file.
+    auto keep = leftInPlace;
+    const auto unrecorded = putBackWithoutOriginal( directory, log );
+    keep.insert( keep.end(), unrecorded.begin(), unrecorded.end() );
     if ( removeAdded ) {
-        const auto kept = removeNewFiles( directory, moved, leftInPlace, log );
+        const auto kept = removeNewFiles( directory, moved, keep, log );
         if ( addedKept )
             *addedKept = kept;
     }
@@ -1312,10 +1354,11 @@ int runPrepare( const fs::path& directory, const fs::path& report, const Log& lo
         // An earlier installation stopped (for example, it was killed). Stopped while copying,
         // it is undone: the previous version is put back. Stopped while deleting the old copies,
         // the new version is complete and the cleanup is finished.
-        if ( !canRead( manifestPath, log ) )
+        const auto record = readRecord( manifestPath, log );
+        if ( !record )
             return RollbackIncompleteExitCode;
-        const auto earlier = readManifest( directory, manifestPath, log );
-        if ( hasMarker( manifestPath, FinishingMarker ) ) {
+        const auto earlier = readManifest( directory, *record, log );
+        if ( hasMarker( *record, FinishingMarker ) ) {
             log( "Finishing an interrupted update of " + std::to_string( earlier.size() )
                  + " files" );
             const auto notPutBack = finish( directory, earlier, log );
@@ -1330,8 +1373,8 @@ int runPrepare( const fs::path& directory, const fs::path& report, const Log& lo
                  + " files an interrupted update moved aside" );
             std::size_t addedKept = 0;
             const auto left
-                = rollback( directory, earlier, log, hasMarker( manifestPath, PreparedMarker ),
-                            readLeftInPlace( manifestPath ), &addedKept );
+                = rollback( directory, earlier, log, hasMarker( *record, PreparedMarker ),
+                            readLeftInPlace( *record ), &addedKept );
             if ( !left.empty() || addedKept > 0 ) {
                 // Kept whole, with its marks: another pass skips what is restored already.
                 log( "Kept " + toUtf8( manifestPath ) + "; run setup again" );
@@ -1422,7 +1465,8 @@ int runFinish( const fs::path& directory, const Log& log )
         log( "No files were moved aside" );
         return PreparedExitCode;
     }
-    if ( !canRead( manifestPath, log ) )
+    const auto record = readRecord( manifestPath, log );
+    if ( !record )
         return ManifestFailedExitCode;
     {
         // On a line of its own, also after a line an interrupted pass left unfinished. Without
@@ -1442,7 +1486,7 @@ int runFinish( const fs::path& directory, const Log& log )
         log( "The old copies stay until setup runs again" );
         return ManifestFailedExitCode;
     }
-    const auto notPutBack = finish( directory, readManifest( directory, manifestPath, log ), log );
+    const auto notPutBack = finish( directory, readManifest( directory, *record, log ), log );
     if ( notPutBack.empty() ) {
         discardManifest( manifestPath, log );
         return PreparedExitCode;
@@ -1461,16 +1505,16 @@ int runRollback( const fs::path& directory, const Log& log )
         log( "No files were moved aside" );
         return PreparedExitCode;
     }
-    if ( !canRead( manifestPath, log ) )
+    const auto record = readRecord( manifestPath, log );
+    if ( !record )
         return RollbackIncompleteExitCode;
-    if ( hasMarker( manifestPath, FinishingMarker ) ) {
+    if ( hasMarker( *record, FinishingMarker ) ) {
         // The cleanup had started (its helper was stopped): some old copies may be gone, so the
         // new version can no longer be undone. Complete the cleanup instead.
         log( "The update's cleanup had started; completing it instead of undoing the update" );
-        const auto notPutBack
-            = finish( directory, readManifest( directory, manifestPath, log ), log );
+        const auto notPutBack = finish( directory, readManifest( directory, *record, log ), log );
         if ( notPutBack.empty() ) {
-            fs::remove( manifestPath, error );
+            discardManifest( manifestPath, log );
             return FinishedInsteadExitCode;
         }
         writeManifest( manifestPath, notPutBack, FinishingMarker );
@@ -1478,9 +1522,9 @@ int runRollback( const fs::path& directory, const Log& log )
         return FinishedInsteadIncompleteExitCode;
     }
     std::size_t addedKept = 0;
-    const auto left = rollback( directory, readManifest( directory, manifestPath, log ), log,
-                                hasMarker( manifestPath, PreparedMarker ),
-                                readLeftInPlace( manifestPath ), &addedKept );
+    const auto left = rollback( directory, readManifest( directory, *record, log ), log,
+                                hasMarker( *record, PreparedMarker ),
+                                readLeftInPlace( *record ), &addedKept );
     if ( !left.empty() || addedKept > 0 ) {
         // Kept whole, with its marks: another pass skips what is restored already.
         log( "Kept " + toUtf8( manifestPath ) + "; run setup again" );
