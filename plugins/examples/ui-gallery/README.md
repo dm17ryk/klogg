@@ -169,7 +169,9 @@ row of buttons and the status label `layout_status`:
     without icons: `builtin:info`).
 - **Buttons** (`layout_buttons`, with a `separator` and a `spacer`): **Add point** (`tool_button`,
   style `tool`, icon `builtin:refresh`: `append_points()` to both series and the newest values
-  in the sparkline), **Focus name** (`link_button`, style `link`: `focus_element("form_name")`),
+  in the sparkline), **Focus name** (`link_button`, style `link`: makes the Form tab current with
+  `set_props("layout_tabs", current="tab_form")`, since a field on a hidden tab takes no focus,
+  then `focus_element("form_name")`),
   **Log actions** (`menu_button` with `menu: "layout_menu"`, the `element` menu with **Add
   Line** and **Clear Log**), **Pin** (`pin_button`, `checkable`), **Simulate work**
   (`busy_button`: `busy`, `busy_text` and `busy_cancel` on `layout_body` for 5 seconds on a

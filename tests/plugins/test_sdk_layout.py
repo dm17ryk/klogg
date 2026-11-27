@@ -684,7 +684,11 @@ class Events(LayoutCase):
                                  if name != "view_dialogs"]
         host.close_view("ask")
         self.assertEqual(closed.get(timeout=2), {"view_id": "ask", "window_id": "w1"})
-        for call in (lambda: host.press_dialog_button("ask", "close"),
+        # Without view_dialogs CILogg shows no dialog buttons, so even a declared one is never
+        # clicked (#168).
+        for call in (lambda: host.press_dialog_button("ask", "apply"),
+                     lambda: host.press_dialog_button("confirmed", "ok"),
+                     lambda: host.press_dialog_button("ask", "close"),
                      lambda: host.press_dialog_button("plain", "ok"),
                      lambda: host.press_dialog_button("main", "ok"),
                      lambda: host.close_view("ask", result="yes"),
