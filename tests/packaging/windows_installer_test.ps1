@@ -13,7 +13,9 @@ param(
     [string]$Platform = $(if ($env:CILOGG_ARCH) { $env:CILOGG_ARCH } else { 'x64' }),
     [int]$StableServers = 4,
     [int]$RestartedServers = 4,
-    [int]$RestartIntervalMs = 150
+    [int]$RestartIntervalMs = 150,
+    # Only compile the installer, for a package built for another architecture than the host's.
+    [switch]$CompileOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -191,6 +193,18 @@ $supervisorLog = Join-Path $workDirectory 'supervisor.log'
 $results = [Collections.Generic.List[object]]::new()
 $heldFile = $null
 try {
+    if ($CompileOnly) {
+        # The cross-compiling arm64 build job: its binaries cannot run on the x64 runner. CI runs
+        # this whole test on the same package on a native arm64 runner (Windows arm64 installer).
+        $null = Build-Installer
+        Write-Host "The $Platform installer compiled; the runtime checks run on a $Platform host."
+        return
+    }
+    # The operating system's architecture, also when this PowerShell runs emulated.
+    $hostArch = (Get-ItemProperty -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment').PROCESSOR_ARCHITECTURE
+    if ($Platform -ieq 'arm64' -and $hostArch -ine 'ARM64') {
+        throw "The $Platform package cannot run on this $hostArch host: run this test on an arm64 host, or pass -CompileOnly"
+    }
     # The installer runs its own copy of the helper from its temporary folder: it must start
     # there on this platform, without the Visual C++ runtime next to it.
     $probeDirectory = Join-Path $workDirectory 'helper-probe'
