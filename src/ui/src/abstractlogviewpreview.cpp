@@ -109,14 +109,14 @@ bool AbstractLogView::viewportEvent( QEvent* event )
     if ( event->type() == QEvent::ToolTip ) {
         auto* help = static_cast<QHelpEvent*>( event );
         if ( rightMarginPx_ > 0 && help->pos().x() >= viewport()->width() - rightMarginPx_ ) {
-            // The annotation column: its label in full when the column cuts it short. It stays
-            // while the mouse stays in that cell of the column. Qt asks again after every small
-            // mouse move: the label is shown again without being closed first, because Qt does
-            // not show a tooltip being closed again with the same text.
+            // The annotation column: the tooltip of the line's annotation. It stays while the
+            // mouse stays in that cell of the column. Qt asks again after every small mouse move:
+            // the tooltip is shown again without being closed first, because Qt does not show a
+            // tooltip being closed again with the same text.
             if ( linePreviewActive_ ) {
                 clearLinePreview();
             }
-            if ( const auto annotation = elidedAnnotationAt( help->pos() );
+            if ( const auto annotation = annotationToolTipAt( help->pos() );
                  !annotation.isEmpty() ) {
                 showViewToolTip( help->globalPos(), annotation, annotationCellAt( help->pos() ) );
             }

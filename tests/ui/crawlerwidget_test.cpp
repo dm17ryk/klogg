@@ -1434,6 +1434,19 @@ TEST_CASE( "matched_by_column_shows_marks_in_inverse_search", "[workbench][U14][
     REQUIRE( filtered->matchedByText( 0_lnum ).isEmpty() );
 }
 
+namespace {
+// The "Matched by" cell of `index` comes to show `text`, and its tooltip to name `name`.
+bool showsMatchedBy( const FilteredView* view, LineNumber index, const QString& text,
+                     const QString& name )
+{
+    const auto nameCell = "<td>" + name.toHtmlEscaped() + "&nbsp;";
+    return waitUiState( [ & ] {
+        return view->matchedByText( index ) == text
+               && view->matchedByToolTip( index ).contains( nameCell );
+    } );
+}
+} // namespace
+
 TEST_CASE( "matched_by_names_predefined_filters_per_tab", "[workbench][U14][ui]" )
 {
     QTemporaryFile file{ "crawler_matched_by_filters_XXXXXX" };
@@ -1455,13 +1468,14 @@ TEST_CASE( "matched_by_names_predefined_filters_per_tab", "[workbench][U14][ui]"
     const PredefinedFilter errors{ "errors", "Errors", "ERROR", false };
     const PredefinedFilter lost{ "lost", "Connection lost", "lost", false };
 
-    // A search built from one predefined filter names the filter, not the matched text.
+    // A search built from one predefined filter shows the matched text; the tooltip names the
+    // filter (#184).
     visitor.applyPredefinedFilters( { warnings } );
     REQUIRE( visitor.currentSearchText() == "WARN" );
     visitor.runSearch();
     REQUIRE( waitUiState( [ & ] { return visitor.getLogFilteredNbLines() == 2_lcount; } ) );
     auto* firstTab = visitor.activeFilteredView();
-    REQUIRE( waitUiState( [ & ] { return firstTab->matchedByText( 0_lnum ) == "Warnings"; } ) );
+    REQUIRE( showsMatchedBy( firstTab, 0_lnum, "WARN", "Warnings" ) );
 
     // A kept tab searches with another filter.
     visitor.keepNextSearchResults();
@@ -1471,21 +1485,20 @@ TEST_CASE( "matched_by_names_predefined_filters_per_tab", "[workbench][U14][ui]"
     REQUIRE( waitUiState( [ & ] { return visitor.getLogFilteredNbLines() == 1_lcount; } ) );
     auto* secondTab = visitor.activeFilteredView();
     REQUIRE( secondTab != firstTab );
-    REQUIRE( waitUiState( [ & ] { return secondTab->matchedByText( 0_lnum ) == "Errors"; } ) );
+    REQUIRE( showsMatchedBy( secondTab, 0_lnum, "ERROR", "Errors" ) );
 
     // Back in the first tab, its search run again still names its own filter.
     visitor.selectFilteredTab( 0 );
     REQUIRE( waitUiState( [ & ] { return visitor.currentSearchText() == "WARN"; } ) );
     visitor.runSearch();
     REQUIRE( waitUiState( [ & ] { return visitor.getLogFilteredNbLines() == 2_lcount; } ) );
-    REQUIRE( waitUiState( [ & ] { return firstTab->matchedByText( 0_lnum ) == "Warnings"; } ) );
+    REQUIRE( showsMatchedBy( firstTab, 0_lnum, "WARN", "Warnings" ) );
 
     // A filter applied through Commander is named too.
     visitor.applyCommanderFilter( lost );
     REQUIRE( visitor.currentSearchText() == "lost" );
     REQUIRE( waitUiState( [ & ] { return visitor.getLogFilteredNbLines() == 1_lcount; } ) );
-    REQUIRE( waitUiState(
-        [ & ] { return firstTab->matchedByText( 0_lnum ) == "Connection lost"; } ) );
+    REQUIRE( showsMatchedBy( firstTab, 0_lnum, "lost", "Connection lost" ) );
 }
 
 TEST_CASE( "matched_by_names_filters_of_a_restored_boolean_search", "[workbench][U14][ui]" )
@@ -1527,8 +1540,22 @@ TEST_CASE( "matched_by_names_filters_of_a_restored_boolean_search", "[workbench]
     visitor.runSearch();
     REQUIRE( waitUiState( [ & ] { return visitor.getLogFilteredNbLines() == 2_lcount; } ) );
     auto* view = visitor.activeFilteredView();
-    REQUIRE( waitUiState( [ & ] { return view->matchedByText( 0_lnum ) == "Modem: WiFi"; } ) );
-    REQUIRE( waitUiState( [ & ] { return view->matchedByText( 1_lnum ) == "Errors: ERROR"; } ) );
+    // The cell shows the text that matched, the tooltip the filter and its alternative (#184).
+    REQUIRE( showsMatchedBy( view, 0_lnum, "WiFi", "Modem: WiFi" ) );
+    REQUIRE( showsMatchedBy( view, 1_lnum, "ERROR", "Errors: ERROR" ) );
+
+    // Resting the mouse on the cell shows that tooltip.
+    visitor.render();
+    const QPoint cell( view->viewport()->width() - 4, view->fontMetrics().height() / 2 );
+    QHelpEvent help( QEvent::ToolTip, cell, view->viewport()->mapToGlobal( cell ) );
+    QApplication::sendEvent( view->viewport(), &help );
+    REQUIRE( QTest::qWaitFor(
+        [] {
+            return QToolTip::isVisible()
+                   && QToolTip::text().contains( "<td>Modem: WiFi&nbsp;&nbsp;</td><td>WiFi</td>" );
+        },
+        5000 ) );
+    QToolTip::hideText();
 }
 
 TEST_CASE( "matched_by_follows_renamed_and_deleted_filters", "[workbench][U14][ui]" )
@@ -1562,7 +1589,7 @@ TEST_CASE( "matched_by_follows_renamed_and_deleted_filters", "[workbench][U14][u
     visitor.runSearch();
     REQUIRE( waitUiState( [ & ] { return visitor.getLogFilteredNbLines() == 1_lcount; } ) );
     auto* view = visitor.activeFilteredView();
-    REQUIRE( waitUiState( [ & ] { return view->matchedByText( 0_lnum ) == "Warnings"; } ) );
+    REQUIRE( showsMatchedBy( view, 0_lnum, "WARN", "Warnings" ) );
 
     // A kept tab that is closed leaves no view behind for the relabelling below.
     visitor.keepNextSearchResults();
@@ -1575,25 +1602,23 @@ TEST_CASE( "matched_by_follows_renamed_and_deleted_filters", "[workbench][U14][u
     visitor.closeFilteredTab( 1 );
     CHECK( visitor.filteredViewsDataCount() == 1 );
 
-    // Renamed while its results are shown: the labels follow without a new search.
+    // Renamed while its results are shown: the names follow without a new search.
     visitor.offerPredefinedFilters(
         { PredefinedFilter{ "warnings", "Low battery", "WARN", false } } );
-    REQUIRE( waitUiState( [ & ] { return view->matchedByText( 0_lnum ) == "Low battery"; } ) );
+    REQUIRE( showsMatchedBy( view, 0_lnum, "WARN", "Low battery" ) );
 
-    // Deleted: the search is a typed one again and shows what matched.
+    // Deleted: the search is a typed one again, named by its pattern.
     visitor.offerPredefinedFilters( {} );
-    REQUIRE( waitUiState( [ & ] { return view->matchedByText( 0_lnum ) == "WARN"; } ) );
+    REQUIRE( showsMatchedBy( view, 0_lnum, "WARN", "WARN" ) );
 
     // A search-history entry run through Commander has no filter ID: a filter change elsewhere
     // keeps its name.
     visitor.applyCommanderFilter( PredefinedFilter{ "", "Recent search", "battery", false } );
     REQUIRE( waitUiState( [ & ] { return visitor.getLogFilteredNbLines() == 1_lcount; } ) );
     auto* historyView = visitor.activeFilteredView();
-    REQUIRE(
-        waitUiState( [ & ] { return historyView->matchedByText( 0_lnum ) == "Recent search"; } ) );
+    REQUIRE( showsMatchedBy( historyView, 0_lnum, "battery", "Recent search" ) );
     visitor.offerPredefinedFilters( { PredefinedFilter{ "idle", "Idle", "idle", false } } );
-    REQUIRE(
-        waitUiState( [ & ] { return historyView->matchedByText( 0_lnum ) == "Recent search"; } ) );
+    REQUIRE( showsMatchedBy( historyView, 0_lnum, "battery", "Recent search" ) );
 }
 
 TEST_CASE( "clear_results_of_a_kept_tab", "[workbench][U14][ui]" )

@@ -7,6 +7,8 @@
 #include <iterator>
 #include <optional>
 
+#include <QCoreApplication>
+
 #include "booleanparser.h"
 #include "log.h"
 
@@ -318,6 +320,128 @@ bool referencesGroups( const QString& regex )
     return reference.match( regex ).hasMatch();
 }
 
+// The group of a focused expression (see focusedRegex) that captures the text that matters.
+const QString FocusGroup = QStringLiteral( "cilogg_matched" );
+
+QString joinedTokens( std::vector<RegexToken>::const_iterator from,
+                      std::vector<RegexToken>::const_iterator to )
+{
+    QString text;
+    for ( ; from != to; ++from ) {
+        text += from->atom + from->quantifier;
+    }
+    return text;
+}
+
+// `regex` with what names nothing at its ends (anchors, lookarounds, option settings, ".*") left
+// outside a group named FocusGroup around the rest, so that group captures the text that
+// matters: "(^(?!.*X).*ERROR)" -> "(^(?!.*X).*(?<cilogg_matched>ERROR))". The capture changes no
+// match. Empty when nothing is left out, when everything would be, or when `regex` is not one
+// sequence of items that can safely take a group (an option setting between the items would no
+// longer reach the items after the group).
+QString focusedRegex( const QString& regex, int depth = 0 )
+{
+    constexpr int MaxUnwrapDepth = 4;
+    std::vector<RegexToken> tokens;
+    if ( depth > MaxUnwrapDepth || !tokenizeRegex( regex, &tokens ) ) {
+        return {};
+    }
+    const std::vector<RegexToken>& items = tokens;
+    const auto first = std::find_if_not( items.begin(), items.end(), isNameless );
+    const auto last
+        = std::find_if_not( items.rbegin(), std::make_reverse_iterator( first ), isNameless )
+              .base();
+    if ( first == last ) {
+        return {};
+    }
+    if ( std::any_of( first, last, []( const RegexToken& token ) {
+             return token.quantifier.isEmpty() && optionSettingLength( token.atom, 0 ) > 0;
+         } ) ) {
+        return {};
+    }
+    if ( std::next( first ) == last && first->quantifier.isEmpty() ) {
+        const auto inner = withoutOuterGroup( first->atom );
+        if ( inner != first->atom ) {
+            const auto focused = focusedRegex( inner, depth + 1 );
+            if ( !focused.isEmpty() ) {
+                return joinedTokens( items.begin(), first ) + QLatin1Char( '(' ) + focused
+                       + QLatin1Char( ')' ) + joinedTokens( last, items.end() );
+            }
+        }
+    }
+    if ( first == items.begin() && last == items.end() ) {
+        return {};
+    }
+    return joinedTokens( items.begin(), first ) + QStringLiteral( "(?<" ) + FocusGroup
+           + QLatin1Char( '>' ) + joinedTokens( first, last ) + QLatin1Char( ')' )
+           + joinedTokens( last, items.end() );
+}
+
+// The expression of `pattern` that also captures the text that matters (see focusedRegex), or
+// the plain expression of `pattern` when there is nothing to leave out or it cannot be done.
+QRegularExpression focusedExpression( const RegularExpressionPattern& pattern )
+{
+    auto expression = static_cast<QRegularExpression>( pattern );
+    const auto& regex = pattern.pattern;
+    if ( pattern.isPlainText || !expression.isValid() || regex.startsWith( QLatin1String( "(*" ) )
+         || usesFreeSpacing( regex ) || referencesGroups( regex )
+         || regex.contains( QLatin1String( "(?(" ) ) ) {
+        return expression;
+    }
+    const auto focused = focusedRegex( regex );
+    if ( focused.isEmpty() ) {
+        return expression;
+    }
+    auto focusedPattern = pattern;
+    focusedPattern.pattern = focused;
+    auto withFocus = static_cast<QRegularExpression>( focusedPattern );
+    // A group of that name in the pattern itself makes the focused expression invalid.
+    return withFocus.isValid() ? withFocus : expression;
+}
+
+// What `match` shows: the focused capture when there is one, else the whole match, without the
+// spaces around it; `shown` when that leaves nothing or is the whole line, since it says no more
+// than the pattern.
+QString shownText( const QRegularExpressionMatch& match, const QString& line, const QString& shown )
+{
+    const auto text = match.capturedStart( FocusGroup ) >= 0 ? match.captured( FocusGroup )
+                                                             : match.captured( 0 );
+    const auto trimmed = text.trimmed();
+    return elided( trimmed.isEmpty() || text.size() == line.size() ? shown : trimmed );
+}
+
+QString toolTipOf( const std::vector<MatchLabeler::Match>& matches )
+{
+    if ( matches.empty() ) {
+        return {};
+    }
+    QStringList shownRows;
+    int hidden = 0;
+    for ( const auto& match : matches ) {
+        const auto row
+            = QStringLiteral( "<tr><td>%1&nbsp;&nbsp;</td><td>%2</td></tr>" )
+                  .arg( elided( match.name ).toHtmlEscaped(), match.text.toHtmlEscaped() );
+        if ( shownRows.contains( row ) ) {
+            continue;
+        }
+        if ( shownRows.size() >= MatchLabeler::MaxToolTipRows ) {
+            ++hidden;
+            continue;
+        }
+        shownRows.append( row );
+    }
+    if ( hidden > 0 ) {
+        shownRows.append( QStringLiteral( "<tr><td colspan=\"2\">%1</td></tr>" )
+                              .arg( QCoreApplication::translate( "MatchLabeler", "and %n more",
+                                                                 nullptr, hidden ) ) );
+    }
+    return QStringLiteral( "<qt><table cellspacing=\"0\" cellpadding=\"1\">"
+                           "<tr><th align=\"left\">%1&nbsp;&nbsp;</th>"
+                           "<th align=\"left\">%2</th></tr>%3</table></qt>" )
+        .arg( QCoreApplication::translate( "MatchLabeler", "Matched by" ),
+              QCoreApplication::translate( "MatchLabeler", "Text" ), shownRows.join( QString{} ) );
+}
+
 // How `alternatives` are shown. Short names that would be the same for two alternatives (they
 // differ only in what the short form leaves out, such as a lookahead) keep the longer form, so
 // the label still says which one matched.
@@ -472,7 +596,7 @@ MatchLabeler MatchLabeler::fromTerms( const QList<RegularExpressionPattern>& pat
 MatchLabeler MatchLabeler::fromSpecs( const std::vector<TermSpec>& specs )
 {
     const auto compiled = []( const RegularExpressionPattern& pattern ) {
-        const auto expression = static_cast<QRegularExpression>( pattern );
+        const auto expression = focusedExpression( pattern );
         if ( !expression.isValid() ) {
             LOG_DEBUG << "Match labeler term rejected: " << pattern.pattern << ": "
                       << expression.errorString();
@@ -482,7 +606,10 @@ MatchLabeler MatchLabeler::fromSpecs( const std::vector<TermSpec>& specs )
 
     MatchLabeler labeler;
     for ( const auto& spec : specs ) {
-        Term term{ spec.name, compiled( spec.pattern ), {}, spec.namePrefix };
+        const auto shownPattern = spec.pattern.isPlainText
+                                      ? spec.pattern.pattern
+                                      : alternativeDisplayName( spec.pattern.pattern );
+        Term term{ spec.name, compiled( spec.pattern ), {}, spec.namePrefix, shownPattern };
         if ( !term.expression.isValid() ) {
             return {};
         }
@@ -558,8 +685,6 @@ MatchLabeler MatchLabeler::fromSearch( const RegularExpressionPattern& search,
     // Within one regular expression a top-level "(?i)" also applies to the alternatives after
     // it; each term inherits the option settings of the terms before it, as in the search.
     const bool optionsSpanAlternatives = !search.isBoolean && !search.isPlainText;
-    // Lines are labelled with filter names even when only one term is a filter.
-    bool namesFilters = !filters.isEmpty();
 
     if ( !filters.isEmpty() ) {
         QString inheritedOptions;
@@ -593,7 +718,6 @@ MatchLabeler MatchLabeler::fromSearch( const RegularExpressionPattern& search,
                     splitIntoAlternatives( spec, leaf.pattern, {} );
                     spec.namePrefix = filter != nullptr && hasOwnName( *filter );
                 }
-                namesFilters = namesFilters || filter != nullptr;
                 specs.push_back( std::move( spec ) );
             }
         } catch ( const std::exception& error ) {
@@ -634,7 +758,6 @@ MatchLabeler MatchLabeler::fromSearch( const RegularExpressionPattern& search,
         // A split broke a construct that spans alternatives; label with the whole pattern.
         return fromTerms( { search }, { search.pattern } );
     }
-    labeler.namesFilters_ = namesFilters;
     return labeler;
 }
 
@@ -646,67 +769,62 @@ int MatchLabeler::preferredColumnChars() const
     if ( terms_.empty() ) {
         return 0;
     }
-    if ( showsMatchedText() ) {
+    // One pattern of one alternative: what it matches can be anything.
+    if ( terms_.size() == 1 && terms_.front().parts.empty() ) {
         return SingleTermChars;
     }
+    // The cell shows matched text: the alternatives as written are the best guess of its size.
     int longest = 0;
     for ( const auto& term : terms_ ) {
         if ( term.parts.empty() ) {
-            longest = std::max( longest, static_cast<int>( term.name.size() ) );
-            continue;
+            longest = std::max( longest, static_cast<int>( term.shownPattern.size() ) );
         }
-        const auto prefix = term.namePrefix ? static_cast<int>( term.name.size() ) + 2 : 0;
         for ( const auto& part : term.parts ) {
-            longest = std::max( longest, prefix + static_cast<int>( part.name.size() ) );
+            longest = std::max( longest, static_cast<int>( part.name.size() ) );
         }
     }
     return std::clamp( longest + 2, MinChars, MaxChars );
 }
 
-QString MatchLabeler::termLabel( const Term& term, const QString& line ) const
+std::vector<MatchLabeler::Match> MatchLabeler::matches( const QString& line ) const
 {
-    if ( term.parts.empty() ) {
-        return term.name;
-    }
-    QStringList matchedParts;
-    for ( const auto& part : term.parts ) {
-        if ( part.expression.match( line ).hasMatch() ) {
-            matchedParts.append( part.name );
+    std::vector<Match> found;
+    for ( const auto& term : terms_ ) {
+        const auto termMatch = term.expression.match( line );
+        if ( !termMatch.hasMatch() ) {
+            continue;
+        }
+        bool partMatched = false;
+        for ( const auto& part : term.parts ) {
+            const auto partMatch = part.expression.match( line );
+            if ( !partMatch.hasMatch() ) {
+                continue;
+            }
+            partMatched = true;
+            found.push_back(
+                { term.namePrefix ? term.name + QStringLiteral( ": " ) + part.name : part.name,
+                  shownText( partMatch, line, part.name ) } );
+        }
+        if ( !partMatched ) {
+            found.push_back( { term.name, shownText( termMatch, line, term.shownPattern ) } );
         }
     }
-    if ( matchedParts.isEmpty() ) {
-        return term.name;
-    }
-    const auto parts = matchedParts.join( QStringLiteral( ", " ) );
-    return term.namePrefix ? term.name + QStringLiteral( ": " ) + parts : parts;
+    return found;
 }
 
-bool MatchLabeler::showsMatchedText() const
+MatchLabeler::Annotation MatchLabeler::annotate( const QString& line ) const
 {
-    // One typed term that is not split: its matched text says more than its pattern. A term of
-    // several alternatives (one quoted regex) names the alternatives that matched instead.
-    return terms_.size() == 1 && !namesFilters_ && terms_.front().parts.empty();
+    const auto found = matches( line );
+    QStringList texts;
+    for ( const auto& match : found ) {
+        if ( !texts.contains( match.text ) ) {
+            texts.append( match.text );
+        }
+    }
+    return { elided( texts.join( QStringLiteral( ", " ) ) ), toolTipOf( found ) };
 }
 
 QString MatchLabeler::label( const QString& line ) const
 {
-    if ( showsMatchedText() ) {
-        const auto match = terms_.front().expression.match( line );
-        if ( !match.hasMatch() ) {
-            return {};
-        }
-        const auto text = match.captured( 0 );
-        // A match of nothing or of the whole line says less than the pattern itself.
-        const auto shown = text.isEmpty() || text.size() == line.size() ? terms_.front().name
-                                                                       : text;
-        return elided( shown );
-    }
-
-    QStringList matched;
-    for ( const auto& term : terms_ ) {
-        if ( term.expression.match( line ).hasMatch() ) {
-            matched.append( termLabel( term, line ) );
-        }
-    }
-    return elided( matched.join( QStringLiteral( ", " ) ) );
+    return annotate( line ).text;
 }
