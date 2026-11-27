@@ -66,6 +66,7 @@ jobs:
           python3 -m unittest discover -s tests/packaging -p 'test_*.py'
           bash tests/packaging/linux_native_test.sh
           bash tests/packaging/linux_command_launcher_test.sh
+          bash tests/packaging/legacy_latest_json_test.sh
 
       - name: Save version
         run: echo $CILOGG_VERSION > cilogg_version.txt
@@ -450,13 +451,18 @@ jobs:
 
   Mac:
     if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    # scripts/check_release_inputs.py finds the "Mac (arm64, ..." jobs by this name.
     name: Mac (${{ matrix.config.arch }}, ${{ matrix.config.backend }}, Qt ${{ matrix.config.qt_version }})
+    # Bounds a job that runs (builds take 30-75 min); time spent waiting for a runner
+    # is not counted. A stuck macOS queue is handled by the rule in docs/qt-platforms.md
+    # ("Hosted macOS runner outages").
+    timeout-minutes: 150
     strategy:
       fail-fast: false
       matrix:
         config:
           - os: macos
-            os_version: 15-intel
+            runner: macos-15-intel
             backend: hyperscan
             qt_version: 6.10.1
             qt_arch: clang_64
@@ -466,7 +472,11 @@ jobs:
             cmake_opts: -DKLOGG_USE_HYPERSCAN=ON -DKLOGG_USE_VECTORSCAN=OFF -DKLOGG_OSX_DEPLOYMENT_TARGET=13.0 -DCMAKE_CXX_FLAGS=-Wno-error=deprecated-declarations
 
           - os: macos
-            os_version: 26    # Runner image (macos-15 arm64 stopped allocating 2026-11-12); deployment target remains in cmake_opts.
+            # Apple Silicon host. The repository variable CILOGG_MACOS_ARM64_RUNNER moves both
+            # arm64 rows to another hosted label when this one stops allocating runners
+            # (macos-15 on 2026-11-12; every arm64 label ran short on 2026-11-26, #193).
+            # The deployment target stays in cmake_opts.
+            runner: ${{ vars.CILOGG_MACOS_ARM64_RUNNER || 'macos-26' }}
             arch: arm64       # Apple Silicon (ARM64) architecture
             backend: vectorscan
             qt_version: 6.10.1
@@ -479,7 +489,7 @@ jobs:
 
           - os: macos
             # Use the established Intel host after macOS 26 runner allocation failures.
-            os_version: 15-intel
+            runner: macos-15-intel
             arch: x64
             backend: hyperscan
             qt_version: 6.12.0
@@ -490,7 +500,7 @@ jobs:
             cmake_opts: -DKLOGG_USE_HYPERSCAN=ON -DKLOGG_USE_VECTORSCAN=OFF -DKLOGG_OSX_DEPLOYMENT_TARGET=14.4 -DCMAKE_CXX_FLAGS=-Wno-error=deprecated-declarations
 
           - os: macos
-            os_version: 26
+            runner: ${{ vars.CILOGG_MACOS_ARM64_RUNNER || 'macos-26' }}
             arch: arm64
             native_parity: true
             backend: vectorscan
@@ -501,7 +511,7 @@ jobs:
             artifacts_id: macos-arm-qt612
             cmake_opts: -DKLOGG_USE_HYPERSCAN=OFF -DKLOGG_USE_VECTORSCAN=ON -DKLOGG_OSX_DEPLOYMENT_TARGET=14.4 -DCMAKE_CXX_FLAGS=-Wno-error=deprecated-declarations
 
-    runs-on: ${{ matrix.config.os }}-${{ matrix.config.os_version }}
+    runs-on: ${{ matrix.config.runner }}
     steps:
       - uses: actions/checkout@v3
 

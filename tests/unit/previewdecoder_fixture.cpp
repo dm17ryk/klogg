@@ -102,6 +102,62 @@ int main( int argc, char** argv )
         QJsonArray fields;
         for ( int i = 0; i < ( mode == "count" ? 2049 : mode == "rows" || rowCut ? 2048 : 1 ); ++i )
             fields.append( field );
+        // A text-only subtree and a Lua value string as the worker renders them (#181); "forged"
+        // claims a display text the attributes do not hold.
+        if ( mode == "display" || mode == "forged" ) {
+            const QJsonObject text{ { "name", "_ws.lua.text" }, { "showname", "Header: two bytes" },
+                                    { "show", "" },             { "value", "" },
+                                    { "pos", "0" },             { "size", "2" } };
+            const QJsonObject status{ { "name", "probe.status" }, { "showname", "Status: Battery OK (0)" },
+                                      { "show", "0" },            { "value", "00" },
+                                      { "pos", "0" },             { "size", "1" } };
+            const QString value = mode == "forged" ? "Forged" : "Battery OK (0)";
+            fields = QJsonArray{
+                QJsonObject{ { "id", "0/0" },
+                             { "depth", 0 },
+                             { "positionOrigin", "engine_data_source_unresolved" },
+                             { "columns", QJsonArray{ "Header: two bytes", "", "", "0", "2" } },
+                             { "attributes", text } },
+                QJsonObject{ { "id", "0/0/0" },
+                             { "depth", 1 },
+                             { "positionOrigin", "engine_data_source_unresolved" },
+                             { "columns", QJsonArray{ "probe.status", value, "00", "0", "1" } },
+                             { "attributes", status } }
+            };
+            // Wireshark's truncation mark appended by the dissector to the value is display text.
+            const auto appended
+                = QStringLiteral( "Battery OK (0) [" ) + QChar( 0x2026 ) + QLatin1Char( ']' );
+            const QJsonObject more{ { "name", "probe.more" }, { "showname", "More: " + appended },
+                                    { "show", "0" },          { "value", "00" },
+                                    { "pos", "0" },           { "size", "1" } };
+            fields.append( QJsonObject{ { "id", "0/0/1" },
+                                        { "depth", 1 },
+                                        { "positionOrigin", "engine_data_source_unresolved" },
+                                        { "columns", QJsonArray{ "probe.more", appended, "00", "0", "1" } },
+                                        { "attributes", more } } );
+            // A value Wireshark cut off ("…" after a prefix of show) shows the whole show value,
+            // also as Raw when there are no raw bytes; bare legacy text has neither.
+            const QJsonObject cut{ { "name", "probe.long" },
+                                   { "showname", QStringLiteral( "Long: abcde" ) + QChar( 0x2026 ) },
+                                   { "show", "abcdefghij" },
+                                   { "pos", "0" },
+                                   { "size", "1" } };
+            fields.append( QJsonObject{
+                { "id", "0/0/2" },
+                { "depth", 1 },
+                { "positionOrigin", "engine_data_source_unresolved" },
+                { "columns", QJsonArray{ "probe.long", "abcdefghij", "abcdefghij", "0", "1" } },
+                { "attributes", cut } } );
+            const QJsonObject bare{
+                { "name", "text" }, { "show", "Bare legacy text" }, { "pos", "0" }, { "size", "0" }
+            };
+            fields.append( QJsonObject{
+                { "id", "0/1" },
+                { "depth", 0 },
+                { "positionOrigin", "engine_data_source_unresolved" },
+                { "columns", QJsonArray{ "Bare legacy text", "", "", "0", "0" } },
+                { "attributes", bare } } );
+        }
         QJsonObject response{
             { "version", 1 },
             { "id", request.value( "id" ) },

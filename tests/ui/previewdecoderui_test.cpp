@@ -547,3 +547,65 @@ TEST_CASE( "The preview pane's result limit reaches the worker and a cut-off nam
     CHECK( tab.findChild<QLabel*>( "previewStatus" )->text().contains( "1 of 769 rows" ) );
     TsharkPreviewClient::instance().reset();
 }
+
+TEST_CASE( "The preview pane shows Lua display text and the whole Name, Value and Raw as tooltips",
+           "[ui][previewdecoderui]" )
+{
+    RestoreDecoder restore;
+    RestorePreviews definitions;
+    struct RestoreEnv {
+        QByteArray python = qgetenv( "CILOGG_SCRIPT_PYTHON" ),
+                   mode = qgetenv( "CILOGG_PREVIEW_FIXTURE_MODE" ),
+                   pid = qgetenv( "CILOGG_PREVIEW_FIXTURE_PID" );
+        ~RestoreEnv()
+        {
+            for ( const auto& item : { qMakePair( "CILOGG_SCRIPT_PYTHON", python ),
+                                       qMakePair( "CILOGG_PREVIEW_FIXTURE_MODE", mode ),
+                                       qMakePair( "CILOGG_PREVIEW_FIXTURE_PID", pid ) } ) {
+                if ( item.second.isNull() )
+                    qunsetenv( item.first );
+                else
+                    qputenv( item.first, item.second );
+            }
+        }
+    } environment;
+    qputenv( "CILOGG_SCRIPT_PYTHON", QByteArray( PREVIEW_DECODER_FIXTURE_PATH ) );
+    qputenv( "CILOGG_PREVIEW_FIXTURE_MODE", "display" );
+    qputenv( "CILOGG_PREVIEW_FIXTURE_PID",
+             QByteArray::number( QCoreApplication::applicationPid() ) );
+    PreviewManager::instance().clearAll();
+    REQUIRE( PreviewDecoderSettings::instance().setConfiguration(
+        { { "enabled", true },
+          { "tshark", QCoreApplication::applicationFilePath() },
+          { "text2pcap", QCoreApplication::applicationFilePath() },
+          { "protocolRoutes",
+            QVariantMap{ { "EHCI", QVariantMap{ { "dissector", "data" },
+                                                { "inputEncoding", "hex" } } } } } } ) );
+    PreparedPreview prepared;
+    prepared.text = "01020304";
+    prepared.assembly = { { "protocol", "EHCI" }, { "state", "complete" } };
+    PreviewMessageTab tab( prepared, "Auto", 1 );
+    tab.findChild<QPushButton*>( "previewRun" )->click();
+    REQUIRE( QTest::qWaitFor( [ & ] { return !tab.result().isEmpty(); }, 10000 ) );
+    INFO( tab.result().value( "reason" ).toString().toStdString() );
+    REQUIRE( tab.result().value( "available" ).toBool() );
+    auto* tree = tab.findChild<QTreeWidget*>( "previewFields" );
+    REQUIRE( tree->topLevelItemCount() == 2 );
+    auto* header = tree->topLevelItem( 0 );
+    REQUIRE( header->childCount() == 3 );
+    auto* status = header->child( 0 );
+    // Issue #181: the label of a text-only subtree, and a value string's text.
+    CHECK( header->text( 0 ) == "Header: two bytes" );
+    CHECK( status->text( 0 ) == "probe.status" );
+    CHECK( status->text( 1 ) == "Battery OK (0)" );
+    CHECK( status->text( 2 ) == "00" );
+    // The whole text first, then the item's attributes; an empty cell keeps the attributes.
+    CHECK( header->toolTip( 0 ).contains( "Header: two bytes" ) );
+    CHECK( status->toolTip( 1 ).startsWith( "<p" ) );
+    CHECK( status->toolTip( 1 ).contains( "Battery OK (0)" ) );
+    CHECK( status->toolTip( 1 ).contains( "showname" ) );
+    CHECK( header->toolTip( 1 ).startsWith( "<pre>" ) );
+    // Pos and Size are short numbers: their tooltip is the attributes alone.
+    CHECK( status->toolTip( 3 ).startsWith( "<pre>" ) );
+    CHECK( status->toolTip( 4 ).startsWith( "<pre>" ) );
+}

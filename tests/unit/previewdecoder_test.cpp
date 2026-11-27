@@ -964,6 +964,49 @@ TEST_CASE( "Automatic TShark failures fall back to supervised JSON", "[previewde
     CHECK_FALSE( result.contains( "fallbackReason" ) );
 }
 
+TEST_CASE( "TShark rows carry the dissector's display text, derived from their attributes",
+           "[previewdecoder]" )
+{
+    RestoreDecoder restore;
+    RestoreEnvironment python( "CILOGG_SCRIPT_PYTHON" ), mode( "CILOGG_PREVIEW_FIXTURE_MODE" ),
+        pid( "CILOGG_PREVIEW_FIXTURE_PID" );
+    qputenv( "CILOGG_SCRIPT_PYTHON", QByteArray( PREVIEW_DECODER_FIXTURE_PATH ) );
+    qputenv( "CILOGG_PREVIEW_FIXTURE_PID",
+             QByteArray::number( QCoreApplication::applicationPid() ) );
+    REQUIRE( PreviewDecoderSettings::instance().setConfiguration(
+        { { "enabled", true },
+          { "tshark", QCoreApplication::applicationFilePath() },
+          { "text2pcap", QCoreApplication::applicationFilePath() } } ) );
+    QObject channel;
+    auto request = directRequest( "0102", "hex" );
+    request.sessionOwner = &channel;
+    // Issue #181: a Lua value string shows its text, a text-only subtree its label.
+    TsharkPreviewClient::instance().reset();
+    qputenv( "CILOGG_PREVIEW_FIXTURE_MODE", "display" );
+    const auto result = PreviewService::evaluateAndWait( request );
+    INFO( QJsonDocument::fromVariant( result ).toJson( QJsonDocument::Compact ).toStdString() );
+    REQUIRE( result.value( "available" ).toBool() );
+    const auto fields = result.value( "fields" ).toList();
+    REQUIRE( fields.size() == 5 );
+    CHECK( fields.at( 0 ).toMap().value( "columns" ).toList()
+           == QVariantList{ "Header: two bytes", "", "", "0", "2" } );
+    CHECK( fields.at( 1 ).toMap().value( "columns" ).toList()
+           == QVariantList{ "probe.status", "Battery OK (0)", "00", "0", "1" } );
+    // Wireshark's truncation mark in a value is the dissector's appended text, not a cut label.
+    CHECK( fields.at( 2 ).toMap().value( "columns" ).toList().value( 1 )
+           == QStringLiteral( "Battery OK (0) [" ) + QChar( 0x2026 ) + QLatin1Char( ']' ) );
+    // A value Wireshark cut off keeps the whole show value; bare text has no Value or Raw.
+    CHECK( fields.at( 3 ).toMap().value( "columns" ).toList()
+           == QVariantList{ "probe.long", "abcdefghij", "abcdefghij", "0", "1" } );
+    CHECK( fields.at( 4 ).toMap().value( "columns" ).toList()
+           == QVariantList{ "Bare legacy text", "", "", "0", "0" } );
+    // A display text the attributes do not hold is a protocol error, as before.
+    TsharkPreviewClient::instance().reset();
+    qputenv( "CILOGG_PREVIEW_FIXTURE_MODE", "forged" );
+    CHECK( PreviewService::evaluateAndWait( request ).value( "reason" ) == "worker_protocol_error" );
+    TsharkPreviewClient::instance().reset();
+}
+
 namespace {
 // A route-mapped carrier whose JSON definition decodes the same text (#182).
 const QByteArray MappedCarrierDefinitions

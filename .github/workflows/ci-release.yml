@@ -14,12 +14,54 @@ on:
       ci-run-id:
         description: "Run ID of CI workflow"
         required: false
+      allow-missing-macos-arm64:
+        description: "Release without the macOS arm64 packages if their CI Build jobs never got a runner (needs ci-run-id; docs/qt-platforms.md)"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
 
 jobs:
+  check-ci-run:
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      # Space-separated macOS arm64 package directories whose CI Build jobs never got a
+      # runner; only these may be missing from the release.
+      allowed-missing: ${{ steps.check.outputs.allowed-missing }}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - name: Check the CI Build run
+      id: check
+      env:
+        GH_TOKEN: ${{ github.token }}
+        CI_RUN_ID: ${{ github.event.inputs.ci-run-id }}
+        ALLOW_MISSING_MACOS_ARM64: ${{ github.event.inputs.allow-missing-macos-arm64 }}
+      shell: bash
+      run: |
+        if [ -z "$CI_RUN_ID" ]; then
+          if [ "$ALLOW_MISSING_MACOS_ARM64" = "true" ]; then
+            echo "::error::allow-missing-macos-arm64 needs ci-run-id: the master CI Build run whose macOS arm64 jobs got no runner"
+            exit 1
+          fi
+          echo "Releasing the last successful CI Build run."
+          exit 0
+        fi
+        gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CI_RUN_ID" > "$RUNNER_TEMP/ci-run.json"
+        gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$CI_RUN_ID/jobs?per_page=100" --jq '.jobs[]' > "$RUNNER_TEMP/ci-jobs.json"
+        args=(ci-run --run "$RUNNER_TEMP/ci-run.json" --jobs "$RUNNER_TEMP/ci-jobs.json")
+        if [ "$ALLOW_MISSING_MACOS_ARM64" = "true" ]; then
+          args+=(--allow-missing-macos-arm64)
+        fi
+        left_out="$(python3 ./scripts/check_release_inputs.py "${args[@]}")"
+        echo "allowed-missing=$(echo $left_out)" >> "$GITHUB_OUTPUT"
+
   validate-linux:
+    needs: check-ci-run
     runs-on: ubuntu-24.04
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -43,6 +85,7 @@ jobs:
       run: bash ./scripts/validate_release_linux.sh
 
   validate-windows:
+    needs: check-ci-run
     runs-on: windows-2022
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -66,7 +109,10 @@ jobs:
       run: ./scripts/validate_release_windows.ps1
 
   validate-macos:
-    runs-on: macos-26
+    needs: check-ci-run
+    # Validation only mounts DMGs and checks files, so it runs on the Intel host that
+    # kept allocating when the Apple Silicon labels did not (#193).
+    runs-on: macos-15-intel
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     - name: Download artifacts for last successful CI workflow
@@ -82,10 +128,13 @@ jobs:
         workflow: ci-build.yml
         run_id: ${{ github.event.inputs.ci-run-id }}
     - name: Validate macOS artifacts
+      env:
+        CILOGG_ALLOWED_MISSING_MACOS_PACKAGES: ${{ needs.check-ci-run.outputs.allowed-missing }}
       run: bash ./scripts/validate_release_macos.sh
 
   release:
     needs:
+      - check-ci-run
       - validate-linux
       - validate-windows
       - validate-macos
@@ -217,6 +266,7 @@ jobs:
       env:
         GH_TOKEN: ${{ env.CILOGG_GITHUB_TOKEN }}
         RELEASE_CHANNEL: ${{ github.event.inputs.channel }}
+        ALLOWED_MISSING: ${{ needs.check-ci-run.outputs.allowed-missing }}
       shell: bash
       run: |
         if [ "$RELEASE_CHANNEL" = "stable" ]; then
@@ -225,6 +275,17 @@ jobs:
         else
           tag="continuous-${CILOGG_VERSION}"
           flags=(--prerelease --generate-notes)
+        fi
+        if [ -n "$ALLOWED_MISSING" ]; then
+          check=(macos-packages --root .)
+          for directory in $ALLOWED_MISSING; do
+            check+=(--allow-missing "$directory")
+          done
+          missing="$(python3 ./scripts/check_release_inputs.py "${check[@]}" | paste -sd ' ' -)"
+          if [ -n "$missing" ]; then
+            # Prepended to the generated notes.
+            flags+=(--notes "This release has no macOS Apple Silicon (arm64) packages from: ${missing}. Their CI Build jobs never got a GitHub-hosted runner.")
+          fi
         fi
           mapfile -d '' assets < <(
             find ./packages-* -maxdepth 1 -type f -print0
@@ -239,24 +300,17 @@ jobs:
       env:
         RELEASE_CHANNEL: ${{ github.event.inputs.channel }}
       shell: bash
+      # master can move while this job runs; the script rebases and retries the push (#178).
       run: |
-        python3 - <<'PY'
-        import json, os
-        from pathlib import Path
-        path = Path("latest.json")
-        data = json.loads(path.read_text(encoding="utf-8"))
-        channel = os.environ["RELEASE_CHANNEL"]
-        version = os.environ["CILOGG_VERSION"]
-        tag = ("v" if channel == "stable" else "continuous-") + version
-        data[channel] = version
-        data[channel + "_url"] = f"https://github.com/dm17ryk/klogg/releases/tag/{tag}"
-        path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-        PY
+        # latest.json is read from master. A release dispatched from another branch or
+        # a tag leaves it alone: pushing that checkout could carry its commits to master.
+        if [ "$GITHUB_REF" != "refs/heads/master" ]; then
+          echo "::warning::Released from $GITHUB_REF, not master; latest.json on master is unchanged."
+          exit 0
+        fi
         git config user.name github-actions
         git config user.email github-actions@github.com
-        git add latest.json
-        git diff --cached --quiet || git commit -m "chore: update legacy release metadata [skip ci]"
-        git push
+        bash ./scripts/publish_legacy_latest_json.sh "$RELEASE_CHANNEL" "$CILOGG_VERSION" master
 
     - name: Discord notification
       if: ${{ env.DISCORD_NEW_VERSIONS_WEBHOOK != '' }}

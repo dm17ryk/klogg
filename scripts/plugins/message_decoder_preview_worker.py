@@ -381,6 +381,44 @@ def count_rows(packets):
     return sum(count(packet) for packet in packets)
 
 
+# Items without a field of their own: a Lua TreeItem added with a text label, and legacy text.
+TEXT_ONLY_NAMES = {"", "_ws.lua.text", "text"}
+# Wireshark marks a label it cut off with this after the field's name, and a value it cut off
+# with an ellipsis at its end.
+TRUNCATED_LABEL = " […]"
+ELLIPSIS = "…"
+
+
+def display_columns(kind, attr):
+    """A row's columns as Wireshark shows the item (#181): Name, the dissector's display text as
+    Value (its showname after "label: "), Raw (the raw bytes, or else the raw show value), Pos and
+    Size. A text-only item is named by its text; a protocol keeps its showname;
+    a label Wireshark cut off keeps the whole raw show value."""
+    name = attr.get("name", "")
+    show, showname = attr.get("show"), attr.get("showname")
+    text_only = kind != "proto" and name in TEXT_ONLY_NAMES and bool(showname or show)
+    if text_only:
+        name, value = showname or show, ""
+    elif kind == "proto" or showname is None or ": " not in showname:
+        value = show if show is not None else showname or ""
+    else:
+        # Wireshark marks a label it cut with " […]" right after the field's name ("Name […]: ..."),
+        # and a value it cut with "…" after a prefix of the value. The same text elsewhere is the
+        # dissector's own (appended text).
+        label, value = showname.split(": ", 1)
+        cut_value = (
+            bool(show) and value.endswith(ELLIPSIS) and show != value
+            and show.startswith(value[:-1])
+        )
+        if show and (label.endswith(TRUNCATED_LABEL) or cut_value):
+            value = show
+    # The raw bytes, or else the raw show value; a text-only item's text is its name already.
+    raw = attr.get("value")
+    if raw is None:
+        raw = "" if text_only else show or ""
+    return [name, value, raw, attr.get("pos", ""), attr.get("size", "")]
+
+
 def render_fields(packets, limit=FIELD_LIMIT):
     result = []
     limited = False
@@ -396,13 +434,7 @@ def render_fields(packets, limit=FIELD_LIMIT):
             attr = node["attributes"]
             result.append(
                 {
-                    "columns": [
-                        attr.get("name", ""),
-                        attr.get("show", attr.get("showname", "")),
-                        attr.get("value", ""),
-                        attr.get("pos", ""),
-                        attr.get("size", ""),
-                    ],
+                    "columns": display_columns(node["kind"], attr),
                     "depth": depth,
                     "attributes": attr,
                     "positionOrigin": ORIGIN,
