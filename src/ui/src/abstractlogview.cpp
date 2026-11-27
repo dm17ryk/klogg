@@ -858,8 +858,13 @@ void AbstractLogView::registerShortcut( const std::string& action, std::function
     const auto& config = Configuration::get();
     const auto& configuredShortcuts = config.shortcuts();
 
+    // A key the user presses in the view, such as a page or arrow key that scrolls it, ends the
+    // hover preview.
     ShortcutAction::registerShortcut( configuredShortcuts, shortcuts_, this, Qt::WidgetShortcut,
-                                      action, func );
+                                      action, [ this, func = std::move( func ) ] {
+                                          clearLinePreview();
+                                          func();
+                                      } );
 }
 
 void AbstractLogView::registerShortcuts()
@@ -967,6 +972,7 @@ void AbstractLogView::doRegisterShortcuts()
 void AbstractLogView::keyPressEvent( QKeyEvent* keyEvent )
 {
     LOG_DEBUG << "keyPressEvent received " << keyEvent->text();
+    clearLinePreview();
 
     const auto text = keyEvent->text();
 
@@ -2034,6 +2040,31 @@ QString AbstractLogView::annotationToolTipAt( const QPoint& position ) const
         return {};
     }
     return annotation;
+}
+
+QRect AbstractLogView::annotationCellAt( const QPoint& position ) const
+{
+    if ( rightMarginPx_ <= 0 || charHeight_ <= 0 || position.y() < drawingTopOffset_ ) {
+        return {};
+    }
+    const auto row = static_cast<size_t>( ( position.y() - drawingTopOffset_ ) / charHeight_ );
+    if ( row >= wrappedLinesInfo_.size() ) {
+        return {};
+    }
+    // A wrapped line takes several rows; its cell takes them all.
+    const auto line = wrappedLinesInfo_[ row ].lineNumber;
+    auto first = row;
+    while ( first > 0 && wrappedLinesInfo_[ first - 1 ].lineNumber == line ) {
+        --first;
+    }
+    auto last = row;
+    while ( last + 1 < wrappedLinesInfo_.size()
+            && wrappedLinesInfo_[ last + 1 ].lineNumber == line ) {
+        ++last;
+    }
+    return QRect( viewport()->width() - rightMarginPx_,
+                  drawingTopOffset_ + static_cast<int>( first ) * charHeight_, rightMarginPx_,
+                  static_cast<int>( last - first + 1 ) * charHeight_ );
 }
 
 // Converts the mouse x, y coordinates to the line number in the file
