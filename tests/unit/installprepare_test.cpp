@@ -470,7 +470,8 @@ TEST_CASE( "A manifest line torn inside a character does not stop later updates"
     std::vector<std::string> lines;
     REQUIRE( prepare::runPrepare( root, {}, recorder( lines ) ) == prepare::PreparedExitCode );
 
-    // A power loss stopped prepare while it recorded the plugin: its line ends inside "é".
+    // A power loss stopped prepare while it recorded the plugin: its last line ends inside "é",
+    // without its line break.
     const auto manifestPath = root / prepare::ManifestFileName;
     const auto text = readText( manifestPath );
     const auto cut = text.rfind( "\xC3\xA9" );
@@ -478,7 +479,7 @@ TEST_CASE( "A manifest line torn inside a character does not stop later updates"
     writeText( manifestPath, text.substr( 0, cut + 1 ) );
     std::vector<prepare::MovedFile> entries;
     REQUIRE_NOTHROW( entries = prepare::parseManifest( readText( manifestPath ) ) );
-    REQUIRE_FALSE( entries.empty() );
+    REQUIRE( entries.size() == 1 );
     REQUIRE( entries.front().original == root / "cilogg.exe" );
 
     // The next update restores the recorded file and puts back the unrecorded copy.
@@ -489,31 +490,109 @@ TEST_CASE( "A manifest line torn inside a character does not stop later updates"
     REQUIRE( movedAsideFiles( root ).empty() );
 }
 
+TEST_CASE( "Only complete, readable manifest lines are read", "[installprepare]" )
+{
+    const fs::path folder = fs::temp_directory_path() / "cilogg install";
+    const auto first = prepare::formatManifestLine(
+        { folder / "cilogg.exe", folder / "cilogg.exe.cilogg-old" } );
+    const auto second
+        = prepare::formatManifestLine( { folder / "x.dll", folder / "x.dll.cilogg-old-2" } );
+    REQUIRE( prepare::parseManifest( first + "\n" + second + "\n" ).size() == 2 );
+    // A power loss cut the last line after "x.dll.cilogg-old": it still reads as a path, but it
+    // names an older copy, not the one this update moved aside.
+    const auto torn = first + "\n" + second.substr( 0, second.size() - 2 );
+    REQUIRE( prepare::parseManifest( torn ).size() == 1 );
+    REQUIRE( prepare::parseManifest( second.substr( 0, second.size() - 2 ) ).empty() );
 #ifdef Q_OS_WIN
-TEST_CASE( "A file whose name UTF-8 cannot hold is left alone", "[installprepare]" )
+    // A line that is not UTF-8 (a damaged disk) is skipped. Only Windows refuses to decode it;
+    // elsewhere a name is a byte string, and readManifest() checks what it names.
+    const std::string damaged = "C:\\cilogg\\\xC3\tC:\\cilogg\\\xC3.cilogg-old\n";
+    REQUIRE( prepare::parseManifest( damaged + first + "\n" ).size() == 1 );
+#endif
+}
+
+TEST_CASE( "A file whose name the manifest cannot record is left alone", "[installprepare]" )
 {
     QTemporaryDir temporary;
     REQUIRE( temporary.isValid() );
     const auto root = nativePath( temporary.path() );
     writeText( root / "cilogg.exe", "old executable" );
-    // NTFS allows an unpaired surrogate in a name; no file of the installer has one.
+#ifdef Q_OS_WIN
+    // NTFS allows an unpaired surrogate in a name, which UTF-8 cannot hold.
     std::wstring name = L"odd";
     name += static_cast<wchar_t>( 0xD800 );
-    name += L".json";
+    name += L".dll";
+#else
+    // A line break would split the manifest line.
+    const std::string name = "odd\nname.dll";
+#endif
+    // In an installed folder, as a folder there, and next to cilogg.exe (where every DLL counts as
+    // CILogg's).
     const auto odd = root / "plugins" / name;
+    const auto oddTop = root / name;
+    const auto inFolder = root / "python_runtime" / name / "inner.json";
+    struct RemoveOnExit {
+        // QTemporaryDir may not remove such names: done even when a check fails.
+        std::vector<fs::path> paths;
+        ~RemoveOnExit()
+        {
+            for ( const auto& path : paths ) {
+                std::error_code ignored;
+                fs::remove_all( path, ignored );
+            }
+        }
+    } cleanup{ { odd, oddTop, inFolder.parent_path() } };
     writeText( odd, "another program's file" );
+    writeText( oddTop, "another program's library" );
+    writeText( inFolder, "another program's data" );
     std::vector<std::string> lines;
 
     REQUIRE( prepare::runPrepare( root, {}, recorder( lines ) ) == prepare::PreparedExitCode );
     REQUIRE( readText( odd ) == "another program's file" );
+    REQUIRE( readText( oddTop ) == "another program's library" );
+    REQUIRE( readText( inFolder ) == "another program's data" );
     writeText( root / "cilogg.exe", "new executable" );
-    // A failed installation removes the files it added, but not this one.
+    // A failed installation removes the files it added, but none of these.
     REQUIRE( prepare::runRollback( root, recorder( lines ) ) == prepare::PreparedExitCode );
     REQUIRE( readText( root / "cilogg.exe" ) == "old executable" );
     REQUIRE( readText( odd ) == "another program's file" );
+    REQUIRE( readText( oddTop ) == "another program's library" );
+    REQUIRE( readText( inFolder ) == "another program's data" );
+}
 
-    std::error_code ignored;
-    fs::remove( odd, ignored );
+#ifdef Q_OS_WIN
+TEST_CASE( "A record torn after a shorter copy name never restores that older copy",
+           "[installprepare]" )
+{
+    QTemporaryDir temporary;
+    REQUIRE( temporary.isValid() );
+    const auto root = nativePath( temporary.path() );
+    writeText( root / "cilogg.exe", "old executable" );
+    // A copy from two updates ago that a running program still keeps open.
+    const auto older = root / "x.dll.cilogg-old";
+    writeText( older, "library from two updates ago" );
+    fs::last_write_time( older, fs::last_write_time( older ) - std::chrono::hours( 1 ) );
+    writeText( root / "x.dll", "previous library" );
+    ExclusiveHandle program( older );
+    REQUIRE( program.isOpen() );
+    std::vector<std::string> lines;
+    REQUIRE( prepare::runPrepare( root, {}, recorder( lines ) ) == prepare::PreparedExitCode );
+    REQUIRE( readText( root / "x.dll.cilogg-old-2" ) == "previous library" );
+
+    // A power loss cut the record of x.dll right after "x.dll.cilogg-old".
+    const auto manifestPath = root / prepare::ManifestFileName;
+    const auto text = readText( manifestPath );
+    const std::string olderName = "x.dll.cilogg-old";
+    const auto cut = text.find( olderName + "-2" );
+    REQUIRE( cut != std::string::npos );
+    writeText( manifestPath, text.substr( 0, cut + olderName.size() ) );
+
+    // The next update puts back the newest copy, the previous version's.
+    REQUIRE( prepare::runPrepare( root, {}, recorder( lines ) ) == prepare::PreparedExitCode );
+    REQUIRE( prepare::runRollback( root, recorder( lines ) ) == prepare::PreparedExitCode );
+    REQUIRE( readText( root / "x.dll" ) == "previous library" );
+    REQUIRE( readText( root / "cilogg.exe" ) == "old executable" );
+    REQUIRE( readText( older ) == "library from two updates ago" );
 }
 
 TEST_CASE( "Another program's DLL in use in the same folder does not block the installation",

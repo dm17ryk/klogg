@@ -133,9 +133,20 @@ fs::path fromUtf8( const std::string& text )
 #endif
 }
 
-// A manifest line cut inside a character (a write torn by a power loss) names no file: it is
-// skipped, so one damaged line cannot stop every later update. The file it would have named is
-// a moved-aside copy without a record, which removeMovedAside() handles.
+// The complete lines of a manifest. Every writer ends its lines, so a last line without its line
+// break was cut by a write a power loss tore: even when it still reads as a path, it may name the
+// wrong copy ("x.cilogg-old" of "x.cilogg-old-2"). It is left out; the file it would have named
+// is a moved-aside copy without a record, which removeMovedAside() handles.
+std::string completeLines( const std::string& text )
+{
+    if ( text.empty() || text.back() == '\n' )
+        return text;
+    const auto end = text.rfind( '\n' );
+    return end == std::string::npos ? std::string() : text.substr( 0, end + 1 );
+}
+
+// A manifest line that is not UTF-8 (a damaged disk) names no file: it is skipped, so one bad
+// line cannot stop every later update.
 std::optional<fs::path> pathFromManifest( const std::string& text )
 {
     try {
@@ -320,17 +331,19 @@ ProcessInfo queryProcess( DWORD pid, const std::map<DWORD, ProcessEntry>& proces
     return info;
 }
 
-// Whether UTF-8 holds `name` exactly: NTFS allows unpaired surrogates, which no installer file has.
-bool holdsInUtf8( const std::wstring& name )
+// Whether the manifest can record `name` exactly: it has none of the manifest's separators, and
+// UTF-8 holds it (NTFS allows unpaired surrogates). No file of the installer breaks either rule.
+bool recordable( const std::wstring& name )
 {
-    return WideCharToMultiByte( CP_UTF8, WC_ERR_INVALID_CHARS, name.data(),
-                                static_cast<int>( name.size() ), nullptr, 0, nullptr, nullptr )
-           > 0;
+    return name.find_first_of( L"\t\r\n" ) == std::wstring::npos
+           && WideCharToMultiByte( CP_UTF8, WC_ERR_INVALID_CHARS, name.data(),
+                                   static_cast<int>( name.size() ), nullptr, 0, nullptr, nullptr )
+                  > 0;
 }
 
 // The files and folders directly in `directory`. Reparse points (links, junctions) are left out:
 // they are neither followed nor touched, so the elevated installer stays in the folder. So are
-// names UTF-8 cannot hold: the installer never writes one, and the manifest could not record it.
+// names the manifest could not record: the installer never writes one.
 struct Listing {
     std::vector<fs::path> files;
     std::vector<fs::path> folders;
@@ -353,7 +366,7 @@ Listing listDirectory( const fs::path& directory )
     do {
         const std::wstring name = data.cFileName;
         if ( name == L"." || name == L".."
-             || ( data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT ) || !holdsInUtf8( name ) )
+             || ( data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT ) || !recordable( name ) )
             continue;
         if ( data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY )
             listing.folders.push_back( directory / name );
@@ -403,6 +416,12 @@ struct Listing {
     bool complete = true;
 };
 
+// Whether the manifest can record `name` exactly: it has none of the manifest's separators.
+bool recordable( const std::string& name )
+{
+    return name.find_first_of( "\t\r\n" ) == std::string::npos;
+}
+
 Listing listDirectory( const fs::path& directory )
 {
     Listing listing;
@@ -410,7 +429,7 @@ Listing listDirectory( const fs::path& directory )
     for ( fs::directory_iterator it( directory, error ), end; !error && it != end;
           it.increment( error ) ) {
         std::error_code status;
-        if ( it->is_symlink( status ) )
+        if ( it->is_symlink( status ) || !recordable( it->path().filename().native() ) )
             continue;
         if ( it->is_directory( status ) )
             listing.folders.push_back( it->path() );
@@ -635,7 +654,10 @@ constexpr char LeftInPlacePrefix[] = "#left\t";
 std::vector<fs::path> readLeftInPlace( const fs::path& manifestPath )
 {
     std::vector<fs::path> left;
-    std::ifstream file( manifestPath, std::ios::binary );
+    std::ifstream input( manifestPath, std::ios::binary );
+    const std::string text( ( std::istreambuf_iterator<char>( input ) ),
+                            std::istreambuf_iterator<char>() );
+    std::istringstream file( completeLines( text ) );
     std::string line;
     const std::string prefix = LeftInPlacePrefix;
     while ( std::getline( file, line ) ) {
@@ -671,6 +693,27 @@ bool hasMarker( const fs::path& manifestPath, const char* marker )
             return true;
     }
     return false;
+}
+
+// Writes the cached data of `file` through to the disk, so that after a power loss it is not
+// older than the renames and deletions that follow it (the file system journals those at once).
+void writeThrough( const fs::path& file, const Log& log )
+{
+#ifdef _WIN32
+    const auto handle
+        = CreateFileW( file.c_str(), GENERIC_WRITE,
+                       FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+                       OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr );
+    const bool written = handle != INVALID_HANDLE_VALUE && FlushFileBuffers( handle ) != FALSE;
+    const auto code = GetLastError();
+    if ( handle != INVALID_HANDLE_VALUE )
+        CloseHandle( handle );
+    if ( !written )
+        log( "Cannot write " + toUtf8( file ) + " through to the disk: " + systemErrorText( code ) );
+#else
+    (void)file;
+    (void)log;
+#endif
 }
 
 // Keeps only `entries`; `marker` (FinishingMarker or none) says how the next run treats them.
@@ -720,7 +763,7 @@ std::string formatManifestLine( const MovedFile& moved )
 std::vector<MovedFile> parseManifest( const std::string& text )
 {
     std::vector<MovedFile> entries;
-    std::istringstream lines( text );
+    std::istringstream lines( completeLines( text ) );
     std::string line;
     while ( std::getline( lines, line ) ) {
         if ( !line.empty() && line.back() == '\r' )
@@ -1235,9 +1278,14 @@ int runPrepare( const fs::path& directory, const fs::path& report, const Log& lo
     } );
     for ( const auto& file : result.leftInPlace )
         manifest << LeftInPlacePrefix << withoutSeparators( exactUtf8( file ) ) << "\n";
-    // Only a complete listing makes the manifest a complete record of the previous version.
-    if ( result.blocked.empty() && result.listedAll )
+    // Only a complete listing makes the manifest a complete record of the previous version. The
+    // records reach the disk before their mark: a mark without them would make a rollback take
+    // files it has no record of for added ones.
+    if ( result.blocked.empty() && result.listedAll ) {
+        manifest.flush();
+        writeThrough( manifestPath, log );
         manifest << PreparedMarker << "\n";
+    }
     if ( !result.listedAll )
         log( "A folder of the installation could not be read to its end; a failed installation "
              "keeps the files it added" );
@@ -1296,6 +1344,9 @@ int runFinish( const fs::path& directory, const Log& log )
             return ManifestFailedExitCode;
         }
     }
+    // The mark reaches the disk before the first old copy is deleted: after a power loss, a
+    // recovery that found deletions without it would undo a cleanup it can no longer undo.
+    writeThrough( manifestPath, log );
     const auto notPutBack = finish( directory, readManifest( directory, manifestPath, log ), log );
     if ( notPutBack.empty() ) {
         fs::remove( manifestPath, error );
