@@ -164,10 +164,10 @@ class WireTests(unittest.TestCase):
 
     def test_render_limit_is_reported(self):
         packets = wire.normalize_pdml(
-            b"<pdml><packet>" + b'<field name="x"/>' * 513 + b"</packet></pdml>"
+            b"<pdml><packet>" + b'<field name="x"/>' * 2049 + b"</packet></pdml>"
         )
         fields, limited = worker.render_fields(packets)
-        self.assertEqual(len(fields), 512)
+        self.assertEqual(len(fields), 2048)
         self.assertTrue(limited)
 
     def test_blocked_pipe_write_has_deadline(self):
@@ -276,6 +276,57 @@ class PackLuaTests(unittest.TestCase):
         self.assertLess(loader.index("common.lua"), loader.index("x/b.lua"))
 
 
+# The former response cap: the lowest result limit a request may choose (#183).
+SMALL = 128 * 1024
+
+
+class ResultLimitTests(unittest.TestCase):
+    """Issue #183: real messages fit, and a limited result names its limit."""
+
+    @staticmethod
+    def packets(count):
+        return wire.normalize_pdml(
+            b"<pdml><packet>" + b'<field name="x" show="v"/>' * count + b"</packet></pdml>",
+            node_limit=4096,
+        )
+
+    def test_defaults_cover_large_messages_within_bounded_maximums(self):
+        self.assertEqual(worker.FIELD_LIMIT, 2048)
+        self.assertEqual(worker.RESPONSE_LIMIT, 1024 * 1024)
+        self.assertEqual(worker.RESPONSE_LIMIT_MIN, 128 * 1024)
+        self.assertEqual(worker.RESPONSE_LIMIT_MAX, 4 * 1024 * 1024)
+        fields, limited = worker.render_fields(self.packets(2048))
+        self.assertEqual((len(fields), limited), (2048, False))
+
+    def test_row_limit_names_the_rows_shown_and_in_the_tree(self):
+        fields, limited = worker.render_fields(self.packets(2050))
+        self.assertEqual((len(fields), limited), (2048, True))
+        self.assertEqual(worker.count_rows(self.packets(2050)), 2050)
+
+    def test_request_may_choose_the_result_limit_within_bounds(self):
+        for value in (worker.RESPONSE_LIMIT_MIN, worker.RESPONSE_LIMIT_MAX):
+            worker.validate_request(request(responseLimit=value))
+        for value in (worker.RESPONSE_LIMIT_MIN - 1, worker.RESPONSE_LIMIT_MAX + 1, True, "1"):
+            with self.subTest(value=value), self.assertRaises(wire.ProofError):
+                worker.validate_request(request(responseLimit=value))
+
+    def test_byte_limit_names_its_maximum_the_rows_and_the_bytes_needed(self):
+        rows = [ResponseBudgetTests.row("a" * 1000, identity=str(i)) for i in range(300)]
+        value = ResponseBudgetTests.response(rows)
+        needed = len(worker.encode_frame(value, worker.RESPONSE_LIMIT_MAX)) - 4
+        fitted = worker._fit_response(value, 128 * 1024)
+        self.assertTrue(fitted["limited"])
+        self.assertEqual(fitted["reason"], "response_limit")
+        self.assertEqual(
+            fitted["limit"],
+            {"name": "bytes", "maximum": 128 * 1024, "shownRows": len(fitted["fields"]),
+             "totalRows": 300, "neededBytes": needed},
+        )
+        self.assertLessEqual(len(worker.encode_frame(fitted, 128 * 1024)) - 4, 128 * 1024)
+        # The same rows fit the default limit whole.
+        self.assertEqual(worker._fit_response(value), value)
+
+
 class ResponseBudgetTests(unittest.TestCase):
     @staticmethod
     def row(show, depth=0, identity="probe.value"):
@@ -297,17 +348,23 @@ class ResponseBudgetTests(unittest.TestCase):
         # the production response cap is never changed.
         return len(worker.encode_frame(value, worker.REQUEST_LIMIT)) - 4
 
-    def sized_prefix(self, target, count=1):
+    def sized_prefix(self, target, count=1, later=()):
+        """Rows whose limited result body is exactly `target` bytes, the `later` rows cut off.
+        The limited result names its limit (#183), whose numbers settle within a few passes."""
         fields = [self.row("small parent", identity="parent")] if count == 2 else []
         row = self.row("", depth=count - 1)
         fields.append(row)
-        limited = self.response(fields, complete=False, limited=True, reason="response_limit")
-        room = target - self.body_size(limited)
-        if room % 2:
-            row["id"] += "x"
-            room -= 1
-        # The canonical show string occurs once in attributes and once in columns.
-        row["attributes"]["show"] = row["columns"][1] = "a" * (room // 2)
+        for _ in range(4):
+            needed = self.body_size(self.response(fields + list(later)))
+            limit = worker.byte_limit(SMALL, len(fields), len(fields) + len(later), needed)
+            limited = self.response(fields, complete=False, limited=True,
+                                    reason="response_limit", limit=limit)
+            room = target - self.body_size(limited) + 2 * len(row["columns"][1])
+            if room % 2:
+                row["id"] = row["id"].rstrip("x") if row["id"].endswith("x") else row["id"] + "x"
+                continue
+            # The canonical show string occurs once in attributes and once in columns.
+            row["attributes"]["show"] = row["columns"][1] = "a" * (room // 2)
         self.assertLessEqual(len(row["columns"][1]), 65536)
         self.assertEqual(self.body_size(limited), target)
         return fields
@@ -316,10 +373,10 @@ class ResponseBudgetTests(unittest.TestCase):
         first = self.row("a" * 40000)
         second = self.row("b" * 40000, depth=1)
         value = self.response([first, second, self.row("small later sibling")])
-        self.assertLess(len(worker.encode_frame(self.response([first]))), worker.RESPONSE_LIMIT)
+        self.assertLess(len(worker.encode_frame(self.response([first]), SMALL)), SMALL)
         with self.assertRaisesRegex(wire.ProofError, "response_limit"):
-            worker.encode_frame(value)
-        fitted = worker._fit_response(value)
+            worker.encode_frame(value, SMALL)
+        fitted = worker._fit_response(value, SMALL)
         self.assertEqual(len(fitted["fields"]), 1, "aggregate overflow discarded the fitting prefix")
         self.assertEqual(fitted["fields"], [first])
         self.assertTrue(fitted["available"])
@@ -327,59 +384,61 @@ class ResponseBudgetTests(unittest.TestCase):
         self.assertFalse(fitted["complete"])
         self.assertTrue(fitted["limited"])
         self.assertEqual(fitted["reason"], "response_limit")
-        self.assertLessEqual(len(worker.encode_frame(fitted)) - 4, worker.RESPONSE_LIMIT)
+        self.assertLessEqual(len(worker.encode_frame(fitted, SMALL)) - 4, SMALL)
 
     def test_limited_metadata_and_two_row_comma_fit_exact_body_cap(self):
-        fields = self.sized_prefix(worker.RESPONSE_LIMIT, count=2)
-        value = self.response(fields + [self.row("last row cannot fit")])
-        fitted = worker._fit_response(value)
+        later = [self.row("last row cannot fit")]
+        fields = self.sized_prefix(SMALL, count=2, later=later)
+        value = self.response(fields + later)
+        fitted = worker._fit_response(value, SMALL)
         self.assertEqual(len(fitted["fields"]), 2)
         self.assertEqual(fitted["fields"], fields)
-        self.assertEqual(self.body_size(fitted), worker.RESPONSE_LIMIT)
-        self.assertEqual(struct.unpack(">I", worker.encode_frame(fitted)[:4])[0], worker.RESPONSE_LIMIT)
+        self.assertEqual(self.body_size(fitted), SMALL)
+        self.assertEqual(struct.unpack(">I", worker.encode_frame(fitted, SMALL)[:4])[0], SMALL)
 
     def test_second_row_one_byte_over_cap_stops_at_prior_row(self):
-        fields = self.sized_prefix(worker.RESPONSE_LIMIT + 1, count=2)
-        value = self.response(fields + [self.row("small row must not be sampled")])
-        fitted = worker._fit_response(value)
+        later = [self.row("small row must not be sampled")]
+        fields = self.sized_prefix(SMALL + 1, count=2, later=later)
+        value = self.response(fields + later)
+        fitted = worker._fit_response(value, SMALL)
         self.assertEqual(len(fitted["fields"]), 1)
         self.assertEqual(fitted["fields"], fields[:1])
-        self.assertLessEqual(self.body_size(fitted), worker.RESPONSE_LIMIT)
+        self.assertLessEqual(self.body_size(fitted), SMALL)
 
     def test_unicode_supplementary_and_nul_use_actual_ascii_escaping(self):
         text = "\u00e9\U0001f680\x00" * 2000
         first = self.row(text)
         value = self.response([first, self.row(text, depth=1)])
         utf8_size = len(json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
-        self.assertLess(utf8_size, worker.RESPONSE_LIMIT)
-        self.assertGreater(self.body_size(value), worker.RESPONSE_LIMIT)
-        fitted = worker._fit_response(value)
+        self.assertLess(utf8_size, SMALL)
+        self.assertGreater(self.body_size(value), SMALL)
+        fitted = worker._fit_response(value, SMALL)
         self.assertEqual(len(fitted["fields"]), 1)
         self.assertEqual(fitted["fields"], [first])
         self.assertEqual(fitted["fields"][0]["columns"][1], text)
-        self.assertLessEqual(self.body_size(fitted), worker.RESPONSE_LIMIT)
+        self.assertLessEqual(self.body_size(fitted), SMALL)
 
     def test_first_oversized_row_is_not_truncated_or_skipped(self):
         value = self.response([self.row("\U0001f680" * 10000), self.row("later small root")])
-        fitted = worker._fit_response(value)
+        fitted = worker._fit_response(value, SMALL)
         self.assertEqual(fitted["fields"], [])
         self.assertEqual(fitted["reason"], "response_limit")
         self.assertTrue(fitted["limited"])
         self.assertFalse(fitted["complete"])
-        self.assertLessEqual(self.body_size(fitted), worker.RESPONSE_LIMIT)
+        self.assertLessEqual(self.body_size(fitted), SMALL)
 
     def test_input_rows_and_flags_remain_immutable(self):
         value = self.response([self.row("a" * 40000), self.row("b" * 40000)])
         before = copy.deepcopy(value)
-        worker._fit_response(value)
+        worker._fit_response(value, SMALL)
         self.assertEqual(value, before)
 
     def test_full_fit_and_existing_other_limit_metadata_are_unchanged(self):
         for changes in ({}, {"complete": False, "limited": True, "reason": "rendered_field_limit"}):
             with self.subTest(changes=changes):
                 value = self.response([self.row("9007199254740993"), self.row("")], **changes)
-                before = worker.encode_frame(value)
-                fitted = worker._fit_response(value)
+                before = worker.encode_frame(value, SMALL)
+                fitted = worker._fit_response(value, SMALL)
                 self.assertEqual(fitted, value)
                 self.assertEqual(worker.encode_frame(fitted), before)
 
@@ -388,7 +447,7 @@ class ResponseBudgetTests(unittest.TestCase):
                               complete=False, limited=True, reason="rendered_field_limit")
         original = worker.encode_frame
         with patch.object(worker, "encode_frame", wraps=original) as encoding:
-            fitted = worker._fit_response(value)
+            fitted = worker._fit_response(value, SMALL)
         self.assertEqual(len(fitted["fields"]), 1)
         self.assertEqual(fitted["reason"], "response_limit")
         self.assertLessEqual(encoding.call_count, len(value["fields"]) + 3)
@@ -430,7 +489,8 @@ class ProcessTests(unittest.TestCase):
         for stream in ("stdout", "stderr"):
             with self.subTest(stream=stream):
                 child = self.child(
-                    "import sys,time; sys." + stream + '.buffer.write(b"x"*2000000); time.sleep(60)'
+                    "import sys,time; sys." + stream
+                    + '.buffer.write(b"x"*%d); time.sleep(60)' % (worker.PDML_LIMIT + 65536)
                 )
                 with self.assertRaisesRegex(wire.ProofError, "output_limit"):
                     child.packet(time.monotonic() + 5)
@@ -500,6 +560,69 @@ class NativePreviewTests(unittest.TestCase):
                 field["attributes"].get("name", "").startswith("frame") for field in first["fields"]
             )
         )
+
+    def test_a_tree_past_the_row_limit_is_cut_at_2048_rows_and_says_so(self):
+        # Review of #192: the PDML node limit counted the transport nodes too, so a tree of
+        # 2048 rows failed (field_limit) before the row limit could cut it.
+        script = Path(self.temp.name) / "rows_probe.lua"
+        script.write_text(
+            'local p = Proto("cilogg_rows", "CILogg rows probe")\n'
+            'local item = ProtoField.uint8("cilogg_rows.item", "Item")\n'
+            "p.fields = { item }\n"
+            "function p.dissector(tvb, pinfo, tree)\n"
+            "    local root = tree:add(p, tvb())\n"
+            "    for index = 1, 2100 do root:add(item, tvb(0, 1)) end\n"
+            "    return tvb:len()\n"
+            "end\n",
+            encoding="utf-8",
+        )
+        self.profile.update(lua=[str(script)], dissector="cilogg_rows", protocol="cilogg_rows")
+        result = self.evaluate(payloadBase64=base64.b64encode(b"\x07").decode())
+        self.assertTrue(result["available"], result["reason"])
+        self.assertTrue(result["limited"])
+        self.assertEqual(result["reason"], "rendered_field_limit")
+        self.assertEqual(len(result["fields"]), worker.FIELD_LIMIT)
+        self.assertEqual(
+            result["limit"],
+            {"name": "rows", "maximum": worker.FIELD_LIMIT, "shownRows": worker.FIELD_LIMIT,
+             "totalRows": 2101},
+        )
+
+    def test_large_map_tree_fits_whole_and_names_a_smaller_limit(self):
+        # Issue #183 on a real engine: a 4 KiB message whose information map has 256 entries
+        # (769 rows, past the former 512 rows and 128 KiB) fits the defaults whole.
+        script = Path(self.temp.name) / "map_probe.lua"
+        script.write_text(
+            'local p = Proto("cilogg_map", "CILogg map probe")\n'
+            'local entry = ProtoField.bytes("cilogg_map.entry", "Entry")\n'
+            'local key = ProtoField.uint8("cilogg_map.key", "Key")\n'
+            'local value = ProtoField.string("cilogg_map.value", "Value")\n'
+            "p.fields = { entry, key, value }\n"
+            "function p.dissector(tvb, pinfo, tree)\n"
+            "    local map = tree:add(p, tvb()):add(tvb(), \"Information map\")\n"
+            "    for offset = 0, tvb:len() - 16, 16 do\n"
+            "        local item = map:add(entry, tvb(offset, 16))\n"
+            "        item:add(key, tvb(offset, 1))\n"
+            "        item:add(value, tvb(offset + 1, 15))\n"
+            "    end\n"
+            "    return tvb:len()\n"
+            "end\n",
+            encoding="utf-8",
+        )
+        self.profile.update(lua=[str(script)], dissector="cilogg_map", protocol="cilogg_map")
+        payload = base64.b64encode(bytes(65 + i % 26 for i in range(4096))).decode()
+        whole = self.evaluate(payloadBase64=payload)
+        self.assertTrue(whole["complete"], {k: whole[k] for k in ("reason", "limited")})
+        self.assertEqual(len(whole["fields"]), 2 + 3 * 256)
+        self.assertNotIn("limit", whole)
+        small = self.evaluate(id="small", payloadBase64=payload, responseLimit=128 * 1024)
+        self.assertTrue(small["limited"])
+        self.assertEqual(small["reason"], "response_limit")
+        self.assertEqual(small["limit"]["name"], "bytes")
+        self.assertEqual(small["limit"]["maximum"], 128 * 1024)
+        self.assertEqual(small["limit"]["totalRows"], 2 + 3 * 256)
+        self.assertEqual(small["limit"]["shownRows"], len(small["fields"]))
+        self.assertGreater(small["limit"]["neededBytes"], 128 * 1024)
 
     def test_lua_display_text_reaches_the_value_column(self):
         # Issue #181 on a real engine: a value string, appended text and text-only subtrees.

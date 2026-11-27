@@ -391,7 +391,7 @@ private:
             "  preview_message [--analysis-json <json> | --json-file <request.json>] [--source "
             "<focused|tab:<id>|file:<path>> | tab selector]\n"
             "    Preview options: decoder (auto/json/tshark), dissector, inputEncoding "
-            "(utf8/hex/base64), timeoutMs (100..10000).\n"
+            "(utf8/hex/base64), timeoutMs (100..10000), resultLimitKiB (128..4096).\n"
             "  get_preview_decoder [window selector]\n"
             "  set_preview_decoder [--analysis-json <config> | --json-file <config.json>] [window "
             "selector]\n"

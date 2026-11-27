@@ -76,6 +76,9 @@ int main( int argc, char** argv )
                                 { "size", "1" } };
         if ( mode == "budget" )
             attributes[ "show" ] = QString::number( request.value( "timeoutMs" ).toInt() );
+        // The result limit the host asked for, in bytes (#183).
+        if ( mode == "result_limit" )
+            attributes[ "show" ] = QString::number( request.value( "responseLimit" ).toInt() );
         // The dissector and protocol the host resolved for this request (#182).
         if ( mode == "profile" )
             attributes[ "show" ] = request.value( "profile" ).toObject().value( "dissector" ).toString()
@@ -93,8 +96,11 @@ int main( int argc, char** argv )
         }
         if ( mode == "depth" )
             field[ "depth" ] = 33;
+        // "rows" fills the row limit (2048); "count" passes it (#183). The "*_rows" modes are a
+        // tree cut at it.
+        const bool rowCut = mode == "limited_rows" || mode == "limit_rows";
         QJsonArray fields;
-        for ( int i = 0; i < ( mode == "count" ? 513 : 1 ); ++i )
+        for ( int i = 0; i < ( mode == "count" ? 2049 : mode == "rows" || rowCut ? 2048 : 1 ); ++i )
             fields.append( field );
         // A text-only subtree and a Lua value string as the worker renders them (#181); "forged"
         // claims a display text the attributes do not hold.
@@ -182,6 +188,41 @@ int main( int argc, char** argv )
             response[ "scriptSha256" ] = QJsonArray{ "not-a-hash" };
         if ( mode == "hash_newline" )
             response[ "scriptSha256" ] = QJsonArray{ QString( 64, 'a' ) + "\n" };
+        // A result cut off at its byte limit names it (#183); "bad_limit" miscounts the rows,
+        // "unnamed_limit" names none, "limit_reason" gives the row limit's reason and
+        // "limit_needed" says the whole result fits.
+        if ( mode == "limited_bytes" || mode == "bad_limit" || mode == "unnamed_limit"
+             || mode == "limit_reason" || mode == "limit_needed" ) {
+            response[ "complete" ] = false;
+            response[ "limited" ] = true;
+            response[ "reason" ] = mode == "limit_reason" ? "rendered_field_limit" : "response_limit";
+            if ( mode != "unnamed_limit" )
+                response[ "limit" ]
+                    = QJsonObject{ { "name", "bytes" },
+                                   { "maximum", 131072 },
+                                   { "shownRows", mode == "bad_limit" ? 2 : 1 },
+                                   { "totalRows", 769 },
+                                   { "neededBytes", mode == "limit_needed" ? 131072 : 268000 } };
+        }
+        // A tree cut at the row limit; "limit_rows" claims the whole tree was shown.
+        if ( rowCut ) {
+            response[ "complete" ] = false;
+            response[ "limited" ] = true;
+            response[ "reason" ] = "rendered_field_limit";
+            response[ "limit" ] = QJsonObject{ { "name", "rows" },
+                                               { "maximum", 2048 },
+                                               { "shownRows", 2048 },
+                                               { "totalRows", mode == "limit_rows" ? 2048 : 2400 } };
+        }
+        // TShark's tree past the worker's PDML item limit fails as a whole.
+        if ( mode == "pdml_items" ) {
+            response[ "state" ] = "failed";
+            response[ "reason" ] = "field_limit";
+            response[ "available" ] = false;
+            response[ "complete" ] = false;
+            response[ "limited" ] = true;
+            response[ "fields" ] = QJsonArray{};
+        }
         if ( mode == "reported_timeout" || mode == "lua_failure" ) {
             response[ "state" ] = "failed";
             response[ "reason" ] = mode == "lua_failure" ? "lua_failure" : "timeout";
@@ -194,7 +235,7 @@ int main( int argc, char** argv )
             bytes += bytes;
         if ( mode == "large" ) {
             char prefix[ 4 ];
-            qToBigEndian<quint32>( 128 * 1024 + 1, prefix );
+            qToBigEndian<quint32>( 4 * 1024 * 1024 + 1, prefix );
             bytes = QByteArray( prefix, 4 );
         }
         if ( output.write( bytes ) != bytes.size() || !output.flush() )

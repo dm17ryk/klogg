@@ -91,6 +91,20 @@ result does not establish protocol integrity. Engine offsets refer to decoded
 buffers and have unresolved source mapping, not guaranteed positions in the
 original log.
 
+A TShark/Lua result holds up to 2048 rows and up to its result limit in bytes:
+1 MiB, or what the pane's
+**Result limit** (128 to 4096 KiB) or a request's `resultLimitKiB` sets for one
+run. A result cut off at either limit is `limited` (`reason`
+`rendered_field_limit` or `response_limit`) and names it in `limit`: `name`
+(`rows` or `bytes`), `maximum`, `shownRows`, `totalRows` and, for bytes,
+`neededBytes`. The pane's status and the hover say the same, for example
+"390 of 769 rows: result limit 128 KiB, the whole result needs 263 KiB"; raise
+the result limit and run again to see the rest. The worker reads up to 4 MiB and
+8192 items of TShark's PDML (and 64 KiB of its diagnostics); a message past
+those fails (`output_limit`, `field_limit`), and the status names the limit it
+passed. Automatic mode then shows its JSON preview, as after any TShark/Lua
+failure (#182).
+
 A TShark/Lua tree shows each item as Wireshark does. **Value** is the
 dissector's display text: the PDML `showname` after its `label: `, so a Lua
 value string or appended text reads as in Wireshark. **Raw** keeps the raw

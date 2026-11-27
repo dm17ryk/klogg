@@ -27,6 +27,7 @@
 #endif
 #include "previewdecodersettingsdialog.h"
 #include "previewmessagetab.h"
+#include "tsharkpreviewclient.h"
 
 TEST_CASE( "Preview exposes independent decoder modes and cancellation", "[ui][previewdecoderui]" )
 {
@@ -484,6 +485,67 @@ TEST_CASE( "Automatic assembly route forwards the visible budget across decoder 
     CHECK( forwarded > 3000 );
     CHECK( forwarded <= timeout->value() );
     CHECK( forwarded + tab.result().value( "elapsedMs" ).toLongLong() >= timeout->value() );
+}
+
+TEST_CASE( "The preview pane's result limit reaches the worker and a cut-off names its limit",
+           "[ui][previewdecoderui]" )
+{
+    RestoreDecoder restore;
+    RestorePreviews definitions;
+    struct RestoreEnv {
+        QByteArray python = qgetenv( "CILOGG_SCRIPT_PYTHON" ),
+                   mode = qgetenv( "CILOGG_PREVIEW_FIXTURE_MODE" ),
+                   pid = qgetenv( "CILOGG_PREVIEW_FIXTURE_PID" );
+        ~RestoreEnv()
+        {
+            for ( const auto& item : { qMakePair( "CILOGG_SCRIPT_PYTHON", python ),
+                                       qMakePair( "CILOGG_PREVIEW_FIXTURE_MODE", mode ),
+                                       qMakePair( "CILOGG_PREVIEW_FIXTURE_PID", pid ) } ) {
+                if ( item.second.isNull() )
+                    qunsetenv( item.first );
+                else
+                    qputenv( item.first, item.second );
+            }
+        }
+    } environment;
+    qputenv( "CILOGG_SCRIPT_PYTHON", QByteArray( PREVIEW_DECODER_FIXTURE_PATH ) );
+    qputenv( "CILOGG_PREVIEW_FIXTURE_MODE", "result_limit" );
+    qputenv( "CILOGG_PREVIEW_FIXTURE_PID",
+             QByteArray::number( QCoreApplication::applicationPid() ) );
+    PreviewManager::instance().clearAll();
+    REQUIRE( PreviewDecoderSettings::instance().setConfiguration(
+        { { "enabled", true },
+          { "tshark", QCoreApplication::applicationFilePath() },
+          { "text2pcap", QCoreApplication::applicationFilePath() },
+          { "protocolRoutes",
+            QVariantMap{ { "EHCI", QVariantMap{ { "dissector", "data" },
+                                                { "inputEncoding", "hex" } } } } } } ) );
+    PreparedPreview prepared;
+    prepared.text = "01020304";
+    prepared.assembly = { { "protocol", "EHCI" }, { "state", "complete" } };
+    PreviewMessageTab tab( prepared, "Auto", 1 );
+    auto* limit = tab.findChild<QSpinBox*>( "previewResultLimitKiB" );
+    REQUIRE( limit );
+    CHECK( limit->value() == 1024 );
+    CHECK( limit->minimum() == 128 );
+    CHECK( limit->maximum() == 4096 );
+    // Issue #183: raising the limit for one run reaches the worker.
+    limit->setValue( 2048 );
+    tab.findChild<QPushButton*>( "previewRun" )->click();
+    REQUIRE( QTest::qWaitFor( [ & ] { return !tab.result().isEmpty(); }, 10000 ) );
+    INFO( tab.result().value( "reason" ).toString().toStdString() );
+    REQUIRE( tab.result().value( "available" ).toBool() );
+    CHECK( tab.result().value( "fields" ).toList().value( 0 ).toMap().value( "columns" ).toList()
+               .value( 1 )
+           == "2097152" );
+    // A cut-off result's status names the limit and how much was shown.
+    qputenv( "CILOGG_PREVIEW_FIXTURE_MODE", "limited_bytes" );
+    TsharkPreviewClient::instance().reset();
+    tab.findChild<QPushButton*>( "previewRun" )->click();
+    REQUIRE( QTest::qWaitFor(
+        [ & ] { return tab.result().value( "limited" ).toBool(); }, 10000 ) );
+    CHECK( tab.findChild<QLabel*>( "previewStatus" )->text().contains( "1 of 769 rows" ) );
+    TsharkPreviewClient::instance().reset();
 }
 
 TEST_CASE( "The preview pane shows Lua display text and the whole Name, Value and Raw as tooltips",
