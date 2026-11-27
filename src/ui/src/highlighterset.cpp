@@ -140,7 +140,7 @@ int Highlighter::colorVariance() const
 
 void Highlighter::setColorVariance( int colorVariance )
 {
-    colorVariance_ = colorVariance;
+    colorVariance_ = std::clamp( colorVariance, 0, MaxColorVariance );
 }
 
 const QColor& Highlighter::foreColor() const
@@ -426,7 +426,7 @@ void Highlighter::retrieveFromStorage( QSettings& settings )
     highlightOnlyMatch_ = settings.value( "match_only", false ).toBool();
     useRegex_ = settings.value( "use_regex", true ).toBool();
     variateColors_ = settings.value( "variate_colors", false ).toBool();
-    colorVariance_ = settings.value( "color_variance", 15 ).toInt();
+    setColorVariance( settings.value( "color_variance", 15 ).toInt() );
     color_.foreColor = QColor( settings.value( "fore_colour" ).toString() );
     color_.backColor = QColor( settings.value( "back_colour" ).toString() );
 }

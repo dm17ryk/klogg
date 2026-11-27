@@ -87,6 +87,10 @@ class Highlighter {
     bool variateColors() const;
     void setVariateColors( bool variateColors );
 
+    // How far (in percent) "Variate colors" may darken or lighten a match's colors. Values outside
+    // 0 to MaxColorVariance, from a hand-edited or imported file, are clamped (#170): they would
+    // give the colour distribution bounds in the wrong order or overflow them.
+    static constexpr int MaxColorVariance = 100;
     int colorVariance() const;
     void setColorVariance( int colorVariance );
 
