@@ -45,6 +45,84 @@ catchall is wanted; otherwise configure selective routes. Existing JSON
 definitions can extract carrier text for Lua, and can also provide a fallback.
 TShark and the selected Lua own protocol semantics.
 
+**Route fields** are drop-downs of the values CILogg knows. You can still type
+any value; typing filters the list by any part of a name.
+
+| Field | Offers |
+|---|---|
+| **Preview definition** (Preview routes) | Your previews, then the previews of enabled configuration packs. |
+| **Assembly protocol** (Assembly protocol routes) | The protocols message assembly gives messages (`EHCI`). |
+| **Named dissector or `python:<pack>/<decoder>`** | The dissectors the selected Lua files and the enabled packs' Lua files register, then the enabled packs' Python decoders (the ones **Add Python decoder** lists), then TShark's protocols. |
+| **PDML protocol (optional)** | The row's dissector first, then the other dissectors. Empty shows every decoded protocol. |
+| **Encoding** | `utf8`, `hex` or `base64`. |
+| **Default named dissector** | The Lua dissectors and TShark's protocols. A Python decoder can't be the default. |
+
+The **named dissector** is the name the Lua file registers, not the file's
+name. CILogg reads it from each `Proto("<name>", ...)` or
+`Proto.new("<name>", ...)` declaration and lowercases it, as Wireshark does.
+Declarations in comments and strings don't count. A name built at run time
+(`Proto(NAME, ...)`) can't be read; type it. TShark's protocols come from
+`tshark -G protocols`. It runs in the background, at most 5 seconds per step,
+and only for the saved TShark executable while TShark is enabled: like a
+preview, only applied settings run anything. Like a preview session, it first
+runs `tshark -G folders` and lists nothing unless TShark takes its
+configuration and its personal and global plugins (Lua ones included) only from
+a temporary folder. It lists each executable once (a replaced executable has new
+file times and is listed again), and again when the dialog is opened after a
+failure. The line under the routes counts what each source offers, or says why
+there is no TShark list.
+
+When you choose a dissector that a selected Lua file declares, an empty PDML
+protocol takes its name, because that is also the protocol the Lua dissector
+adds to the tree. It keeps following the dissector until you choose another PDML
+protocol. **Use the declared names** (below) does the same. Any other dissector,
+TShark's own included, leaves it empty, which shows every decoded protocol. A
+Python decoder takes no PDML protocol, so choosing one clears the field.
+
+**The dialog checks the saved routes** when it opens and on Apply. Apply saves
+the settings first, then CILogg warns about:
+
+- a dissector that no selected Lua file declares and TShark doesn't list, and
+- a `python:` route to a decoder that no enabled pack has.
+
+TShark lists protocols, not every dissector name, so a valid dissector-only name
+can also be warned about. The warning doesn't block it. While TShark is still
+listing its protocols, any name except a Lua file name waits for that list and
+is checked when it arrives. While TShark is disabled, no TShark route runs, so
+only names that don't need its list are reported.
+
+When the value looks like a Lua file name (`my_proto.lua`), or differs from a
+known name only in case, the warning names the dissector to use. **Use the
+declared names** puts those names into the routes and applies again. When OK
+shows new warnings, the dialog stays open; press OK again to close it. When OK
+is pressed while TShark is still listing its protocols, the dialog waits for
+the list, then closes, or stays open if the list brings new warnings. When the
+list stops coming (TShark is disabled meanwhile, or replaced by one already
+listed), it decides at once.
+
+Example: a synthetic Lua file `C:\lua\my_proto.lua` declares one dissector.
+
+```lua
+local my_proto = Proto("my_proto", "My protocol")
+function my_proto.dissector(buffer, pinfo, tree)
+    tree:add(my_proto, buffer(), "My protocol message")
+end
+```
+
+Add the file under **Add Lua…**, approve external Lua and apply. The routes then
+offer `my_proto`:
+
+| Route | Named dissector | PDML protocol | Encoding |
+|---|---|---|---|
+| Preview route `My carrier` | `my_proto` | `my_proto` | |
+| Assembly protocol route `EHCI` | `my_proto` | `my_proto` | `utf8` |
+
+Had the dissector been typed as `my_proto.lua`, Apply would save it and warn:
+``Preview route "My carrier": `my_proto.lua` looks like a file name; the Lua
+file registers `my_proto`.`` Such a route sends the message to a dissector that
+does not exist, so Automatic previews fall back to JSON with
+`fallback: dissector_not_dispatched`.
+
 **Assembly HTTP hosts** (`assemblyHttpHosts`) lists the `Host` header values
 that mark an HTTP request as a message carrier for
 [reassembly](../preview-message-tooltips.md). It holds up to 16 names of
