@@ -1346,6 +1346,27 @@ TEST_CASE( "Plugins receive host features and the instance environment", "[plugi
     REQUIRE( result.value( "instance" ) == "cilogg-test-instance" );
 }
 
+namespace {
+// Waits until the fixture's action for job `id` runs. "running" means the host sent the job: a
+// cancel right after it can reach the plugin before the action starts, and the SDK then answers
+// "Job cancelled" without running the action (#171). The fixture's cancellable actions report
+// progress when they start. The job starts the plugin, which can take more than 5 s on a busy
+// machine: the host's ready or failed ends the first wait (it fails a plugin not ready 10 s after
+// its start).
+void waitUntilActionRuns( PluginManager& manager, const QString& id )
+{
+    REQUIRE( waitFor(
+        [ & ] {
+            const auto state = pluginState( manager );
+            return state == "ready" || state == "failed";
+        },
+        PluginStartWaitMs ) );
+    REQUIRE( pluginState( manager ) == "ready" );
+    REQUIRE( waitFor( [ & ] { return manager.job( id ).payload.value( "progress" ).toDouble() > 0; } ) );
+    REQUIRE( manager.job( id ).payload.value( "state" ) == "running" );
+}
+} // namespace
+
 TEST_CASE( "Cancelled plugin jobs keep a grace period for cleanup", "[plugins][E13]" )
 {
     QTemporaryDir temp;
@@ -1353,27 +1374,11 @@ TEST_CASE( "Cancelled plugin jobs keep a grace period for cleanup", "[plugins][E
     package( shipped );
     PluginManager manager( QDir( temp.path() ).filePath( "data" ), shipped );
     REQUIRE( manager.manage( "enable", "org.test.fixture", {} ).ok() );
-    // Cancel only once the plugin's action runs. "running" means the host sent the job: a cancel
-    // right after it can reach the plugin before the action starts, and the SDK then answers
-    // "Job cancelled" without running the action. Both actions report progress when they start.
-    // The job starts the plugin, which can take more than 5 s on a busy machine: the host's ready
-    // or failed ends the first wait (it fails a plugin not ready 10 s after its start).
-    const auto waitUntilActionRuns = [ & ]( const QString& id ) {
-        REQUIRE( waitFor(
-            [ & ] {
-                const auto state = pluginState( manager );
-                return state == "ready" || state == "failed";
-            },
-            PluginStartWaitMs ) );
-        REQUIRE( pluginState( manager ) == "ready" );
-        REQUIRE( waitFor(
-            [ & ] { return manager.job( id ).payload.value( "progress" ).toDouble() > 0; } ) );
-        REQUIRE( manager.job( id ).payload.value( "state" ) == "running" );
-    };
+    // Cancel only once the plugin's action runs (waitUntilActionRuns).
     SECTION( "progress and the final answer are accepted while cancelling" )
     {
         const auto id = jobId( manager.invoke( "org.test.fixture", "cleanup", {}, {} ) );
-        waitUntilActionRuns( id );
+        waitUntilActionRuns( manager, id );
         const auto cancelled = manager.cancel( id );
         REQUIRE( cancelled.ok() );
         REQUIRE( cancelled.payload.value( "state" ) == "cancelling" );
@@ -1389,7 +1394,7 @@ TEST_CASE( "Cancelled plugin jobs keep a grace period for cleanup", "[plugins][E
         constexpr qint64 GraceMs = 200;
         manager.setCancelGraceMs( static_cast<int>( GraceMs ) );
         const auto id = jobId( manager.invoke( "org.test.fixture", "stubborn", {}, {} ) );
-        waitUntilActionRuns( id );
+        waitUntilActionRuns( manager, id );
         // Started before cancel() schedules the grace timer, so a test thread that is held up
         // anywhere only adds to the measured time, never takes from it.
         QElapsedTimer elapsed;
@@ -1590,7 +1595,9 @@ TEST_CASE( "A converter answer that arrives while cancelling opens no output",
     QSignalSpy opened( &manager, &PluginManager::fileReady );
     const auto id = jobId(
         manager.invoke( "org.test.fixture", "convert-late", { { "input_path", input } }, {} ) );
-    REQUIRE( waitFor( [ & ] { return manager.job( id ).payload.value( "state" ) == "running"; } ) );
+    // Cancel only once the action runs: a cancel that reaches the plugin first is answered by the
+    // SDK without running the action, so no late answer would come (#171).
+    waitUntilActionRuns( manager, id );
     REQUIRE( manager.cancel( id ).payload.value( "state" ) == "cancelling" );
     REQUIRE( waitFor( [ & ] { return finished( manager, id ); } ) );
     const auto job = manager.job( id ).payload;

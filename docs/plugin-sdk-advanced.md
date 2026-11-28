@@ -1844,7 +1844,8 @@ follows.
 
 ### 29.3 Buttons, busy overlay, unsaved changes, dialogs and focus
 
-- **Buttons.** `icon` (an icon reference), `style` (`push`, the default; `tool`: flat; `link`:
+- **Buttons.** `icon` (an icon reference; an empty string, or a same-shaped root that drops the
+  key, removes the icon without a warning, as for a tab's `icon`), `style` (`push`, the default; `tool`: flat; `link`:
   flat with link-coloured, underlined text), `menu` (the id of an `element` menu: the button opens
   it as a drop-down, rebuilt each time it opens, and does nothing else when clicked; its entries
   get the view and the button as the element, without a row or node), `checkable` and `checked`
@@ -1869,7 +1870,10 @@ follows.
   asks "Discard changes?" with the `close_confirm` text (default "This view has unsaved changes.
   Discard them?"), Discard and Cancel (object name `pluginView_<plugin>_<view>_discard`). Closing
   by the plugin (`view/hide`), by the plugin stopping or with the CILogg window does not ask; the
-  `ok` and `yes` buttons never ask. A question still open when its view goes away is dismissed,
+  `ok` and `yes` buttons never ask. Nor does the user closing a view whose plugin stopped (or
+  crashed), or that waits for the first root of its restarted plugin: nothing can save the changes
+  any more (they went with the plugin process, and the new root replaces them), so the view just
+  closes, even though it still shows " *". A question still open when its view goes away is dismissed,
   and its answer only ever acts on the view it was asked about, not on one opened again under the
   same id meanwhile.
 - **Dialog buttons.** A view of `kind: dialog` may declare `buttons` (from `ok`, `cancel`, `apply`,
@@ -1887,7 +1891,8 @@ follows.
   first root and while it is stopped). `default` is the button Enter presses when no element button
   of the view is the default (also once an element button stops being the default), except where
   the focused control uses Enter itself; without `default`, Enter presses none of the dialog
-  buttons.
+  buttons. An element button is never a default Qt picks by itself (no auto-default): with no
+  element `default` and no declared `default`, Enter in a field of the dialog presses nothing.
 - **Focus.** The patch entry `{"id", "focus": true}` gives the element the keyboard focus only while
   the view is active: its own window (a window, a dialog or a floating dock) is the active window,
   or the focus already is inside the view. Otherwise it is ignored.

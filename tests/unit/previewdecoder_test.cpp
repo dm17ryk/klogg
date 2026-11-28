@@ -6,6 +6,7 @@
 #include "tsharkpreviewclient.h"
 #include <QCoreApplication>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QEventLoop>
 #include <QFile>
 #include <QFileInfo>
@@ -22,6 +23,26 @@
 #include <memory>
 
 namespace {
+// The overdue tests block the event loop past a request's budget, then deliver the warm engine's
+// success ahead of the overdue timers. The budget starts with evaluate() and also covers the
+// selector, a cold start of this application (`--internal-preview-worker`). A busy machine held
+// that start up past a 1 s budget: the request then timed out before it reached the warm engine,
+// and the ordering under test was never made (#164).
+constexpr int OverdueBudgetMs = 5000;
+// Ends at the engine's readable output; only an engine that never answers reaches it.
+constexpr int OverdueDeliveryWaitMs = 15000;
+
+// Sleeps until the budget that started with `sinceEvaluate` has passed, then waits for the
+// engine's output: true once it is readable.
+bool deliverAfterBudget( QProcess& worker, const QElapsedTimer& sinceEvaluate, int budgetMs )
+{
+    const auto left = budgetMs + 50 - sinceEvaluate.elapsed();
+    if ( left > 0 ) {
+        QThread::msleep( static_cast<unsigned long>( left ) );
+    }
+    return worker.waitForReadyRead( OverdueDeliveryWaitMs );
+}
+
 struct RestoreDecoder {
     QVariantMap saved = PreviewDecoderSettings::instance().configuration();
     ~RestoreDecoder()
@@ -1229,9 +1250,11 @@ TEST_CASE( "An Automatic engine result after the deadline gives way to the JSON 
     const auto processes = client.findChildren<QProcess*>();
     REQUIRE( processes.size() == 1 );
     QPointer<QProcess> worker = processes.front();
-    request.timeoutMs = 1000;
+    request.timeoutMs = OverdueBudgetMs;
     QVariantMap result;
     QEventLoop loop;
+    QElapsedTimer sinceEvaluate;
+    sinceEvaluate.start();
     auto* token = PreviewService::evaluate( &loop, request, [ & ]( QVariantMap value ) {
         result = std::move( value );
         loop.quit();
@@ -1239,15 +1262,15 @@ TEST_CASE( "An Automatic engine result after the deadline gives way to the JSON 
     REQUIRE( token );
     bool forcedDelivery = false;
     // As in the explicit overdue test: block the loop past the budget, then deliver the engine's
-    // success ahead of the overdue timers (#182 review).
+    // success ahead of the overdue timers (#182 review, #164).
     QObject::connect( token, QOverload<int, QProcess::ExitStatus>::of( &QProcess::finished ), &loop,
                       [ & ]( int, QProcess::ExitStatus ) {
                           if ( !result.isEmpty() || !worker )
                               return;
-                          QThread::msleep( static_cast<unsigned long>( request.timeoutMs + 50 ) );
-                          forcedDelivery = worker->waitForReadyRead( 1000 );
+                          forcedDelivery
+                              = deliverAfterBudget( *worker, sinceEvaluate, request.timeoutMs );
                       } );
-    QTimer::singleShot( 6000, &loop, &QEventLoop::quit );
+    QTimer::singleShot( OverdueBudgetMs + OverdueDeliveryWaitMs + 5000, &loop, &QEventLoop::quit );
     if ( result.isEmpty() )
         loop.exec();
     REQUIRE( forcedDelivery );
@@ -1514,10 +1537,12 @@ TEST_CASE( "Overdue successful delivery times out and retires only its owned cha
             unrelatedWorker = process;
     REQUIRE( unrelatedWorker );
     const auto unrelatedPid = unrelatedWorker->processId();
-    request.timeoutMs = 1000;
+    request.timeoutMs = OverdueBudgetMs;
     QVariantMap result;
     int callbacks = 0;
     QEventLoop loop;
+    QElapsedTimer sinceEvaluate;
+    sinceEvaluate.start();
     auto* token = PreviewService::evaluate( &loop, request, [ & ]( QVariantMap value ) {
         ++callbacks;
         result = std::move( value );
@@ -1533,10 +1558,10 @@ TEST_CASE( "Overdue successful delivery times out and retires only its owned cha
                       [ & ]( int, QProcess::ExitStatus ) {
                           if ( !result.isEmpty() || !worker )
                               return;
-                          QThread::msleep( static_cast<unsigned long>( request.timeoutMs + 50 ) );
-                          forcedDelivery = worker->waitForReadyRead( 1000 );
+                          forcedDelivery
+                              = deliverAfterBudget( *worker, sinceEvaluate, request.timeoutMs );
                       } );
-    QTimer::singleShot( 5000, &loop, &QEventLoop::quit );
+    QTimer::singleShot( OverdueBudgetMs + OverdueDeliveryWaitMs + 5000, &loop, &QEventLoop::quit );
     if ( result.isEmpty() )
         loop.exec();
     REQUIRE( forcedDelivery );
