@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import queue
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -14,12 +15,196 @@ import tempfile
 import threading
 import time
 
+if os.name == "nt":
+    import ctypes
+    from ctypes import wintypes
+
+    _kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    _kernel32.CreateJobObjectW.restype = wintypes.HANDLE
+    _kernel32.CreateJobObjectW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR]
+    _kernel32.OpenProcess.restype = wintypes.HANDLE
+    _kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    _kernel32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
+    _kernel32.SetInformationJobObject.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p,
+                                                  wintypes.DWORD]
+    _kernel32.QueryInformationJobObject.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p,
+                                                    wintypes.DWORD, ctypes.c_void_p]
+    _kernel32.TerminateJobObject.argtypes = [wintypes.HANDLE, wintypes.UINT]
+    _kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+
+    class _BasicLimits(ctypes.Structure):  # JOBOBJECT_BASIC_LIMIT_INFORMATION
+        _fields_ = [("PerProcessUserTimeLimit", ctypes.c_int64), ("PerJobUserTimeLimit", ctypes.c_int64),
+                    ("LimitFlags", wintypes.DWORD), ("MinimumWorkingSetSize", ctypes.c_size_t),
+                    ("MaximumWorkingSetSize", ctypes.c_size_t), ("ActiveProcessLimit", wintypes.DWORD),
+                    ("Affinity", ctypes.c_size_t), ("PriorityClass", wintypes.DWORD),
+                    ("SchedulingClass", wintypes.DWORD)]
+
+    class _ExtendedLimits(ctypes.Structure):  # JOBOBJECT_EXTENDED_LIMIT_INFORMATION
+        _fields_ = [("BasicLimitInformation", _BasicLimits), ("IoInfo", ctypes.c_uint64 * 6),
+                    ("ProcessMemoryLimit", ctypes.c_size_t), ("JobMemoryLimit", ctypes.c_size_t),
+                    ("PeakProcessMemoryUsed", ctypes.c_size_t), ("PeakJobMemoryUsed", ctypes.c_size_t)]
+
+    class _Accounting(ctypes.Structure):  # JOBOBJECT_BASIC_ACCOUNTING_INFORMATION
+        _fields_ = [("Times", ctypes.c_int64 * 4), ("TotalPageFaultCount", wintypes.DWORD),
+                    ("TotalProcesses", wintypes.DWORD), ("ActiveProcesses", wintypes.DWORD),
+                    ("TotalTerminatedProcesses", wintypes.DWORD)]
+
+    _JOB_BASIC_ACCOUNTING = 1
+    _JOB_EXTENDED_LIMITS = 9
+    _KILL_ON_JOB_CLOSE = 0x2000
+    _PROCESS_SET_QUOTA_AND_TERMINATE = 0x0100 | 0x0001
+
+
+class ProcessTree:
+    """The processes this test starts and everything they start in turn (plugins included).
+
+    The application runs each plugin as a child process whose working directory is the plugin's
+    folder. Ending the application alone leaves those children running, and Windows refuses to
+    remove a folder that a live process works in (#162). On Windows the processes go into a job
+    object, which their children join by themselves; elsewhere each gets its own process group.
+    """
+
+    popen_options: dict = {} if os.name == "nt" else {"start_new_session": True}
+
+    def __init__(self) -> None:
+        self.processes: list[subprocess.Popen] = []
+        self.job = None
+        if os.name == "nt":
+            job = _kernel32.CreateJobObjectW(None, None)
+            if not job:
+                raise ctypes.WinError(ctypes.get_last_error())
+            self.job = job
+            limits = _ExtendedLimits()
+            limits.BasicLimitInformation.LimitFlags = _KILL_ON_JOB_CLOSE
+            if not _kernel32.SetInformationJobObject(job, _JOB_EXTENDED_LIMITS, ctypes.byref(limits),
+                                                     ctypes.sizeof(limits)):
+                error = ctypes.WinError(ctypes.get_last_error())
+                self.close()
+                raise error
+
+    def add(self, process: subprocess.Popen) -> None:
+        """Adds a process started with popen_options, before it starts children of its own.
+
+        A process that cannot join the tree is killed before the error is raised: outside the
+        tree, nothing would end it.
+        """
+        self.processes.append(process)
+        if not self.job:
+            return
+        try:
+            handle = _kernel32.OpenProcess(_PROCESS_SET_QUOTA_AND_TERMINATE, False, process.pid)
+            if not handle:
+                raise ctypes.WinError(ctypes.get_last_error())
+            try:
+                if not _kernel32.AssignProcessToJobObject(self.job, handle):
+                    raise ctypes.WinError(ctypes.get_last_error())
+            finally:
+                _kernel32.CloseHandle(handle)
+        except OSError:
+            process.kill()
+            process.wait(timeout=30)
+            raise
+
+    def alive(self) -> int:
+        """How many processes of the tree still run."""
+        if self.job:
+            accounting = _Accounting()
+            if not _kernel32.QueryInformationJobObject(self.job, _JOB_BASIC_ACCOUNTING,
+                                                       ctypes.byref(accounting),
+                                                       ctypes.sizeof(accounting), None):
+                raise ctypes.WinError(ctypes.get_last_error())
+            return accounting.ActiveProcesses
+        count = 0
+        for process in self.processes:
+            process.poll()  # reaps an ended leader, so its group can empty
+            try:
+                os.killpg(process.pid, 0)
+                count += 1
+            except ProcessLookupError:
+                pass  # the group is gone
+            except PermissionError:
+                count += 1  # macOS: a group of zombies not reaped yet still counts
+        return count
+
+    def wait_until_ended(self, seconds: float) -> bool:
+        deadline = time.monotonic() + seconds
+        while self.alive() and time.monotonic() < deadline:
+            time.sleep(0.1)
+        return not self.alive()
+
+    def kill(self) -> None:
+        if self.job:
+            _kernel32.TerminateJobObject(self.job, 1)
+        else:
+            for process in self.processes:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+        for process in self.processes:
+            process.poll()
+
+    def close(self) -> None:
+        if self.job:
+            _kernel32.CloseHandle(self.job)  # kills what is left (KILL_ON_JOB_CLOSE)
+            self.job = None
+
+
+def shut_down(application: subprocess.Popen, tree: ProcessTree, close=None) -> list[str]:
+    """Ends the application and everything it started; returns what went wrong, never raises.
+
+    `close` asks the application to quit (only once the instance is known to be this test's).
+    """
+    problems: list[str] = []
+    try:
+        asked = bool(close) and application.poll() is None
+        if asked:
+            try:
+                close()
+            except (AssertionError, subprocess.SubprocessError, ValueError) as error:
+                problems.append(f"close_cilogg failed: {error}")
+            try:
+                application.wait(timeout=20)
+            except subprocess.TimeoutExpired:
+                problems.append("the application still ran 20 s after close_cilogg")
+            # The host gives its plugins 3 s to stop once it quits.
+            if not problems and not tree.wait_until_ended(10):
+                problems.append(f"{tree.alive()} process(es) outlived the application by 10 s")
+        # Not asked (an instance not proven to be this test's, or one that already ended): what is
+        # left is killed.
+        if tree.alive():
+            tree.kill()
+            if not tree.wait_until_ended(30):
+                problems.append(f"{tree.alive()} process(es) still ran 30 s after they were killed")
+    except Exception as error:  # a teardown problem must not hide the checks' result
+        problems.append(f"teardown error: {error!r}")
+    finally:
+        tree.close()
+    return problems
+
+
+def remove_folder(path: Path) -> str | None:
+    """Removes the run's folder once nothing runs in it; a scanner may still hold a file briefly."""
+    deadline = time.monotonic() + 10
+    while True:
+        try:
+            shutil.rmtree(path)
+            return None
+        except FileNotFoundError:
+            return None
+        except OSError as error:
+            if time.monotonic() >= deadline:
+                return f"cannot remove {path}: {error}"
+            time.sleep(0.2)
+
 
 class McpClient:
-    def __init__(self, executable: Path, environment: dict[str, str], diagnostics: object) -> None:
+    def __init__(self, executable: Path, environment: dict[str, str], diagnostics: object,
+                 tree: ProcessTree) -> None:
         self.process = subprocess.Popen([str(executable), "mcp", "serve"], env=environment,
                                         stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                        stderr=diagnostics)
+                                        stderr=diagnostics, **ProcessTree.popen_options)
+        tree.add(self.process)
         self.inbox: queue.Queue[dict] = queue.Queue()
         self.identifier = 0
         self.reader = threading.Thread(target=self.read, daemon=True)
@@ -66,9 +251,14 @@ class McpClient:
         self.process.stdout.close()
 
 
-def run(build: Path, artifacts: Path) -> None:
+def run(build: Path, artifacts: Path) -> list[str]:
+    """Runs the checks (a failed one raises) and returns the teardown's problems."""
     artifacts.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="plugin-host-", dir=artifacts) as directory:
+    teardown_problems: list[str] = []
+    # The folder is removed below, once nothing runs in it; a failure to remove it is reported as
+    # a teardown problem, never as a failed check.
+    with tempfile.TemporaryDirectory(prefix="plugin-host-", dir=artifacts,
+                                     ignore_cleanup_errors=True) as directory:
         root = Path(directory)
         extension = ".exe" if os.name == "nt" else ""
         # CILogg's IPC identity uses the executable basename, not its directory.
@@ -83,8 +273,12 @@ def run(build: Path, artifacts: Path) -> None:
         environment = dict(os.environ, QT_QPA_PLATFORM="offscreen", CILOGG_AUTOMATION="1",
                            CILOGG_SCRIPT_PYTHON=sys.executable)
         with (artifacts / "host.log").open("w", encoding="utf-8") as diagnostics:
+            tree = ProcessTree()
             application = subprocess.Popen([str(executable), "--multi", "--new-session", "-d", "1"], env=environment,
-                                           stdout=diagnostics, stderr=diagnostics)
+                                           stdout=diagnostics, stderr=diagnostics,
+                                           **ProcessTree.popen_options)
+            # It starts no plugin before it answers get_info below.
+            tree.add(application)
             mcp = None
             verified = False
             def cli(action: str, *options: str) -> dict:
@@ -115,7 +309,7 @@ def run(build: Path, artifacts: Path) -> None:
                         if time.monotonic() >= deadline:
                             raise
                         time.sleep(0.1)
-                mcp = McpClient(executable, environment, diagnostics)
+                mcp = McpClient(executable, environment, diagnostics, tree)
                 discovery = mcp.request("tools/call", {"name": "cilogg_commands", "arguments": {"area": "commander"}})
                 catalog = json.loads(discovery["content"][0]["text"])
                 assert "invoke_plugin" in catalog["commander"]["commands"]
@@ -412,18 +606,25 @@ def run(build: Path, artifacts: Path) -> None:
                 assert capture.exists(), "Closing tabs must retain captures"
                 print("PASS: examples and syslog via GUI, CLI and MCP; ADB launch failures; capture retention and discovery")
             finally:
+                # Nothing here raises: a failed shutdown is reported on its own and cannot hide or
+                # replace the checks' result.
+                problems: list[str] = []
                 if mcp:
-                    mcp.close()
-                if application.poll() is None:
                     try:
-                        if verified:
-                            cli("invoke_action", "--object-name", "exitAction")
-                        else:
-                            application.terminate()
-                        application.wait(timeout=5)
-                    except (AssertionError, subprocess.TimeoutExpired):
-                        application.terminate()
-                        application.wait(timeout=5)
+                        mcp.close()
+                    except Exception as error:
+                        problems.append(f"the MCP server did not stop: {error!r}")
+                # close_cilogg quits the way the user does (its plugins get their stop). The main
+                # window's exitAction has no object name, so `invoke_action exitAction` was never
+                # found (#162). Only an instance proven to be this test's is asked.
+                problems += shut_down(application, tree,
+                                      (lambda: cli("close_cilogg")) if verified else None)
+                if problem := remove_folder(root):
+                    problems.append(problem)
+                for problem in problems:
+                    print("TEARDOWN FAILED: " + problem, file=sys.stderr, flush=True)
+                teardown_problems += problems
+    return teardown_problems
 
 
 if __name__ == "__main__":
@@ -431,4 +632,5 @@ if __name__ == "__main__":
     parser.add_argument("--build", type=Path, required=True)
     parser.add_argument("--artifacts", type=Path, required=True)
     options = parser.parse_args()
-    run(options.build.resolve(), options.artifacts.resolve())
+    # A failed check raises (exit code 1); checks that passed with a failed teardown exit with 3.
+    sys.exit(3 if run(options.build.resolve(), options.artifacts.resolve()) else 0)

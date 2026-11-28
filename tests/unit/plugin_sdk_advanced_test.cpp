@@ -27,6 +27,14 @@
 using namespace cilogg::plugins;
 
 namespace {
+// A plugin's first job includes starting its process and the `initialize` handshake, which a busy
+// machine can hold up for more than 5 s (#174). The host fails a plugin that is not ready 10 s
+// after its start (PluginProcess): waiting longer than that means the host's verdict ends the
+// wait, never this deadline. Waits on the behaviour under test keep their short deadlines.
+constexpr int PluginStartWaitMs = 15000;
+static_assert( PluginStartWaitMs > PluginProcess::DefaultInitializationTimeoutMs,
+               "a start-up wait must outlast the host's own initialization timeout" );
+
 bool waitUntil( const std::function<bool()>& predicate, int timeout = 5000 )
 {
     QElapsedTimer timer;
@@ -234,7 +242,8 @@ TEST_CASE( "A plugin without handles gets the frames it got before E17",
     const auto summary = manager.invoke( id, "summary", {}, { { "windowId", "w1" } } );
     REQUIRE( summary.ok() );
     const auto summaryId = summary.payload.value( "jobId" ).toString();
-    REQUIRE( waitUntil( [ & ] { return finishedJob( manager, summaryId ); } ) );
+    // The first job starts the plugin.
+    REQUIRE( waitUntil( [ & ] { return finishedJob( manager, summaryId ); }, PluginStartWaitMs ) );
     // A view with the E13/E14 elements of the fixture: a label, fields, buttons and an editable
     // table.
     REQUIRE( manager.openView( id, "main", { { "windowId", "w1" } } ).ok() );
@@ -358,7 +367,8 @@ struct QueryFixture {
         const auto job = manager->invoke( id, "summary", {}, {} );
         REQUIRE( job.ok() );
         const auto jobId = job.payload.value( "jobId" ).toString();
-        REQUIRE( waitUntil( [ & ] { return finishedJob( *manager, jobId ); } ) );
+        // The first job starts the plugin.
+        REQUIRE( waitUntil( [ & ] { return finishedJob( *manager, jobId ); }, PluginStartWaitMs ) );
         REQUIRE( manager->pluginState( id ) == "ready" );
     }
     QString ask( const QString& id, const QString& element, const std::shared_ptr<Answer>& result,
@@ -815,7 +825,14 @@ TEST_CASE( "E17 closing a view ends its queries with query/cancel", "[plugins][E
     QueryFixture fixture( { queryManifest( id ) } );
     fixture.manager->noteActiveWindow( "w1" );
     REQUIRE( fixture.manager->openView( id, "tips", { { "windowId", "w1" } } ).ok() );
-    REQUIRE( waitUntil( [ & ] { return fixture.manager->pluginState( id ) == "ready"; } ) );
+    // Opening the view starts the plugin; a plugin that fails to start ends the wait at once.
+    REQUIRE( waitUntil(
+        [ & ] {
+            const auto state = fixture.manager->pluginState( id );
+            return state == "ready" || state == "failed";
+        },
+        PluginStartWaitMs ) );
+    REQUIRE( fixture.manager->pluginState( id ) == "ready" );
     const auto slow = answer();
     const auto slowId
         = fixture.ask( id, "slowtip", slow, 3000, {}, PluginManager::viewScope( "w1", "tips" ) );
