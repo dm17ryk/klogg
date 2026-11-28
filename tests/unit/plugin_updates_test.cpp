@@ -45,12 +45,23 @@ bool finished( const PluginManager& manager, const QString& id )
     return state == "completed" || state == "failed" || state == "cancelled";
 }
 
-QVariantMap finishedJob( PluginManager& manager, const Result& started )
+// A restart job stops the plugin (the host gives a stopping plugin up to 3 s, then kills it) and
+// starts it again (the host fails a plugin that does not answer `initialize` in
+// PluginProcess::DefaultInitializationTimeoutMs). The host's own verdict can take 13 s before the
+// process start and a busy machine's scheduling count: a restart waits longer than all of it, so
+// the host decides, never this deadline (#211). The wait still ends as soon as the job does.
+constexpr int HostStopGraceMs = 3000; // pluginmanager.cpp: waitForStopped( 3000 - ... )
+constexpr int PluginRestartWaitMs = 30000;
+static_assert( PluginRestartWaitMs
+                   > HostStopGraceMs + PluginProcess::DefaultInitializationTimeoutMs + 10000,
+               "a restart wait must outlast the host's stop grace and initialization timeout" );
+
+QVariantMap finishedJob( PluginManager& manager, const Result& started, int timeout = 15000 )
 {
     REQUIRE( started.ok() );
     const auto id = started.payload.value( "jobId" ).toString();
     REQUIRE_FALSE( id.isEmpty() );
-    REQUIRE( waitUntil( [ & ] { return finished( manager, id ); } ) );
+    REQUIRE( waitUntil( [ & ] { return finished( manager, id ); }, timeout ) );
     return manager.job( id ).payload;
 }
 
@@ -393,7 +404,8 @@ TEST_CASE( "Auto-update stays within the major version, installs nothing new and
 
     // A running plugin is replaced only when it stops.
     REQUIRE( manager->manage( "enable", FixtureId, {} ).ok() );
-    REQUIRE( finishedJob( *manager, manager->manage( "restart", FixtureId, {} ) )[ "state" ]
+    REQUIRE( finishedJob( *manager, manager->manage( "restart", FixtureId, {} ),
+                          PluginRestartWaitMs )[ "state" ]
              == "completed" );
     REQUIRE( manager->pluginState( FixtureId ) == "ready" );
     fixture.publish( { "1.1.0", "1.2.0", "2.0.0" } );
@@ -462,7 +474,8 @@ TEST_CASE( "Skip this version and the user's own operations take precedence over
 
     // An automatic update waiting for the running plugin: cancelling it removes its package.
     REQUIRE( manager->manage( "enable", FixtureId, {} ).ok() );
-    REQUIRE( finishedJob( *manager, manager->manage( "restart", FixtureId, {} ) )[ "state" ]
+    REQUIRE( finishedJob( *manager, manager->manage( "restart", FixtureId, {} ),
+                          PluginRestartWaitMs )[ "state" ]
              == "completed" );
     const auto waitingJob = [ & ] {
         QString found;
