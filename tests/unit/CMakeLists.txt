@@ -29,6 +29,7 @@ add_executable(cilogg_tests
     packeditors_test.cpp
     mcp_test.cpp
     configuration_test.cpp
+    highlighterset_test.cpp
     captureevaluator_test.cpp
     configurationexport_test.cpp
     encodingdetector_test.cpp
