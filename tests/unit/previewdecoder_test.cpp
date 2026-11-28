@@ -669,7 +669,15 @@ TEST_CASE( "Native framed client rejects malformed output and recovers within bo
         { "stderr", "diagnostic_limit" },        { "stall", "timeout" },
         { "bad_limit", "worker_protocol_error" }, { "unnamed_limit", "worker_protocol_error" },
         { "limit_reason", "worker_protocol_error" }, { "limit_needed", "worker_protocol_error" },
-        { "limit_rows", "worker_protocol_error" }
+        { "limit_rows", "worker_protocol_error" },
+        // A PDML limit that contradicts its result (#198).
+        { "pdml_read", "worker_protocol_error" }, { "pdml_maximum", "worker_protocol_error" },
+        { "pdml_reason", "worker_protocol_error" }, { "pdml_tree", "worker_protocol_error" },
+        { "pdml_bytes_rows", "worker_protocol_error" },
+        { "pdml_tree_rows", "worker_protocol_error" },
+        { "limit_low", "worker_protocol_error" }, { "limit_row_max", "worker_protocol_error" },
+        { "limit_failed", "worker_protocol_error" }, { "limit_extra", "worker_protocol_error" },
+        { "limit_missing", "worker_protocol_error" }
     };
     int counter = 0;
     const auto run = [ & ]( QObject* channel, int timeoutMs = 5000 ) {
@@ -808,16 +816,42 @@ TEST_CASE( "TShark results fit 2048 rows, take the request's result limit and na
     REQUIRE( result.value( "available" ).toBool() );
     CHECK( result.value( "fields" ).toList().size() == 2048 );
     CHECK( PreviewService::limitText( result ) == "2048 of 2400 rows: the row limit is 2048." );
-    // A tree past the worker's PDML limits fails as a whole, and says which limit (review).
+    // Issue #198: a tree past the worker's PDML limits shows its first rows and names the limit.
     result = run( "pdml_items" );
-    CHECK( result.value( "reason" ) == "field_limit" );
+    REQUIRE( result.value( "available" ).toBool() );
+    CHECK( result.value( "reason" ) == "pdml_item_limit" );
+    CHECK( result.value( "fields" ).toList().size() == 2048 );
     CHECK( PreviewService::limitText( result )
-           == "TShark's tree passed the worker's limit of 8192 items." );
-    CHECK( PreviewService::limitText( { { "backend", "tshark_lua" },
-                                        { "state", "failed" },
-                                        { "reason", "output_limit" },
-                                        { "limited", true } } )
-           == "TShark's output passed the worker's limit: 4 MiB of PDML, 64 KiB of diagnostics." );
+           == "2048 of at least 7900 rows: the worker reads 8192 items of TShark's output." );
+    result = run( "pdml_bytes" );
+    REQUIRE( result.value( "available" ).toBool() );
+    CHECK( PreviewService::limitText( result )
+           == "2048 of at least 7900 rows: the worker reads 4 MiB of TShark's output." );
+    // Cut again at the result limit, it keeps the PDML limit.
+    result = run( "pdml_then_bytes" );
+    REQUIRE( result.value( "available" ).toBool() );
+    CHECK( PreviewService::limitText( result )
+           == "1 of at least 7900 rows: result limit 128 KiB, the first 2048 rows need 2637 KiB; "
+              "the worker reads 8192 items of TShark's output." );
+    // A PDML read with no row fails at its limit, and the other limit failures say theirs.
+    result = run( "pdml_items_failed" );
+    CHECK( result.value( "reason" ) == "pdml_item_limit" );
+    CHECK( PreviewService::limitText( result )
+           == "No row to show in the 8192 items of TShark's output the worker reads." );
+    const auto failed = []( const char* reason ) {
+        return PreviewService::limitText( { { "backend", "tshark_lua" },
+                                            { "state", "failed" },
+                                            { "reason", reason },
+                                            { "limited", true } } );
+    };
+    CHECK( failed( "pdml_byte_limit" )
+           == "No row to show in the 4 MiB of TShark's output the worker reads." );
+    CHECK( failed( "depth_limit" ) == "TShark's tree is deeper than the worker's limit of 32 levels." );
+    CHECK( failed( "diagnostic_limit" )
+           == "A Wireshark tool's diagnostics passed the worker's limit of 64 KiB." );
+    CHECK( failed( "output_limit" )
+           == "A Wireshark tool's output passed the worker's limit of 4 MiB." );
+    CHECK( failed( "lua_failure" ).isEmpty() );
     CHECK( PreviewService::limitText( { { "limited", true },
                                         { "limit", QVariantMap{ { "name", "rows" },
                                                                  { "maximum", 2048 },

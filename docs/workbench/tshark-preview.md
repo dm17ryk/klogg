@@ -177,11 +177,28 @@ run. A result cut off at either limit is `limited` (`reason`
 (`rows` or `bytes`), `maximum`, `shownRows`, `totalRows` and, for bytes,
 `neededBytes`. The pane's status and the hover say the same, for example
 "390 of 769 rows: result limit 128 KiB, the whole result needs 263 KiB"; raise
-the result limit and run again to see the rest. The worker reads up to 4 MiB and
-8192 items of TShark's PDML (and 64 KiB of its diagnostics); a message past
-those fails (`output_limit`, `field_limit`), and the status names the limit it
-passed. Automatic mode then shows its JSON preview, as after any TShark/Lua
-failure (#182).
+the result limit and run again to see the rest.
+
+The worker reads up to 8192 items and 4 MiB of TShark's PDML for one message
+(#198). A larger tree keeps the part read and shows its first rows, in
+preorder, up to 2048. The result is `limited` (`reason` `pdml_item_limit` or
+`pdml_byte_limit`) and its `limit` has `name` `pdmlItems` or `pdmlBytes`,
+`maximum` (8192 items or 4194304 bytes), `shownRows` and `readRows`, the rows in
+the part read: the whole tree has at least that many, but its size is not
+known. The status says, for example, "2048 of at least 7900 rows: the worker
+reads 8192 items of TShark's output". The worker reads and drops the rest of
+TShark's output for that message, so the engine stays warm for the next one. If
+the result limit then cuts the rows again, the `bytes` limit counts the rows
+read as `totalRows` and names the PDML limit in `tree`. A message whose part
+read holds no row to show (no decoded row, or not the selected protocol) fails
+with that reason; like any failure, it restarts the worker for the next
+message. A packet is cut when its bytes up to and including `</packet>` pass
+4 MiB, so a tree cut within its last few bytes may already show every row. A Lua error item past the
+part read is not seen; a Lua error TShark reports on its diagnostics still fails
+the preview. A tree deeper than 32
+items fails (`depth_limit`), and so do TShark diagnostics past 64 KiB
+(`diagnostic_limit`); the status names the limit, and Automatic mode then shows
+its JSON preview, as after any TShark/Lua failure (#182).
 
 A TShark/Lua tree shows each item as Wireshark does. **Value** is the
 dissector's display text: the PDML `showname` after its `label: `, so a Lua

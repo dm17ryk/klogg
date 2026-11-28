@@ -1,5 +1,6 @@
 """Exact, bounded PDML helpers shared by proof tooling and preview transport."""
 
+import codecs
 import logging
 import re
 import xml.etree.ElementTree as ET
@@ -75,6 +76,70 @@ def normalize_pdml(data, *, output_limit=OUTPUT_LIMIT, node_limit=50000, depth_l
     packets = [node(packet, str(i)) for i, packet in enumerate(document.findall("packet"))]
     LOG.debug("pdml_normalized packets=%d nodes=%d", len(packets), count)
     return packets
+
+
+def normalize_pdml_prefix(data, *, node_limit, depth_limit, whole=True):
+    """The packets of PDML read up to `node_limit` items, in preorder (#198).
+
+    Returns (packets, items_cut): with more items than `node_limit`, the tree keeps its first
+    `node_limit` items and `items_cut` is true. `whole` false means `data` is a prefix cut off at
+    a byte limit: its incomplete end is dropped instead of failing. Nodes are as normalize_pdml
+    builds them. An item deeper than `depth_limit` fails (`depth_limit`)."""
+    try:
+        # Not final for a prefix: a character cut at the byte limit is dropped, not invalid.
+        text = codecs.getincrementaldecoder("utf-8")().decode(data, final=whole)
+    except UnicodeError as error:
+        raise ProofError("invalid_pdml") from error
+    if "<!DOCTYPE" in text.upper() or "<!ENTITY" in text.upper() or "\x00" in text:
+        raise ProofError("invalid_pdml")
+    parser = ET.XMLPullParser(events=("start", "end"))
+    packets, stack = [], []
+    depth, count, items_cut, root = -2, 0, False, None  # pdml=-1, packet=0
+    try:
+        for offset in range(0, len(text), 4096):
+            parser.feed(text[offset : offset + 4096])
+            for event, element in parser.read_events():
+                if event == "end":
+                    depth -= 1
+                    stack.pop()
+                    continue
+                depth += 1
+                if depth < 0:
+                    root = element.tag
+                    stack.append(None)
+                    continue
+                count += 1
+                if count > node_limit:
+                    items_cut = True
+                    break
+                if depth > depth_limit:
+                    raise ProofError("depth_limit")
+                parent = stack[-1]
+                siblings = packets if parent is None else parent["children"]
+                node = {
+                    "id": str(len(siblings)) if parent is None else f"{parent['id']}/{len(siblings)}",
+                    "kind": element.tag,
+                    "attributes": dict(element.attrib),
+                    "positionOrigin": "engine_data_source_unresolved",
+                    "children": [],
+                }
+                # A top-level element other than a packet is not part of a result.
+                if parent is not None or element.tag == "packet":
+                    siblings.append(node)
+                stack.append(node)
+            if items_cut:
+                break
+        if whole and not items_cut:
+            parser.close()
+    except ET.ParseError as error:
+        raise ProofError("invalid_pdml") from error
+    if root != "pdml" or not packets:
+        raise ProofError("invalid_pdml")
+    LOG.debug(
+        "pdml_prefix_normalized packets=%d nodes=%d items_cut=%s whole=%s",
+        len(packets), min(count, node_limit), items_cut, whole,
+    )
+    return packets, items_cut
 
 
 def fields_named(nodes, name):

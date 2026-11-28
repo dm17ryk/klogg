@@ -926,38 +926,72 @@ QString PreviewService::limitText( const QVariantMap& result )
 {
     if ( !result.value( "limited" ).toBool() )
         return {};
-    // TShark's output past what the worker reads fails the whole preview (#183 review).
+    // What the worker reads of TShark's output for one message (#183, #198).
+    const auto pdmlAmount = []( const QVariant& name ) -> QString {
+        if ( name == "pdmlItems" )
+            return QStringLiteral( "%1 items" ).arg( TsharkPreviewClient::PdmlItemLimit );
+        if ( name == "pdmlBytes" )
+            return QStringLiteral( "%1 MiB" ).arg( TsharkPreviewClient::PdmlByteLimit
+                                                   / ( 1024 * 1024 ) );
+        return {};
+    };
+    const auto pdmlRead = [ & ]( const QVariant& name ) -> QString {
+        const auto amount = pdmlAmount( name );
+        return amount.isEmpty()
+                   ? QString{}
+                   : QStringLiteral( "the worker reads %1 of TShark's output" ).arg( amount );
+    };
+    // A TShark preview fails at a limit only before a row (#198): a PDML limit cut the tree
+    // before its first row, or the tree is too deep, or the diagnostics too long.
     if ( result.value( "backend" ) == "tshark_lua" && result.value( "state" ) == "failed" ) {
-        if ( result.value( "reason" ) == "field_limit" )
-            return QStringLiteral( "TShark's tree passed the worker's limit of %1 items." )
-                .arg( TsharkPreviewClient::PdmlItemLimit );
-        if ( result.value( "reason" ) == "output_limit" )
-            return QStringLiteral(
-                       "TShark's output passed the worker's limit: %1 MiB of PDML, %2 KiB of "
-                       "diagnostics." )
-                .arg( TsharkPreviewClient::PdmlByteLimit / ( 1024 * 1024 ) )
+        const auto reason = result.value( "reason" ).toString();
+        if ( reason == "pdml_item_limit" || reason == "pdml_byte_limit" )
+            // No decoded row, or not the selected protocol, in the part read (review of #204).
+            return QStringLiteral( "No row to show in the %1 of TShark's output the worker reads." )
+                .arg( pdmlAmount( reason == "pdml_item_limit" ? "pdmlItems" : "pdmlBytes" ) );
+        if ( reason == "depth_limit" )
+            return QStringLiteral( "TShark's tree is deeper than the worker's limit of %1 levels." )
+                .arg( TsharkPreviewClient::PdmlDepthLimit );
+        if ( reason == "output_limit" )
+            return QStringLiteral( "A Wireshark tool's output passed the worker's limit of %1 MiB." )
+                .arg( TsharkPreviewClient::PdmlByteLimit / ( 1024 * 1024 ) );
+        if ( reason == "diagnostic_limit" )
+            return QStringLiteral( "A Wireshark tool's diagnostics passed the worker's limit of %1 KiB." )
                 .arg( TsharkPreviewClient::DiagnosticByteLimit / 1024 );
         return {};
     }
     const auto limit = result.value( "limit" ).toMap();
-    const auto rows = QStringLiteral( "%1 of %2 rows" )
-                          .arg( limit.value( "shownRows" ).toLongLong() )
-                          .arg( limit.value( "totalRows" ).toLongLong() );
-    if ( limit.value( "name" ) == "rows" )
+    const auto name = limit.value( "name" );
+    const auto shown = limit.value( "shownRows" ).toLongLong();
+    // A tree cut at a PDML limit counts only the rows read: it has at least that many (#198).
+    if ( name == "pdmlItems" || name == "pdmlBytes" )
+        return QStringLiteral( "%1 of at least %2 rows: %3." )
+            .arg( shown )
+            .arg( limit.value( "readRows" ).toLongLong() )
+            .arg( pdmlRead( name ) );
+    const auto tree = limit.value( "tree" );
+    const auto total = limit.value( "totalRows" ).toLongLong();
+    const auto rows = QStringLiteral( "%1 of %2%3 rows" )
+                          .arg( shown )
+                          .arg( pdmlRead( tree ).isEmpty() ? QString{} : QStringLiteral( "at least " ) )
+                          .arg( total );
+    if ( name == "rows" )
         return QStringLiteral( "%1: the row limit is %2." )
             .arg( rows )
             .arg( limit.value( "maximum" ).toLongLong() );
-    if ( limit.value( "name" ) == "bytes" ) {
-        // A tree past the row limit was cut at its rows first: the bytes are those rows' bytes.
-        const auto whole = limit.value( "totalRows" ).toLongLong() > TsharkPreviewClient::FieldLimit
-                               ? QStringLiteral( "the first %1 rows need" )
-                                     .arg( TsharkPreviewClient::FieldLimit )
+    if ( name == "bytes" ) {
+        // A tree past the row limit or cut at a PDML limit was cut first: the bytes are its
+        // first rows' bytes.
+        const auto first = std::min<qint64>( total, TsharkPreviewClient::FieldLimit );
+        const auto whole = total > TsharkPreviewClient::FieldLimit || !pdmlRead( tree ).isEmpty()
+                               ? QStringLiteral( "the first %1 rows need" ).arg( first )
                                : QStringLiteral( "the whole result needs" );
-        return QStringLiteral( "%1: result limit %2 KiB, %3 %4 KiB." )
-            .arg( rows )
-            .arg( limit.value( "maximum" ).toLongLong() / 1024 )
-            .arg( whole )
-            .arg( ( limit.value( "neededBytes" ).toLongLong() + 1023 ) / 1024 );
+        const auto text = QStringLiteral( "%1: result limit %2 KiB, %3 %4 KiB" )
+                              .arg( rows )
+                              .arg( limit.value( "maximum" ).toLongLong() / 1024 )
+                              .arg( whole )
+                              .arg( ( limit.value( "neededBytes" ).toLongLong() + 1023 ) / 1024 );
+        return pdmlRead( tree ).isEmpty() ? text + '.' : text + "; " + pdmlRead( tree ) + '.';
     }
     return {};
 }

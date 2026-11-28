@@ -142,8 +142,13 @@ int main( int argc, char** argv )
         // "rows" fills the row limit (2048); "count" passes it (#183). The "*_rows" modes are a
         // tree cut at it.
         const bool rowCut = mode == "limited_rows" || mode == "limit_rows";
+        // A tree cut at a PDML limit (#198); the "pdml_*" variants contradict their result.
+        const bool pdmlCut = mode == "pdml_items" || mode == "pdml_bytes" || mode == "pdml_read"
+                             || mode == "pdml_maximum" || mode == "pdml_reason"
+                             || mode == "pdml_bytes_rows";
         QJsonArray fields;
-        for ( int i = 0; i < ( mode == "count" ? 2049 : mode == "rows" || rowCut ? 2048 : 1 ); ++i )
+        for ( int i = 0;
+              i < ( mode == "count" ? 2049 : mode == "rows" || rowCut || pdmlCut ? 2048 : 1 ); ++i )
             fields.append( field );
         // A text-only subtree and a Lua value string as the worker renders them (#181); "forged"
         // claims a display text the attributes do not hold.
@@ -257,10 +262,82 @@ int main( int argc, char** argv )
                                                { "shownRows", 2048 },
                                                { "totalRows", mode == "limit_rows" ? 2048 : 2400 } };
         }
-        // TShark's tree past the worker's PDML item limit fails as a whole.
-        if ( mode == "pdml_items" ) {
+        // A tree past the worker's PDML limits shows its first rows (#198). "pdml_read" claims
+        // fewer rows read than shown, "pdml_maximum" another item limit, "pdml_reason" the row
+        // limit's reason.
+        if ( pdmlCut ) {
+            // "pdml_bytes_rows": more rows read than fit in the items the worker reads.
+            const bool bytes = mode == "pdml_bytes" || mode == "pdml_bytes_rows";
+            response[ "complete" ] = false;
+            response[ "limited" ] = true;
+            response[ "reason" ] = mode == "pdml_reason" ? "rendered_field_limit"
+                                   : bytes               ? "pdml_byte_limit"
+                                                         : "pdml_item_limit";
+            response[ "limit" ] = QJsonObject{
+                { "name", bytes ? "pdmlBytes" : "pdmlItems" },
+                { "maximum", bytes ? 4194304 : mode == "pdml_maximum" ? 4096 : 8192 },
+                { "shownRows", 2048 },
+                { "readRows", mode == "pdml_read"         ? 1000
+                              : mode == "pdml_bytes_rows" ? 9000
+                                                          : 7900 }
+            };
+        }
+        // A byte cut of a tree cut at a PDML limit names that limit; "pdml_tree" names another.
+        // "pdml_tree_rows" counts more rows read than the item limit allows.
+        if ( mode == "pdml_then_bytes" || mode == "pdml_tree" || mode == "pdml_tree_rows" ) {
+            response[ "complete" ] = false;
+            response[ "limited" ] = true;
+            response[ "reason" ] = "response_limit";
+            response[ "limit" ] = QJsonObject{ { "name", "bytes" },
+                                               { "maximum", 131072 },
+                                               { "shownRows", 1 },
+                                               { "totalRows", mode == "pdml_tree_rows" ? 9000 : 7900 },
+                                               { "neededBytes", 2700000 },
+                                               { "tree", mode == "pdml_tree" ? "rows" : "pdmlItems" } };
+        }
+        // Limits that contradict themselves or their result (review of #192, #198): a byte
+        // maximum below what a request may choose, a row cut at another maximum, a limit on a
+        // failure, an extra key and a missing one.
+        if ( mode == "limit_low" || mode == "limit_extra" || mode == "limit_missing" ) {
+            response[ "complete" ] = false;
+            response[ "limited" ] = true;
+            response[ "reason" ] = "response_limit";
+            QJsonObject limit{ { "name", "bytes" },
+                               { "maximum", mode == "limit_low" ? 65536 : 131072 },
+                               { "shownRows", 1 },
+                               { "totalRows", 769 },
+                               { "neededBytes", 268000 } };
+            if ( mode == "limit_extra" )
+                limit[ "readRows" ] = 769;
+            if ( mode == "limit_missing" )
+                limit.remove( "neededBytes" );
+            response[ "limit" ] = limit;
+        }
+        if ( mode == "limit_row_max" ) {
+            response[ "complete" ] = false;
+            response[ "limited" ] = true;
+            response[ "reason" ] = "rendered_field_limit";
+            response[ "limit" ] = QJsonObject{
+                { "name", "rows" }, { "maximum", 1 }, { "shownRows", 1 }, { "totalRows", 2 }
+            };
+        }
+        if ( mode == "limit_failed" ) {
             response[ "state" ] = "failed";
-            response[ "reason" ] = "field_limit";
+            response[ "reason" ] = "response_limit";
+            response[ "available" ] = false;
+            response[ "complete" ] = false;
+            response[ "limited" ] = true;
+            response[ "fields" ] = QJsonArray{};
+            response[ "limit" ] = QJsonObject{ { "name", "bytes" },
+                                               { "maximum", 131072 },
+                                               { "shownRows", 0 },
+                                               { "totalRows", 769 },
+                                               { "neededBytes", 268000 } };
+        }
+        // A tree whose PDML read holds no row fails at that limit.
+        if ( mode == "pdml_items_failed" ) {
+            response[ "state" ] = "failed";
+            response[ "reason" ] = "pdml_item_limit";
             response[ "available" ] = false;
             response[ "complete" ] = false;
             response[ "limited" ] = true;

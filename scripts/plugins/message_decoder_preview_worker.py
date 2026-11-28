@@ -28,7 +28,7 @@ from message_decoder_wire import (
     ProofError,
     fields_named,
     hexdump,
-    normalize_pdml,
+    normalize_pdml_prefix,
     validate_dissector,
 )
 
@@ -46,9 +46,9 @@ RESPONSE_LIMIT_MAX = 4 * 1024 * 1024
 # Rows of a result: a tree with more is cut at this many rows and says so.
 FIELD_LIMIT = 2048
 PAYLOAD_LIMIT = 64 * 1024
-# The PDML the worker reads from TShark, in bytes and nodes (transport metadata included): room
-# for a tree well past the row limit, so that one is cut and named instead of failing. A tree past
-# these still fails (output_limit, field_limit); Automatic mode then shows the JSON preview.
+# The PDML the worker reads from TShark for one message, in bytes and items (transport metadata
+# included). A tree past either keeps what was read, in preorder, and its result is cut and names
+# the limit (#198): pdml_byte_limit or pdml_item_limit. TsharkPreviewClient mirrors these.
 PDML_LIMIT = 4 * 1024 * 1024
 PDML_NODE_LIMIT = 8192
 # Lua in a session profile: the user's 8 scripts and the configuration packs' files together
@@ -58,6 +58,13 @@ PACK_LUA_LIMIT = 8
 PROFILE_LUA_LIMIT = 32
 LUA_FILE_LIMIT = 1024 * 1024
 STDERR_LIMIT = 64 * 1024
+# A tree's depth in items (the host shows rows up to depth 32).
+PDML_DEPTH_LIMIT = 32
+PACKET_START = b"<packet>"
+PACKET_END = b"</packet>"
+# The `limit` of a tree cut at a PDML limit (#198), and its result's reason.
+PDML_ITEMS = {"name": "pdmlItems", "reason": "pdml_item_limit", "maximum": PDML_NODE_LIMIT}
+PDML_BYTES = {"name": "pdmlBytes", "reason": "pdml_byte_limit", "maximum": PDML_LIMIT}
 ORIGIN = "engine_data_source_unresolved"
 
 
@@ -169,11 +176,15 @@ def encode_frame(value, limit=RESPONSE_LIMIT):
     return struct.pack(">I", len(data)) + data
 
 
-def byte_limit(maximum, shown, total, needed):
+def byte_limit(maximum, shown, total, needed, tree=None):
     """What a result cut off at its byte limit says about it (#183): the limit, the rows shown
-    and in the tree, and the bytes the whole result needed."""
-    return {"name": "bytes", "maximum": maximum, "shownRows": shown, "totalRows": total,
-            "neededBytes": needed}
+    and in the tree, and the bytes the whole result needed. `tree` names the PDML limit that cut
+    the tree first (#198); `total` is then the rows the worker read."""
+    limit = {"name": "bytes", "maximum": maximum, "shownRows": shown, "totalRows": total,
+             "neededBytes": needed}
+    if tree:
+        limit["tree"] = tree
+    return limit
 
 
 def _fit_response(response, limit=RESPONSE_LIMIT, describe_limit=True):
@@ -186,15 +197,18 @@ def _fit_response(response, limit=RESPONSE_LIMIT, describe_limit=True):
     except ProofError:
         needed = len(json.dumps(response, ensure_ascii=True, separators=(",", ":"),
                                 allow_nan=False))
-        # A tree already cut at the row limit counts its rows, not the rows rendered.
-        rows = response.get("limit", {}).get("totalRows", total)
+        # A tree already cut at the row limit counts its rows, not the rows rendered; one cut at
+        # a PDML limit counts the rows read and names that limit (#198).
+        earlier = response.get("limit", {})
+        rows = earlier.get("totalRows", earlier.get("readRows", total))
+        tree = earlier["name"] if "readRows" in earlier else None
         fitted = dict(response)
         fitted.pop("limit", None)
         fitted.update(complete=False, limited=True, reason="response_limit", fields=[])
         if describe_limit:
             # The row count is a placeholder with the most digits it can have; the final count
             # only shrinks the body.
-            fitted["limit"] = byte_limit(limit, total, rows, needed)
+            fitted["limit"] = byte_limit(limit, total, rows, needed, tree)
         # Empty-array brackets and all final limited-result metadata are already
         # counted. A whole row replaces no brackets; only subsequent rows add a comma.
         used = len(encode_frame(fitted, limit)) - 4
@@ -209,7 +223,7 @@ def _fit_response(response, limit=RESPONSE_LIMIT, describe_limit=True):
             fitted["fields"].append(field)
             used += size
         if describe_limit:
-            fitted["limit"] = byte_limit(limit, len(fitted["fields"]), rows, needed)
+            fitted["limit"] = byte_limit(limit, len(fitted["fields"]), rows, needed, tree)
         frame = encode_frame(fitted, limit)  # Authoritative final cap check.
         result = fitted
     else:
@@ -453,7 +467,9 @@ def render_fields(packets, limit=FIELD_LIMIT):
 class EngineProcess:
     """Continuously drain two pipes with strict retained-byte bounds."""
 
-    def __init__(self, owner, arguments, cwd, env):
+    def __init__(self, owner, arguments, cwd, env, framed=False):
+        # `framed`: the engine's PDML stream, read packet by packet and cut at PDML_LIMIT (#198).
+        self.framed = framed
         self.process = owner.spawn(
             [str(arg) for arg in arguments],
             cwd=cwd,
@@ -466,6 +482,11 @@ class EngineProcess:
         self.buffers = [bytearray(), bytearray()]
         self.eof = [False, False]
         self.failure = None
+        # A packet cut at PDML_LIMIT (#198): its kept bytes, and while the rest is still read,
+        # the last bytes that could begin its end tag.
+        self.cut = None
+        self.discarding = False
+        self.tail = b""
         self.condition = threading.Condition()
         self.readers = []
         for index, stream in enumerate((self.process.stdout, self.process.stderr)):
@@ -485,17 +506,60 @@ class EngineProcess:
                         self.eof[index] = True
                         self.condition.notify_all()
                         return
-                    limit = PDML_LIMIT if index == 0 else STDERR_LIMIT
-                    if len(self.buffers[index]) + len(block) > limit:
+                    if index == 0 and self.framed:
+                        self.take_pdml(block)
+                    elif index == 0 and len(self.buffers[0]) + len(block) > PDML_LIMIT:
+                        # A tool's output (text2pcap, tshark -G) past the limit fails.
                         self.failure = "output_limit"
                         self.condition.notify_all()
                         return
-                    self.buffers[index].extend(block)
+                    elif index == 0:
+                        self.buffers[0].extend(block)
+                    elif len(self.buffers[1]) + len(block) > STDERR_LIMIT:
+                        # Its own reason (#198): the diagnostics, not the PDML, passed a limit.
+                        self.failure = "diagnostic_limit"
+                        self.condition.notify_all()
+                        return
+                    else:
+                        self.buffers[1].extend(block)
                     self.condition.notify_all()
         except (OSError, ValueError):
             with self.condition:
                 self.failure = "engine_read_error"
                 self.condition.notify_all()
+
+    def take_pdml(self, block):
+        """Keep at most PDML_LIMIT bytes of a packet (#198). A packet past it keeps its first
+        PDML_LIMIT bytes as `cut`; the rest is read and dropped up to its end, so the engine stays
+        in step for the next packet. Called with the condition held."""
+        buffer = self.buffers[0]
+        if self.discarding:
+            window = self.tail + block
+            end = window.find(PACKET_END)
+            if end < 0:
+                self.tail = window[-(len(PACKET_END) - 1):]
+                return
+            self.discarding, self.tail = False, b""
+            block = window[end + len(PACKET_END):]
+        buffer.extend(block)
+        if len(buffer) <= PDML_LIMIT:
+            return
+        # The limit counts the packet's bytes from `<packet>` to its end tag, so the session's
+        # PDML header before the first packet does not count (review of #204).
+        start = max(buffer.find(PACKET_START), 0)
+        if len(buffer) - start <= PDML_LIMIT:
+            return
+        end = buffer.find(PACKET_END, start)
+        if 0 <= end and end + len(PACKET_END) - start <= PDML_LIMIT:
+            return  # A whole packet within the limit; what follows it is at most `</pdml>`.
+        self.cut = bytes(buffer[: start + PDML_LIMIT])
+        if end < 0:
+            self.tail = bytes(buffer[-(len(PACKET_END) - 1):])
+            self.discarding = True
+            buffer.clear()
+        else:
+            del buffer[: end + len(PACKET_END)]
+        LOG.warning("preview_pdml_byte_limit limit=%d", PDML_LIMIT)
 
     def check(self):
         if self.failure:
@@ -520,12 +584,15 @@ class EngineProcess:
         return bytes(self.buffers[0])
 
     def packet(self, deadline):
+        """The next packet's PDML and whether it was cut at PDML_LIMIT (#198). A cut packet is
+        returned once the engine has written all of it, so the next one starts in step."""
         with self.condition:
             while True:
                 self.check()
-                buffer = self.buffers[0]
+                cut = self.cut is not None and not self.discarding
+                buffer = self.cut if cut else self.buffers[0]
                 start = buffer.find(b"<packet>")
-                end = buffer.find(b"</packet>")
+                end = len(buffer) if cut else buffer.find(PACKET_END)
                 if start >= 0 and end >= start:
                     prefix = bytes(buffer[:start])
                     if prefix.strip() and (
@@ -535,9 +602,14 @@ class EngineProcess:
                         or b"<!ENTITY" in prefix.upper()
                     ):
                         raise ProofError("invalid_pdml")
-                    packet = bytes(buffer[start : end + 9])
-                    del buffer[: end + 9]
-                    return b"<pdml>" + packet + b"</pdml>"
+                    if cut:
+                        self.cut = None
+                        return b"<pdml>" + buffer[start:], True
+                    packet = bytes(buffer[start : end + len(PACKET_END)])
+                    del buffer[: end + len(PACKET_END)]
+                    return b"<pdml>" + packet + b"</pdml>", False
+                if cut:
+                    raise ProofError("invalid_pdml")  # No packet in the PDML read.
                 if self.eof[0] or self.process.poll() is not None:
                     raise ProofError("engine_failure")
                 self.condition.wait(min(0.02, remaining(deadline)))
@@ -680,6 +752,7 @@ class PreviewWorker:
             [profile["tshark"], "-n", *extension, "-l", "-r", "-", "-T", "pdml"],
             self.root,
             self.env,
+            framed=True,
         )
         self.processes.append(self.engine)
 
@@ -715,10 +788,12 @@ class PreviewWorker:
             record = header + record
             self.header_written = True
         write_before(self.engine.process.stdin, record, deadline)
-        data = self.engine.packet(deadline)
-        packets = normalize_pdml(
-            data, output_limit=PDML_LIMIT, node_limit=PDML_NODE_LIMIT, depth_limit=32
+        data, bytes_cut = self.engine.packet(deadline)
+        packets, items_cut = normalize_pdml_prefix(
+            data, node_limit=PDML_NODE_LIMIT, depth_limit=PDML_DEPTH_LIMIT, whole=not bytes_cut
         )
+        # The PDML limit that cut the tree (#198): the item limit falls within the bytes read.
+        pdml_cut = PDML_ITEMS if items_cut else PDML_BYTES if bytes_cut else None
         if len(packets) != 1:
             raise ProofError("invalid_pdml")
         if fields_named(packets, "_ws.lua.error") or any(
@@ -729,6 +804,8 @@ class PreviewWorker:
         tree = packets
         fields, limited = render_fields(tree)
         if not fields:
+            if pdml_cut:
+                raise ProofError(pdml_cut["reason"])  # The PDML read ends before a row.
             # Missing entrypoints can leave only the real engine's transport
             # envelope. This is absence of decoded output, not a protocol-name
             # comparison: an alias may legitimately emit differently named nodes.
@@ -754,6 +831,9 @@ class PreviewWorker:
 
             tree = selected_protocols(packets)
             if not tree:
+                if pdml_cut:
+                    # The protocol may follow the cut: no row to show in the part read.
+                    raise ProofError(pdml_cut["reason"])
                 LOG.warning("preview_protocol_not_found id=%s", request["id"])
                 raise ProofError("protocol_not_found")
             fields, limited = render_fields(tree)
@@ -762,17 +842,23 @@ class PreviewWorker:
         else:
             LOG.debug("preview_all_decoded_fields_selected id=%s", request["id"])
         response = response_base(request["id"], profile)
+        cut = bool(limited or pdml_cut)
         response.update(
             state="completed",
             available=True,
-            complete=not limited,
-            limited=limited,
-            reason="rendered_field_limit" if limited else "",
+            complete=not cut,
+            limited=cut,
+            reason=pdml_cut["reason"] if pdml_cut else "rendered_field_limit" if limited else "",
             fields=fields,
             enginePid=self.engine.process.pid,
             scriptSha256=self.script_hashes,
         )
-        if limited:
+        if pdml_cut:
+            # A tree past what the worker reads (#198): its whole size is not known, only the
+            # rows in the part read.
+            response["limit"] = {"name": pdml_cut["name"], "maximum": pdml_cut["maximum"],
+                                 "shownRows": len(fields), "readRows": count_rows(tree)}
+        elif limited:
             # Which limit cut the tree, and by how much (#183).
             response["limit"] = {"name": "rows", "maximum": FIELD_LIMIT,
                                  "shownRows": len(fields), "totalRows": count_rows(tree)}
@@ -825,7 +911,10 @@ def main(argv=None):
                         "response_limit",
                         "input_limit",
                         "output_limit",
-                        "field_limit",
+                        "pdml_item_limit",
+                        "pdml_byte_limit",
+                        "depth_limit",
+                        "diagnostic_limit",
                         "bridge_output_limit",
                     }
                     write_before(sys.stdout.buffer, encode_frame(response), time.monotonic() + 1)
