@@ -103,6 +103,8 @@ void setNativeFolder( const QString& folder );
 QStringList formatThrowFrames( const ThrowSite& site );
 // A minidump of this process now (Windows); false and *error elsewhere.
 bool writeProcessMinidump( const QString& path, bool fullMemory, QString* error );
+// Test hook: how long writeProcessMinidump waits (negative: the default 30 s).
+void setProcessDumpTimeoutForTest( int milliseconds );
 
 } // namespace cilogg::diagnostics::detail
 

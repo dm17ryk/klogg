@@ -15,6 +15,7 @@
 #include <QJsonObject>
 #include <QProcess>
 #include <QTemporaryDir>
+#include <QTest>
 
 #include <algorithm>
 #include <stdexcept>
@@ -414,4 +415,34 @@ TEST_CASE( "A report whose attachment cannot be copied is incomplete, so a crash
     CHECK_FALSE( result.ok );
     CHECK_FALSE( result.directory.isEmpty() ); // the partial folder stays as evidence
     CHECK_FALSE( result.error.isEmpty() );
+}
+
+TEST_CASE( "A process minidump that finishes after the wait is removed, not left unannounced",
+           "[diagnostics]" )
+{
+    if ( !CrashDumps::minidumpsSupported() ) {
+        return;
+    }
+    QTemporaryDir dir;
+    REQUIRE( dir.isValid() );
+    const auto path = dir.filePath( "late.dmp" );
+    struct Restore {
+        ~Restore()
+        {
+            CrashDumps::setProcessDumpTimeoutForTest( -1 );
+        }
+    } restore;
+    CrashDumps::setProcessDumpTimeoutForTest( 0 ); // give up at once
+    QString error;
+    const auto written = CrashDumps::writeProcessDump( path, false, &error );
+    if ( written ) {
+        // The dump won the race: then it is reported, and complete.
+        CHECK( isMinidump( path ) );
+        return;
+    }
+    CHECK_FALSE( error.isEmpty() );
+    // The worker finishes later (a small dump takes well under a second) and removes the dump
+    // that no report names. Right after the call the file may not exist yet, so give it time.
+    QTest::qWait( 5000 );
+    REQUIRE( QTest::qWaitFor( [ & ] { return !QFileInfo::exists( path ); }, 30000 ) );
 }

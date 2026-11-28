@@ -243,6 +243,8 @@ QStringList formatThrowFrames( const ThrowSite& site )
     return frames;
 }
 
+void setProcessDumpTimeoutForTest( int ) {}
+
 bool writeProcessMinidump( const QString&, bool, QString* error )
 {
     if ( error != nullptr ) {

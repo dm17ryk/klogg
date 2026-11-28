@@ -44,7 +44,11 @@ public:
 
     // Writes a minidump of this process now (all threads, no crash). False and *error where
     // minidumps are not supported or the file cannot be written.
+    // It waits at most 30 s (MiniDumpWriteDump suspends every other thread, and one holding a lock
+    // can block it). A dump that finishes after that is removed: no report names it.
     static bool writeProcessDump( const QString& path, bool fullMemory, QString* error = nullptr );
+    // Test hook: the wait above in milliseconds (negative: back to 30 s).
+    static void setProcessDumpTimeoutForTest( int milliseconds );
 
     // Crash records left in folder() by earlier runs that were not turned into a report yet,
     // oldest first: {record, dump (may be empty), time, summary, text}. A record younger than 10 s

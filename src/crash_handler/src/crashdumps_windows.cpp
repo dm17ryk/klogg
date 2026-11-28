@@ -398,20 +398,33 @@ QString symbolFor( void* address )
 }
 
 // A minidump of the live process, written by a helper thread: MiniDumpWriteDump suspends the other
-// threads, and one that holds a heap or loader lock could block it. The job outlives a timeout.
+// threads, and one that holds a heap or loader lock could block it. Whoever of the two finishes
+// last owns the job: the caller, or, after the caller gave up waiting, the worker, which then also
+// removes the late dump (no report names it, so it must not stay behind unannounced).
+enum ProcessDumpState { Running, Finished, Abandoned };
+
 struct ProcessDumpJob {
     std::wstring path;
     bool full = false;
     DWORD callerThread = 0;
     bool written = false;
     DWORD error = 0;
+    std::atomic_int state{ Running };
 };
+
+std::atomic<DWORD> processDumpWaitMs{ ProcessDumpWaitMs };
 
 DWORD WINAPI processDumpThread( void* parameter )
 {
     auto* job = static_cast<ProcessDumpJob*>( parameter );
     job->written = writeMinidumpFile( job->path.c_str(), nullptr, job->callerThread, job->full );
     job->error = job->written ? 0 : GetLastError();
+    int expected = Running;
+    if ( !job->state.compare_exchange_strong( expected, Finished ) ) {
+        // The caller gave up (Abandoned): remove what nobody will announce, and free the job.
+        DeleteFileW( job->path.c_str() );
+        delete job;
+    }
     return 0;
 }
 
@@ -488,21 +501,32 @@ bool writeProcessMinidump( const QString& path, bool fullMemory, QString* error 
         }
         return false;
     }
-    if ( WaitForSingleObject( thread, ProcessDumpWaitMs ) != WAIT_OBJECT_0 ) {
-        CloseHandle( thread ); // the job stays allocated: the thread may still use it
-        if ( error != nullptr ) {
-            *error = QStringLiteral( "The minidump was not written within %1 s." )
-                         .arg( ProcessDumpWaitMs / 1000 );
-        }
-        return false;
-    }
+    const auto waitMs = processDumpWaitMs.load();
+    const bool waited = WaitForSingleObject( thread, waitMs ) == WAIT_OBJECT_0;
     CloseHandle( thread );
+    if ( !waited ) {
+        int expected = Running;
+        if ( job->state.compare_exchange_strong( expected, Abandoned ) ) {
+            // The worker owns the job now; it removes the dump when it finishes.
+            if ( error != nullptr ) {
+                *error
+                    = QStringLiteral( "The minidump was not written within %1 ms." ).arg( waitMs );
+            }
+            return false;
+        }
+        // It finished just after the wait ended: use its result as usual.
+    }
     const auto written = job->written;
     if ( !written && error != nullptr ) {
         *error = QStringLiteral( "MiniDumpWriteDump failed (error %1)." ).arg( job->error );
     }
     delete job;
     return written;
+}
+
+void setProcessDumpTimeoutForTest( int milliseconds )
+{
+    processDumpWaitMs = milliseconds < 0 ? ProcessDumpWaitMs : static_cast<DWORD>( milliseconds );
 }
 
 void enableThrowSiteCapture()

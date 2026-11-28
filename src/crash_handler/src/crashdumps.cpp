@@ -170,6 +170,11 @@ bool CrashDumps::writeProcessDump( const QString& path, bool fullMemory, QString
     return detail::writeProcessMinidump( path, fullMemory, error );
 }
 
+void CrashDumps::setProcessDumpTimeoutForTest( int milliseconds )
+{
+    detail::setProcessDumpTimeoutForTest( milliseconds );
+}
+
 QVariantList CrashDumps::pendingCrashes()
 {
     QVariantList crashes;
