@@ -838,6 +838,10 @@ void PreviewService::cancel( QProcess* process )
     if ( auto* state = evaluations.value( process, nullptr ) )
         state->stop( "cancelled" );
 }
+int PreviewService::activeRequestCount()
+{
+    return activeRequests;
+}
 
 QString PreviewService::pythonDecoderLabel( const QVariantMap& result )
 {
