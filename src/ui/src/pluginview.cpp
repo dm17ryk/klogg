@@ -983,6 +983,10 @@ QWidget* PluginView::build( const QJsonObject& element, QWidget* parent, const Q
     }
     else if ( type == "button" ) {
         auto* button = new QPushButton( parent );
+        // Never a default Qt picks by itself: in a `kind: dialog` view an auto-default button
+        // could take Enter that only an element `default` or the declared `default` may take
+        // (section 29.3, #168). Outside a dialog this changes nothing.
+        button->setAutoDefault( false );
         connect( button, &QPushButton::clicked, this, [ this, id ] { pressButton( id ); } );
         // E17f: a checkable button reports its state (also set through set_ui), never the
         // plugin's own `checked`.
@@ -1351,6 +1355,11 @@ void PluginView::attachCompletion( Node& node, QLineEdit* edit )
 
 QIcon PluginView::iconFor( const QJsonValue& reference ) const
 {
+    // An empty reference is no icon (as an empty image `source`), not an invalid one to warn about:
+    // a same-shaped root that drops `icon` resets it to "" (#168).
+    if ( reference.isString() && reference.toString().isEmpty() ) {
+        return {};
+    }
     return queries_.icon ? queries_.icon( reference ) : QIcon{};
 }
 

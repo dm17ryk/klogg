@@ -75,7 +75,6 @@ QString previewPython()
 
 namespace {
 constexpr int RequestLimit = 256 * 1024;
-constexpr int ResponseLimit = 128 * 1024;
 constexpr int DiagnosticLimit = 64 * 1024;
 
 class OwnedPreviewProcess : public QProcess {
@@ -304,15 +303,16 @@ public:
             retire( "worker_protocol_error" );
             return;
         }
-        if ( process->bytesAvailable() > ResponseLimit + 4 - output.size() ) {
+        const qint64 limit = pool_->backend_.responseLimit;
+        if ( process->bytesAvailable() > limit + 4 - output.size() ) {
             retire( "result_limit" );
             return;
         }
-        output += process->read( ResponseLimit + 5 - output.size() );
+        output += process->read( limit + 5 - output.size() );
         if ( output.size() < 4 )
             return;
         const auto size = qFromBigEndian<quint32>( output.constData() );
-        if ( !size || size > ResponseLimit ) {
+        if ( !size || size > limit ) {
             retire( "result_limit" );
             return;
         }

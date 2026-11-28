@@ -833,13 +833,18 @@ class FakeHost:
         """Send the `clicked` event of a dialog button (element_id "#buttons", value the button's
         name, with the view's inputs). It does not close the dialog: send close_view(...,
         result=name, inputs=...) for the buttons that close it (DIALOG_CLOSING_BUTTONS). When
-        the manifest describes the view, a button it does not declare is refused."""
+        the manifest describes the view, a button it does not declare is refused, and so is any
+        button of a dialog that declares buttons when this host did not offer view_dialogs (an
+        older CILogg shows no dialog buttons, so it never sends this event)."""
         if name not in DIALOG_BUTTONS:
             raise ValueError(f"A dialog button is one of {', '.join(DIALOG_BUTTONS)}, not "
                              f"{name!r}")
         declared = self._declared_dialog_buttons(view_id)
         if declared is not None and name not in declared:
             raise ValueError(f"View {view_id!r} declares no {name!r} dialog button")
+        if declared and "view_dialogs" not in (self.offered_features or []):
+            raise ValueError(f"This host did not offer view_dialogs, so CILogg shows no buttons "
+                             f"on dialog {view_id!r} and sends no {name!r} click")
         self.view_event(view_id, DIALOG_BUTTONS_ELEMENT, "clicked", name, window_id=window_id,
                         inputs=inputs)
 

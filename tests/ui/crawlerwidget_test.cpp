@@ -22,23 +22,25 @@
 #include <QAbstractItemView>
 #include <QAction>
 #include <QApplication>
-#include <QHelpEvent>
-#include <QScreen>
-#include <QScrollBar>
-#include <QToolTip>
 #include <QComboBox>
+#include <QHelpEvent>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLineEdit>
+#include <QMouseEvent>
+#include <QPushButton>
+#include <QScreen>
+#include <QScrollBar>
 #include <QSignalSpy>
 #include <QSpinBox>
-#include <QPushButton>
 #include <QStandardItemModel>
+#include <QStyle>
 #include <QTabWidget>
 #include <QTemporaryFile>
 #include <QTest>
 #include <QTimer>
 #include <QToolButton>
+#include <QToolTip>
 #include <qglobal.h>
 #include <qnamespace.h>
 #include <qtestmouse.h>
@@ -93,6 +95,29 @@ bool generateDataFiles( QTemporaryFile& file )
     }
 
     return true;
+}
+
+// Installs a preview that shows any line under the name "Hover fixture"; the previews
+// configured before come back when the returned guard goes.
+std::shared_ptr<void> installHoverPreview()
+{
+    auto& manager = PreviewManager::instance();
+    const auto original = PreviewRepository::serialize( manager.all(), manager.blocks() );
+    std::shared_ptr<void> restore( nullptr, [ original ]( void* ) {
+        auto& previews = PreviewManager::instance();
+        previews.clearAll();
+        QTemporaryFile backup;
+        if ( backup.open() && backup.write( original ) == original.size() && backup.flush() )
+            previews.importFromFile( backup.fileName() );
+    } );
+    QTemporaryFile definition;
+    REQUIRE( definition.open() );
+    definition.write(
+        R"({"version":1,"previews":[{"name":"Hover fixture","regex":"^(?<value>.*)$","format":"fields","fields":[{"name":"Message","source":"capture","capture":"value","type":"string","format":"string"}]}]})" );
+    definition.flush();
+    manager.clearAll();
+    REQUIRE( manager.importFromFile( definition.fileName() ).ok );
+    return restore;
 }
 
 } // namespace
@@ -433,6 +458,13 @@ struct CrawlerWidget::access_by<CrawlerWidgetPrivate> {
     {
         crawler->grab();
     }
+
+    // As the file watcher reports that the open file changed on disk.
+    void reportFileChanged( const QString& path )
+    {
+        QMetaObject::invokeMethod( crawler->logData_.get(), "fileChangedOnDisk",
+                                   Qt::QueuedConnection, Q_ARG( QString, path ) );
+    }
 };
 
 using CrawlerWidgetVisitor = CrawlerWidget::access_by<CrawlerWidgetPrivate>;
@@ -579,22 +611,7 @@ TEST_CASE( "Real Lua hover and Send to Preview retain selected EHCI assembly",
 TEST_CASE( "Hover preview maps main and filtered rows without changing selection",
            "[ui][previewhover]" )
 {
-    auto& manager = PreviewManager::instance();
-    const auto original = PreviewRepository::serialize( manager.all(), manager.blocks() );
-    const std::shared_ptr<void> restore( nullptr, [ original ]( void* ) {
-        auto& previews = PreviewManager::instance();
-        previews.clearAll();
-        QTemporaryFile backup;
-        if ( backup.open() && backup.write( original ) == original.size() && backup.flush() )
-            previews.importFromFile( backup.fileName() );
-    } );
-    QTemporaryFile definition;
-    REQUIRE( definition.open() );
-    definition.write(
-        R"({"version":1,"previews":[{"name":"Hover fixture","regex":"^(?<value>.*)$","format":"fields","fields":[{"name":"Message","source":"capture","capture":"value","type":"string","format":"string"}]}]})" );
-    definition.flush();
-    manager.clearAll();
-    REQUIRE( manager.importFromFile( definition.fileName() ).ok );
+    const auto restorePreviews = installHoverPreview();
     QTemporaryFile file;
     REQUIRE( file.open() );
     file.write( "first\nmatch one\nthird\nmatch two\n" );
@@ -644,6 +661,255 @@ TEST_CASE( "Hover preview maps main and filtered rows without changing selection
         view->presentLinePreview( serial, { { "available", true }, { "previewName", "obsolete" } } );
         REQUIRE( QTest::qWaitFor( [] { return !QToolTip::isVisible(); }, 1500 ) );
     }
+}
+
+namespace {
+// The cursor goes to `global`. Offscreen, that queues a mouse move with the enter and leave
+// events of the widgets it crosses; a leave event closes any tooltip, so the move is delivered
+// at once, as a real mouse arrives before its tooltip shows.
+void placeCursor( const QPoint& global )
+{
+    QCursor::setPos( global );
+    QCoreApplication::processEvents();
+}
+
+// The mouse moves to `point` of the view's viewport.
+void moveMouse( AbstractLogView* view, const QPoint& point )
+{
+    const auto global = view->viewport()->mapToGlobal( point );
+    placeCursor( global );
+    QMouseEvent move( QEvent::MouseMove, point, global, Qt::NoButton, Qt::NoButton,
+                      Qt::NoModifier );
+    QApplication::sendEvent( view->viewport(), &move );
+}
+
+// The mouse rests on `point` of the view's viewport: Qt asks for its tooltip.
+void hover( AbstractLogView* view, const QPoint& point )
+{
+    const auto global = view->viewport()->mapToGlobal( point );
+    placeCursor( global );
+    QHelpEvent help( QEvent::ToolTip, point, global );
+    QApplication::sendEvent( view->viewport(), &help );
+}
+
+// Qt asks on its own for the tooltip under the cursor a while after the cursor moved: its
+// wake-up delay, or 20 ms while a tooltip shows. That ask is waited out before the views
+// scroll: landing after it, it would ask for whatever line the scroll brought under the mouse.
+void settleToolTipRequest( QWidget* widget )
+{
+    QTest::qWait( widget->style()->styleHint( QStyle::SH_ToolTip_WakeUpDelay, nullptr, widget )
+                  + 300 );
+}
+
+// The tooltip that showed `text` closes. Qt then asks for the tooltip of what is under the
+// mouse now, which may show at once.
+bool toolTipEnds( const QString& text )
+{
+    return QTest::qWaitFor(
+        [ & ] { return !QToolTip::isVisible() || QToolTip::text() != text; }, 1500 );
+}
+} // namespace
+
+TEST_CASE( "view_tooltips_stay_while_a_followed_file_grows", "[ui][previewhover]" )
+{
+    // #185: a tooltip stays until the mouse moves to another line or column. New lines of a
+    // followed file (or a live capture) scroll the views under a still mouse and must not close
+    // it, nor may another view that ends its own preview.
+    const auto restorePreviews = installHoverPreview();
+    QTemporaryFile file{ "crawler_tooltip_follow_XXXXXX" };
+    REQUIRE( file.open() );
+    const QByteArray longMatch = "match_" + QByteArray( 60, 'x' );
+    const auto writeLines = [ & ]( int first, int count ) {
+        for ( int line = first; line < first + count; ++line )
+            file.write( ( line % 2 ? QByteArray( "other" ) : longMatch ) + ' '
+                        + QByteArray::number( line ) + '\n' );
+        file.flush();
+    };
+    writeLines( 0, 80 );
+
+    Session session;
+    CrawlerWidgetVisitor visitor;
+    visitor.crawler.reset( static_cast<CrawlerWidget*>(
+        session.open( file.fileName(), [] { return new CrawlerWidget(); } ) ) );
+    REQUIRE( waitUiState( [ & ] { return visitor.isLoadingFinished(); } ) );
+    visitor.disableTextWrap();
+    visitor.resizeAndShow( 800, 600 );
+    visitor.disableBooleanCombinationMode();
+    visitor.enableRegexSearch();
+    // As in a live capture tab, the search takes in the new lines.
+    visitor.setAutoRefresh( true );
+    visitor.setSearchPattern( "match_x+" );
+    visitor.runSearch();
+    REQUIRE( waitUiState( [ & ] { return visitor.getLogFilteredNbLines() == 40_lcount; } ) );
+    auto* main = visitor.crawler->findChild<LogMainView*>( "logMainView" );
+    auto* filtered = visitor.activeFilteredView();
+    REQUIRE( main );
+    REQUIRE( filtered );
+    setOffscreenActiveWindow( visitor.crawler.get() );
+    Q_EMIT visitor.crawler->followSet( true );
+    visitor.render();
+
+    int written = 80;
+    const auto grow = [ & ] {
+        writeLines( written, 20 );
+        written += 20;
+        visitor.reportFileChanged( file.fileName() );
+        const auto lines = static_cast<unsigned>( written );
+        return waitUiState( [ & ] {
+            return visitor.getLogNbLines().get() == lines
+                   && visitor.getLogFilteredNbLines().get() == lines / 2;
+        } );
+    };
+    // A log line's preview.
+    const QPoint linePoint( main->viewport()->width() / 2, main->viewport()->height() / 2 );
+    QSignalSpy requested( main, &AbstractLogView::linePreviewRequested );
+    hover( main, linePoint );
+    REQUIRE( requested.size() == 1 );
+    REQUIRE( QTest::qWaitFor(
+        [] { return QToolTip::isVisible() && QToolTip::text().contains( "Hover fixture" ); },
+        10000 ) );
+    const auto preview = QToolTip::text();
+    // Qt asks again after a small mouse move within the line: the preview stays as it is.
+    hover( main, linePoint + QPoint( 2, 0 ) );
+    settleToolTipRequest( main );
+    CHECK( requested.size() == 1 );
+    CHECK( QToolTip::isVisible() );
+    CHECK( QToolTip::text() == preview );
+    const auto mainTop = main->verticalScrollBar()->value();
+    REQUIRE( grow() );
+    REQUIRE( waitUiState( [ & ] { return main->verticalScrollBar()->value() > mainTop; } ) );
+    QTest::qWait( 500 ); // the preview checks every 100 ms that it is still current
+    CHECK( QToolTip::isVisible() );
+    CHECK( QToolTip::text() == preview );
+    // Another line ends it.
+    moveMouse( main, linePoint + QPoint( 0, 2 * main->fontMetrics().height() ) );
+    REQUIRE( toolTipEnds( preview ) );
+
+    // A "Matched by" cell too narrow for its label shows the label in full.
+    REQUIRE( filtered->isMatchedByColumnVisible() );
+    REQUIRE( waitUiState( [ & ] {
+        const auto count = visitor.getLogFilteredNbLines().get();
+        for ( uint64_t line = 0; line < count; ++line )
+            if ( !filtered->matchedByText( LineNumber( line ) ).startsWith( "match_" ) )
+                return false;
+        return true;
+    } ) );
+    visitor.render();
+    const QPoint cellPoint( filtered->viewport()->width() - 4, filtered->viewport()->height() / 2 );
+    hover( filtered, cellPoint );
+    REQUIRE( QTest::qWaitFor(
+        [ & ] { return QToolTip::isVisible() && QToolTip::text().contains( longMatch ); }, 5000 ) );
+    const auto label = QToolTip::text();
+    // Asked again for the same cell: the label stays.
+    hover( filtered, cellPoint + QPoint( -1, 0 ) );
+    settleToolTipRequest( filtered );
+    CHECK( QToolTip::isVisible() );
+    CHECK( QToolTip::text() == label );
+    main->clearLinePreview(); // another view ends its own preview
+    const auto filteredTop = filtered->verticalScrollBar()->value();
+    REQUIRE( grow() );
+    REQUIRE(
+        waitUiState( [ & ] { return filtered->verticalScrollBar()->value() > filteredTop; } ) );
+    QTest::qWait( 500 );
+    CHECK( QToolTip::isVisible() );
+    CHECK( QToolTip::text() == label );
+    // Leaving the cell for the text of its line ends it.
+    moveMouse( filtered, QPoint( filtered->viewport()->width() / 2, cellPoint.y() ) );
+    REQUIRE( toolTipEnds( label ) );
+}
+
+TEST_CASE( "view_tooltip_belongs_to_the_view_that_showed_it", "[ui][previewhover]" )
+{
+    // Two views can show the same text, such as the preview of one line in the main and the
+    // filtered view: the view that showed it last owns it, and the other one cannot close it.
+    // A key pressed in the owning view closes it.
+    const auto restorePreviews = installHoverPreview();
+    QTemporaryFile file{ "crawler_tooltip_owner_XXXXXX" };
+    REQUIRE( file.open() );
+    file.write( "first\nmatch one\nthird\nmatch two\n" );
+    file.flush();
+    Session session;
+    CrawlerWidgetVisitor visitor;
+    visitor.crawler.reset( static_cast<CrawlerWidget*>(
+        session.open( file.fileName(), [] { return new CrawlerWidget(); } ) ) );
+    REQUIRE( waitUiState( [ & ] { return visitor.isLoadingFinished(); } ) );
+    visitor.disableTextWrap();
+    visitor.resizeAndShow( 800, 600 );
+    visitor.setSearchPattern( "match" );
+    visitor.runSearch();
+    REQUIRE( waitUiState( [ & ] { return visitor.getLogFilteredNbLines() == 2_lcount; } ) );
+    auto* main = visitor.crawler->findChild<LogMainView*>( "logMainView" );
+    auto* filtered = visitor.activeFilteredView();
+    REQUIRE( main );
+    REQUIRE( filtered );
+    setOffscreenActiveWindow( visitor.crawler.get() );
+    // Focus first: a focus change closes any tooltip.
+    filtered->setFocus();
+    REQUIRE( waitUiState( [ & ] { return filtered->hasFocus(); } ) );
+    visitor.render();
+
+    const QVariantMap same{ { "available", true }, { "previewName", "Same preview" } };
+    const auto showSame = [ & ]( AbstractLogView* view, const QPoint& point ) {
+        QSignalSpy requested( view, &AbstractLogView::linePreviewRequested );
+        hover( view, point );
+        REQUIRE( requested.size() == 1 );
+        view->presentLinePreview( requested.front().at( 2 ).toULongLong(), same );
+        REQUIRE( QToolTip::isVisible() );
+        REQUIRE( QToolTip::text().contains( "Same preview" ) );
+    };
+    // "match one": the second line of the main view, the first of the filtered view.
+    const int height = main->fontMetrics().height();
+    showSame( main, QPoint( main->viewport()->width() / 2, height + height / 2 ) );
+    showSame( filtered, QPoint( filtered->viewport()->width() / 2, height / 2 ) );
+    main->clearLinePreview();
+    QTest::qWait( 500 );
+    CHECK( QToolTip::isVisible() );
+
+    QTest::keyClick( filtered, Qt::Key_PageDown );
+    REQUIRE( QTest::qWaitFor( [] { return !QToolTip::isVisible(); }, 1500 ) );
+}
+
+TEST_CASE( "matched_by_tooltip_covers_every_row_of_a_wrapped_line", "[ui][previewhover]" )
+{
+    QTemporaryFile file{ "crawler_tooltip_wrapped_XXXXXX" };
+    REQUIRE( file.open() );
+    file.write( "boot\nmatch_" + QByteArray( 300, 'x' ) + " end\nidle\n" );
+    file.flush();
+    Session session;
+    CrawlerWidgetVisitor visitor;
+    visitor.crawler.reset( static_cast<CrawlerWidget*>(
+        session.open( file.fileName(), [] { return new CrawlerWidget(); } ) ) );
+    REQUIRE( waitUiState( [ & ] { return visitor.isLoadingFinished(); } ) );
+    visitor.enableTextWrap();
+    visitor.resizeAndShow( 800, 600 );
+    visitor.disableBooleanCombinationMode();
+    visitor.enableRegexSearch();
+    visitor.setSearchPattern( "match_x+" );
+    visitor.runSearch();
+    REQUIRE( waitUiState( [ & ] { return visitor.getLogFilteredNbLines() == 1_lcount; } ) );
+    auto* filtered = visitor.activeFilteredView();
+    REQUIRE( filtered );
+    REQUIRE(
+        waitUiState( [ & ] { return filtered->matchedByText( 0_lnum ).startsWith( "match_" ); } ) );
+    setOffscreenActiveWindow( visitor.crawler.get() );
+    visitor.render();
+
+    // The line wraps over several rows; its "Matched by" cell takes them all. The mouse moves
+    // up from the third row to the first: Qt shows the tooltip below the mouse, and moving onto
+    // the tooltip would close it whatever its cell.
+    const int height = filtered->fontMetrics().height();
+    const QPoint cellPoint( filtered->viewport()->width() - 4, 2 * height + height / 2 );
+    hover( filtered, cellPoint );
+    REQUIRE( QTest::qWaitFor(
+        [] { return QToolTip::isVisible() && QToolTip::text().contains( "match_x" ); }, 5000 ) );
+    const auto label = QToolTip::text();
+    moveMouse( filtered, cellPoint - QPoint( 0, 2 * height ) );
+    QTest::qWait( 500 );
+    CHECK( QToolTip::isVisible() );
+    CHECK( QToolTip::text() == label );
+    // Leaving the cell for the text of the line ends it.
+    moveMouse( filtered, QPoint( filtered->viewport()->width() / 2, cellPoint.y() ) );
+    REQUIRE( QTest::qWaitFor( [] { return !QToolTip::isVisible(); }, 1500 ) );
 }
 
 TEST_CASE( "Analysis freezes discontiguous physical selection after focus leaves the viewer", "[ui][analysiscommands]" )

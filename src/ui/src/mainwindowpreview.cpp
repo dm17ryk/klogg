@@ -22,7 +22,8 @@ CommanderResult MainWindow::commanderPreview( const CommanderRequest& request )
     const auto& args = request.analysisArguments;
     const QSet<QString> allowed{ "text",       "line",          "previewName",
                                  "reassemble", "timeoutMs",     "decoder",
-                                 "dissector",  "inputEncoding", "requestRevision" };
+                                 "dissector",  "inputEncoding", "requestRevision",
+                                 "resultLimitKiB" };
     for ( auto it = args.cbegin(); it != args.cend(); ++it )
         if ( !allowed.contains( it.key() ) )
             return invalid( "unknown_preview_option" );
@@ -69,6 +70,16 @@ CommanderResult MainWindow::commanderPreview( const CommanderRequest& request )
              || args.value( "timeoutMs" ).userType() == QMetaType::Bool
              || args.value( "timeoutMs" ).toDouble() != timeoutMs )
             return invalid( "invalid_timeout" );
+    }
+    // The largest TShark/Lua result for this request (#183), in KiB.
+    int resultLimitKiB = 1024;
+    if ( args.contains( "resultLimitKiB" ) ) {
+        bool ok = false;
+        resultLimitKiB = args.value( "resultLimitKiB" ).toString().toInt( &ok );
+        if ( !ok || resultLimitKiB < 128 || resultLimitKiB > 4096
+             || args.value( "resultLimitKiB" ).userType() == QMetaType::Bool
+             || args.value( "resultLimitKiB" ).toDouble() != resultLimitKiB )
+            return invalid( "invalid_result_limit" );
     }
     PreparedPreview prepared;
     QPointer<CrawlerWidget> crawler;
@@ -126,6 +137,7 @@ CommanderResult MainWindow::commanderPreview( const CommanderRequest& request )
         evaluation.text = prepared.text;
         evaluation.previewName = args.value( "previewName" ).toString();
         evaluation.timeoutMs = timeoutMs;
+        evaluation.resultLimitKiB = resultLimitKiB;
         evaluation.decoder = decoder;
         evaluation.dissector = dissector;
         evaluation.inputEncoding = inputEncoding;

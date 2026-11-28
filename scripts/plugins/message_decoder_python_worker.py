@@ -34,7 +34,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from message_decoder_wire import ProofError  # noqa: E402
 from message_decoder_preview_worker import (  # noqa: E402
     PAYLOAD_LIMIT,
-    RESPONSE_LIMIT,
     _fit_response,
     encode_frame,
     read_frame,
@@ -42,6 +41,8 @@ from message_decoder_preview_worker import (  # noqa: E402
 )
 
 LOG = logging.getLogger("cilogg.decoder.python")
+# A Python decoder's response body (MD03b): 128 KiB, apart from the TShark worker's result limit.
+RESPONSE_LIMIT = 128 * 1024
 ORIGIN = "decoder_payload"
 REQUEST_ID = re.compile(r"[A-Za-z0-9_.:-]{1,128}")
 PACK_ID = re.compile(r"[a-z0-9][a-z0-9._-]{0,127}")
@@ -526,7 +527,8 @@ class DecoderSession:
             messageCompleteness=completeness,
             messageIntegrity=integrity,
         )
-        response = _fit_response(response)
+        # The result contract of MD03b names no limit; the reason says it was cut off.
+        response = _fit_response(response, RESPONSE_LIMIT, describe_limit=False)
         LOG.info(
             "python_decoder_evaluated id=%s decoder=%s payload_bytes=%d fields=%d limited=%s",
             request["id"],
@@ -600,11 +602,12 @@ def main(argv=None):
                     response = response_base(identity, request)
                     response["reason"] = reason
                     response["limited"] = reason in {"request_limit", "input_limit"}
-                    write_before(protocol_out, encode_frame(response), time.monotonic() + 1)
+                    write_before(protocol_out, encode_frame(response, RESPONSE_LIMIT),
+                                 time.monotonic() + 1)
                 return 1  # Fatal: the host reaps the channel's group or job.
             # The host enforces the request's deadline; a late answer (execution_timeout) is
             # still written whole, within a bound of its own, so the channel stays in step.
-            write_before(protocol_out, encode_frame(response), time.monotonic() + 1)
+            write_before(protocol_out, encode_frame(response, RESPONSE_LIMIT), time.monotonic() + 1)
     finally:
         session.close()
 

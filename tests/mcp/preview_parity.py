@@ -104,6 +104,15 @@ def exercise_preview(cli, command, _finish, _rows, _normalized, catalog, artifac
     path.write_text(json.dumps(invalid), encoding="utf-8")
     assert cli("preview_message", "--json-file", str(path), success=False)["reason"] == \
         command("preview_message", {"analysis_json": invalid}, success=False)["reason"] == "invalid_timeout"
+    # The result limit a request may choose (#183): 128 to 4096 KiB, on both transports.
+    for value in (127, 4097, True, 1024.5):
+        invalid = {"text": "x", "resultLimitKiB": value}
+        path.write_text(json.dumps(invalid), encoding="utf-8")
+        assert cli("preview_message", "--json-file", str(path), success=False)["reason"] == \
+            command("preview_message", {"analysis_json": invalid}, success=False)["reason"] == \
+            "invalid_result_limit", value
+    accepted = command("preview_message", {"analysis_json": {"text": "x", "resultLimitKiB": 4096}})
+    assert "reason" not in accepted or accepted["reason"] != "invalid_result_limit", accepted
     (artifacts / "preview-observations.json").write_text(
         json.dumps(observations, indent=2), encoding="utf-8")
     print("PASS: Preview CLI/native-MCP discovery, Unicode, reassembly, incomplete status and error parity")

@@ -22,6 +22,8 @@ struct PreviewEvaluationRequest {
     QString dissector;
     QString inputEncoding;
     QString assemblyProtocol;
+    // The largest TShark/Lua result body this request accepts, in KiB (#183): 128 to 4096.
+    int resultLimitKiB = 1024;
     QObject* sessionOwner = nullptr;
 };
 
@@ -41,6 +43,9 @@ public:
                                         QObject* cancellationOwner = nullptr );
     static void cancel( QProcess* process );
     static QString tooltipHtml( const QVariantMap& result );
+    // Which limit cut a limited result, and by how much (#183), e.g. "390 of 768 rows: result
+    // limit 1024 KiB, the whole result needs 1650 KiB". Empty when the result names no limit.
+    static QString limitText( const QVariantMap& result );
     // E16b: the Python decoder that decoded `result`, "<pack-id>/<decoder-id>", followed by its
     // pack's name while that pack is enabled; empty for another backend. Plain text.
     static QString pythonDecoderLabel( const QVariantMap& result );

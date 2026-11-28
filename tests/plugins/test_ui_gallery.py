@@ -896,8 +896,10 @@ class UiGallery(unittest.TestCase):
             {"id": "chart", "append_points": {"series": "tx", "points": [[12, 27]]}},
             {"id": "spark", "set": {"values": [50, 64, 75, 80, 77, 68, 54, 39, 27, 21, 21, 29, 42]}},
             {"id": "layout_status", "set": {"text": "point 12"}}])
+        # Focus name makes the Form tab current first: a field on a hidden tab takes no focus.
         host.view_event("layout", "link_button", "clicked")
-        self.assertEqual(self.next_patch(), [{"id": "form_name", "focus": True},
+        self.assertEqual(self.next_patch(), [{"id": "layout_tabs", "set": {"current": "tab_form"}},
+                                             {"id": "form_name", "focus": True},
                                              {"id": "layout_status", "set": {"text": "focus form_name"}}])
         host.view_event("layout", "edit_button", "clicked")
         self.assertEqual(self.next_patch(), [{"id": "layout_body", "set": {"modified": True}},
@@ -933,7 +935,7 @@ class UiGallery(unittest.TestCase):
 
         # A new window shows the plugin's state.
         tree = self.open_layout("w2")
-        self.assertEqual(tree["layout_tabs"]["current"], "tab_log")
+        self.assertEqual(tree["layout_tabs"]["current"], "tab_form")  # where Focus name left it
         self.assertEqual((tree["log"]["text"], tree["tab_log"]["badge"]), ("line 1\n", "1"))
         self.assertEqual(tree["pin_button"]["checked"], False)
         self.assertTrue(tree["layout_body"]["modified"])

@@ -37,6 +37,7 @@ from message_decoder_preview_worker import (  # noqa: E402
 from message_decoder_python_worker import (  # noqa: E402
     MODULE_FILE_LIMIT,
     REQUEST_ID,
+    RESPONSE_LIMIT,
     claim_stdio,
     clean_text,
     utf16_prefix,
@@ -562,11 +563,12 @@ def main(argv=None):
         if type(identity) is str and REQUEST_ID.fullmatch(identity):
             write_before(
                 protocol_out,
-                encode_frame(response(identity, "failed", reason, [])),
+                encode_frame(response(identity, "failed", reason, []), RESPONSE_LIMIT),
                 time.monotonic() + 1,
             )
         return 1
-    write_before(protocol_out, encode_frame(answer), time.monotonic() + 1)
+    # The Python workers' 128 KiB, not the TShark worker's larger result limit (#183).
+    write_before(protocol_out, encode_frame(answer, RESPONSE_LIMIT), time.monotonic() + 1)
     return 0  # One check per worker: the host starts a new one when the packs change again.
 
 

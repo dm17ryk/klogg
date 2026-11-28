@@ -18,6 +18,9 @@ struct PreviewAssembly {
     QVariantMap metadata() const;
 };
 
+// The protocol names assemblePreviewMessage can give a message: the keys protocol routes use.
+QStringList assembledPreviewProtocols();
+
 // A bounded physical-row snapshot of CP NET UART diagnostics, not a TCP decoder.
 // An HTTP carrier needs a Host header. With a nonempty httpHosts list its value must match
 // one entry (case-insensitive); an empty list accepts any host.

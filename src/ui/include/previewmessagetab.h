@@ -65,6 +65,7 @@ class PreviewMessageTab : public QWidget {
     QComboBox* inputEncoding_ = nullptr;
     QLineEdit* dissector_ = nullptr;
     QSpinBox* timeout_ = nullptr;
+    QSpinBox* resultLimit_ = nullptr;
     QLabel* status_ = nullptr;
     QPushButton* run_ = nullptr;
     QPushButton* cancel_ = nullptr;

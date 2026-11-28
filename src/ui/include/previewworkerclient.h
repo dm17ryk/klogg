@@ -36,6 +36,8 @@ public:
         // failed response ends the worker, as the worker exits after it: the next request
         // starts a new one instead of reaching the exiting process.
         QStringList survivedFailures;
+        // The largest response body the host reads from this backend's worker.
+        int responseLimit = 128 * 1024;
     };
 
     ~PreviewWorkerClient() override;

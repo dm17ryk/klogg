@@ -298,8 +298,15 @@ TEST_CASE( "Disabled explicit native decoder is visible and JSON override stays 
           { "text2pcap", QCoreApplication::applicationFilePath() } } ) );
     request.decoder = "tshark";
     request.dissector.clear();
+    request.definitions = R"({"version":1,"previews":[]})";
+    CHECK( PreviewService::evaluateAndWait( request ).value( "reason" ) == "invalid_dissector" );
+    // Definitions explicit TShark cannot use leave it the default dissector, as before it looked
+    // up routes (#182 review): here none, so still invalid_dissector.
     request.definitions = QByteArray( 1024 * 1024 + 1, 'x' );
     CHECK( PreviewService::evaluateAndWait( request ).value( "reason" ) == "invalid_dissector" );
+    request.dissector = "data";
+    request.executable = "must-not-launch";
+    CHECK( PreviewService::evaluateAndWait( request ).value( "reason" ) != "definitions_limit" );
 }
 
 TEST_CASE( "Decoder revisions belong only to internal snapshots", "[previewdecoder]" )
@@ -638,7 +645,10 @@ TEST_CASE( "Native framed client rejects malformed output and recovers within bo
         { "version", "worker_protocol_error" },  { "attributes", "worker_protocol_error" },
         { "depth", "worker_protocol_error" },    { "count", "worker_protocol_error" },
         { "surplus", "worker_protocol_error" },  { "large", "result_limit" },
-        { "stderr", "diagnostic_limit" },        { "stall", "timeout" }
+        { "stderr", "diagnostic_limit" },        { "stall", "timeout" },
+        { "bad_limit", "worker_protocol_error" }, { "unnamed_limit", "worker_protocol_error" },
+        { "limit_reason", "worker_protocol_error" }, { "limit_needed", "worker_protocol_error" },
+        { "limit_rows", "worker_protocol_error" }
     };
     int counter = 0;
     const auto run = [ & ]( QObject* channel, int timeoutMs = 5000 ) {
@@ -721,6 +731,94 @@ TEST_CASE( "Native framed client rejects malformed output and recovers within bo
     cleanup.exec();
     CHECK( client.findChildren<QProcess*>().isEmpty() );
     client.reset();
+}
+
+TEST_CASE( "TShark results fit 2048 rows, take the request's result limit and name a cut-off",
+           "[previewdecoder]" )
+{
+    RestoreDecoder restore;
+    RestoreEnvironment python( "CILOGG_SCRIPT_PYTHON" ), mode( "CILOGG_PREVIEW_FIXTURE_MODE" ),
+        pid( "CILOGG_PREVIEW_FIXTURE_PID" );
+    qputenv( "CILOGG_SCRIPT_PYTHON", QByteArray( PREVIEW_DECODER_FIXTURE_PATH ) );
+    qputenv( "CILOGG_PREVIEW_FIXTURE_PID",
+             QByteArray::number( QCoreApplication::applicationPid() ) );
+    REQUIRE( PreviewDecoderSettings::instance().setConfiguration(
+        { { "enabled", true },
+          { "tshark", QCoreApplication::applicationFilePath() },
+          { "text2pcap", QCoreApplication::applicationFilePath() } } ) );
+    QObject channel;
+    auto request = directRequest( "0102", "hex" );
+    request.sessionOwner = &channel;
+    const auto run = [ & ]( const QByteArray& fixtureMode ) {
+        TsharkPreviewClient::instance().reset();
+        qputenv( "CILOGG_PREVIEW_FIXTURE_MODE", fixtureMode );
+        return PreviewService::evaluateAndWait( request );
+    };
+    // Issue #183: a large tree is no longer cut at 512 rows; 2048 is the row limit.
+    auto result = run( "rows" );
+    INFO( result.value( "reason" ).toString().toStdString() );
+    REQUIRE( result.value( "available" ).toBool() );
+    CHECK( result.value( "fields" ).toList().size() == 2048 );
+    // The worker gets the request's result limit: 1 MiB unless the request chooses.
+    CHECK( run( "result_limit" ).value( "fields" ).toList().value( 0 ).toMap().value( "columns" )
+               .toList()
+               .value( 1 )
+           == "1048576" );
+    request.resultLimitKiB = 4096;
+    CHECK( run( "result_limit" ).value( "fields" ).toList().value( 0 ).toMap().value( "columns" )
+               .toList()
+               .value( 1 )
+           == "4194304" );
+    for ( const int invalid : { 127, 4097 } ) {
+        request.resultLimitKiB = invalid;
+        CHECK( run( "result_limit" ).value( "reason" ) == "invalid_result_limit" );
+    }
+    request.resultLimitKiB = 1024;
+    // A result cut off at its limit says which limit and by how much.
+    result = run( "limited_bytes" );
+    REQUIRE( result.value( "available" ).toBool() );
+    CHECK( result.value( "limited" ).toBool() );
+    CHECK( result.value( "limit" ).toMap().value( "totalRows" ) == 769 );
+    CHECK( PreviewService::limitText( result )
+           == "1 of 769 rows: result limit 128 KiB, the whole result needs 262 KiB." );
+    CHECK( PreviewService::tooltipHtml( result ).contains( "the whole result needs 262 KiB" ) );
+    // A tree cut at the row limit, through the host's check (review).
+    result = run( "limited_rows" );
+    REQUIRE( result.value( "available" ).toBool() );
+    CHECK( result.value( "fields" ).toList().size() == 2048 );
+    CHECK( PreviewService::limitText( result ) == "2048 of 2400 rows: the row limit is 2048." );
+    // A tree past the worker's PDML limits fails as a whole, and says which limit (review).
+    result = run( "pdml_items" );
+    CHECK( result.value( "reason" ) == "field_limit" );
+    CHECK( PreviewService::limitText( result )
+           == "TShark's tree passed the worker's limit of 8192 items." );
+    CHECK( PreviewService::limitText( { { "backend", "tshark_lua" },
+                                        { "state", "failed" },
+                                        { "reason", "output_limit" },
+                                        { "limited", true } } )
+           == "TShark's output passed the worker's limit: 4 MiB of PDML, 64 KiB of diagnostics." );
+    CHECK( PreviewService::limitText( { { "limited", true },
+                                        { "limit", QVariantMap{ { "name", "rows" },
+                                                                 { "maximum", 2048 },
+                                                                 { "shownRows", 2048 },
+                                                                 { "totalRows", 2400 } } } } )
+           == "2048 of 2400 rows: the row limit is 2048." );
+    CHECK( PreviewService::limitText( {} ).isEmpty() );
+    // Only a result still cut off names its limit (review).
+    CHECK( PreviewService::limitText( { { "limit", QVariantMap{ { "name", "rows" },
+                                                                 { "maximum", 2048 },
+                                                                 { "shownRows", 2048 },
+                                                                 { "totalRows", 2400 } } } } )
+               .isEmpty() );
+    // A tree past the row limit and then the byte limit: the bytes are the first rows' (review).
+    CHECK( PreviewService::limitText( { { "limited", true },
+                                        { "limit", QVariantMap{ { "name", "bytes" },
+                                                                 { "maximum", 131072 },
+                                                                 { "shownRows", 300 },
+                                                                 { "totalRows", 5000 },
+                                                                 { "neededBytes", 921600 } } } } )
+           == "300 of 5000 rows: result limit 128 KiB, the first 2048 rows need 900 KiB." );
+    TsharkPreviewClient::instance().reset();
 }
 
 TEST_CASE( "Direct decoder display names never select colliding carrier routes",
@@ -812,7 +910,7 @@ TEST_CASE( "Destroyed callback owners suppress delivery and release the compatib
     CHECK( PreviewService::evaluateAndWait( request ).value( "state" ) == "completed" );
 }
 
-TEST_CASE( "Only unavailable automatic dispatch falls back to supervised JSON", "[previewdecoder]" )
+TEST_CASE( "Automatic TShark failures fall back to supervised JSON", "[previewdecoder]" )
 {
     if ( qEnvironmentVariable( "CILOGG_TSHARK" ).isEmpty()
          || qEnvironmentVariable( "CILOGG_TEXT2PCAP" ).isEmpty() ) {
@@ -844,11 +942,13 @@ TEST_CASE( "Only unavailable automatic dispatch falls back to supervised JSON", 
     result = PreviewService::evaluateAndWait( request );
     CHECK( result.value( "reason" ) == "dissector_not_dispatched" );
     CHECK_FALSE( result.contains( "fallbackReason" ) );
+    // Input the route cannot carry, and a protocol the dissector does not produce, are TShark/Lua
+    // failures too: Automatic shows the JSON preview and names the failure (#182).
     request.decoder = "auto";
     request.text = "invalid hex";
     result = PreviewService::evaluateAndWait( request );
-    CHECK( result.value( "reason" ) == "invalid_hex" );
-    CHECK_FALSE( result.contains( "fallbackReason" ) );
+    CHECK( result.value( "backend" ) == "json_preview" );
+    CHECK( result.value( "fallbackReason" ) == "invalid_hex" );
     config[ "defaultDissector" ] = "data";
     config[ "previewRoutes" ] = QVariantMap{
         { "JSON", QVariantMap{ { "dissector", "data" }, { "protocol", "absent exact selector" } } }
@@ -856,8 +956,325 @@ TEST_CASE( "Only unavailable automatic dispatch falls back to supervised JSON", 
     REQUIRE( PreviewDecoderSettings::instance().setConfiguration( config ) );
     request.text = "0102";
     result = PreviewService::evaluateAndWait( request );
+    CHECK( result.value( "backend" ) == "json_preview" );
+    CHECK( result.value( "fallbackReason" ) == "protocol_not_found" );
+    request.decoder = "tshark";
+    result = PreviewService::evaluateAndWait( request );
     CHECK( result.value( "reason" ) == "protocol_not_found" );
     CHECK_FALSE( result.contains( "fallbackReason" ) );
+}
+
+TEST_CASE( "TShark rows carry the dissector's display text, derived from their attributes",
+           "[previewdecoder]" )
+{
+    RestoreDecoder restore;
+    RestoreEnvironment python( "CILOGG_SCRIPT_PYTHON" ), mode( "CILOGG_PREVIEW_FIXTURE_MODE" ),
+        pid( "CILOGG_PREVIEW_FIXTURE_PID" );
+    qputenv( "CILOGG_SCRIPT_PYTHON", QByteArray( PREVIEW_DECODER_FIXTURE_PATH ) );
+    qputenv( "CILOGG_PREVIEW_FIXTURE_PID",
+             QByteArray::number( QCoreApplication::applicationPid() ) );
+    REQUIRE( PreviewDecoderSettings::instance().setConfiguration(
+        { { "enabled", true },
+          { "tshark", QCoreApplication::applicationFilePath() },
+          { "text2pcap", QCoreApplication::applicationFilePath() } } ) );
+    QObject channel;
+    auto request = directRequest( "0102", "hex" );
+    request.sessionOwner = &channel;
+    // Issue #181: a Lua value string shows its text, a text-only subtree its label.
+    TsharkPreviewClient::instance().reset();
+    qputenv( "CILOGG_PREVIEW_FIXTURE_MODE", "display" );
+    const auto result = PreviewService::evaluateAndWait( request );
+    INFO( QJsonDocument::fromVariant( result ).toJson( QJsonDocument::Compact ).toStdString() );
+    REQUIRE( result.value( "available" ).toBool() );
+    const auto fields = result.value( "fields" ).toList();
+    REQUIRE( fields.size() == 5 );
+    CHECK( fields.at( 0 ).toMap().value( "columns" ).toList()
+           == QVariantList{ "Header: two bytes", "", "", "0", "2" } );
+    CHECK( fields.at( 1 ).toMap().value( "columns" ).toList()
+           == QVariantList{ "probe.status", "Battery OK (0)", "00", "0", "1" } );
+    // Wireshark's truncation mark in a value is the dissector's appended text, not a cut label.
+    CHECK( fields.at( 2 ).toMap().value( "columns" ).toList().value( 1 )
+           == QStringLiteral( "Battery OK (0) [" ) + QChar( 0x2026 ) + QLatin1Char( ']' ) );
+    // A value Wireshark cut off keeps the whole show value; bare text has no Value or Raw.
+    CHECK( fields.at( 3 ).toMap().value( "columns" ).toList()
+           == QVariantList{ "probe.long", "abcdefghij", "abcdefghij", "0", "1" } );
+    CHECK( fields.at( 4 ).toMap().value( "columns" ).toList()
+           == QVariantList{ "Bare legacy text", "", "", "0", "0" } );
+    // A display text the attributes do not hold is a protocol error, as before.
+    TsharkPreviewClient::instance().reset();
+    qputenv( "CILOGG_PREVIEW_FIXTURE_MODE", "forged" );
+    CHECK( PreviewService::evaluateAndWait( request ).value( "reason" ) == "worker_protocol_error" );
+    TsharkPreviewClient::instance().reset();
+}
+
+namespace {
+// A route-mapped carrier whose JSON definition decodes the same text (#182).
+const QByteArray MappedCarrierDefinitions
+    = R"({"version":1,"previews":[{"name":"Mapped carrier","regex":"^(?<payload>.*)$","bufferCapture":"payload","type":"string","fields":[{"name":"Message","source":"capture","capture":"payload","type":"string","format":"string"}]}]})";
+struct FixtureEngine {
+    RestoreDecoder restore;
+    RestoreEnvironment python{ "CILOGG_SCRIPT_PYTHON" }, mode{ "CILOGG_PREVIEW_FIXTURE_MODE" },
+        pid{ "CILOGG_PREVIEW_FIXTURE_PID" };
+    explicit FixtureEngine( QVariantMap config )
+    {
+        qputenv( "CILOGG_SCRIPT_PYTHON", QByteArray( PREVIEW_DECODER_FIXTURE_PATH ) );
+        qputenv( "CILOGG_PREVIEW_FIXTURE_PID",
+                 QByteArray::number( QCoreApplication::applicationPid() ) );
+        config[ "enabled" ] = true;
+        config[ "tshark" ] = QCoreApplication::applicationFilePath();
+        config[ "text2pcap" ] = QCoreApplication::applicationFilePath();
+        TsharkPreviewClient::instance().reset();
+        REQUIRE( PreviewDecoderSettings::instance().setConfiguration( config ) );
+    }
+    ~FixtureEngine()
+    {
+        TsharkPreviewClient::instance().reset();
+    }
+};
+QString firstValue( const QVariantMap& result )
+{
+    return result.value( "fields" )
+        .toList()
+        .value( 0 )
+        .toMap()
+        .value( "columns" )
+        .toList()
+        .value( 1 )
+        .toString();
+}
+} // namespace
+
+TEST_CASE( "Automatic falls back to JSON after any TShark/Lua failure", "[previewdecoder]" )
+{
+    FixtureEngine engine( { { "previewRoutes", QVariantMap{ { "Mapped carrier",
+                                                              QVariantMap{ { "dissector",
+                                                                             "synthetic" } } } } } } );
+    QObject channel;
+    auto request = directRequest( "AB", "" );
+    request.decoder = "auto";
+    request.dissector.clear();
+    request.sessionOwner = &channel;
+    request.definitions = MappedCarrierDefinitions;
+    // A failure the engine reports, one it reports as its own deadline, a crash and a stall
+    // that only the host deadline ends: each leaves room for the JSON preview.
+    const QList<QPair<QString, QString>> failures{ { "lua_failure", "lua_failure" },
+                                                   { "reported_timeout", "timeout" },
+                                                   { "crash", "" },
+                                                   { "stall", "timeout" } };
+    for ( const auto& [ mode, reason ] : failures ) {
+        INFO( "mode=" << mode.toStdString() );
+        TsharkPreviewClient::instance().reset();
+        qputenv( "CILOGG_PREVIEW_FIXTURE_MODE", mode.toLatin1() );
+        request.timeoutMs = 4000;
+        const auto result = PreviewService::evaluateAndWait( request );
+        INFO( QJsonDocument::fromVariant( result ).toJson( QJsonDocument::Compact ).toStdString() );
+        CHECK( result.value( "state" ) == "completed" );
+        REQUIRE( result.value( "available" ).toBool() );
+        CHECK( result.value( "backend" ) == "json_preview" );
+        CHECK( result.value( "preferredBackend" ) == "tshark_lua" );
+        CHECK( result.value( "decoderAttempts" ).toList()
+               == QVariantList{ "tshark_lua", "json_preview" } );
+        if ( reason.isEmpty() )
+            CHECK_FALSE( result.value( "fallbackReason" ).toString().isEmpty() );
+        else
+            CHECK( result.value( "fallbackReason" ) == reason );
+        // The JSON preview of the same carrier, within the budget or, after a stall that used it
+        // all, the fallback's own 3 s (a later one would be a timeout, not this result).
+        CHECK( result.value( "previewName" ) == "Mapped carrier" );
+        CHECK( firstValue( result ) == "AB" );
+        CHECK( result.value( "elapsedMs" ).toLongLong() < request.timeoutMs + 3000 );
+    }
+    // Explicit TShark never falls back: the failure is the result.
+    qputenv( "CILOGG_PREVIEW_FIXTURE_MODE", "lua_failure" );
+    request.decoder = "tshark";
+    const auto failed = PreviewService::evaluateAndWait( request );
+    CHECK( failed.value( "state" ) == "failed" );
+    CHECK( failed.value( "reason" ) == "lua_failure" );
+    CHECK( failed.value( "backend" ) == "tshark_lua" );
+    CHECK_FALSE( failed.contains( "fallbackReason" ) );
+    // A cancelled request is not a decoder failure and does not fall back.
+    request.decoder = "auto";
+    qputenv( "CILOGG_PREVIEW_FIXTURE_MODE", "stall" );
+    QVariantMap cancelled;
+    {
+        QEventLoop loop;
+        QPointer<QProcess> token = PreviewService::evaluate( &loop, request, [ & ]( QVariantMap value ) {
+            cancelled = std::move( value );
+            loop.quit();
+        } );
+        REQUIRE( token );
+        QObject::connect( token, QOverload<int, QProcess::ExitStatus>::of( &QProcess::finished ),
+                          &loop, [ token ]( int, QProcess::ExitStatus ) {
+                              QTimer::singleShot( 200, [ token ] {
+                                  if ( token )
+                                      PreviewService::cancel( token );
+                              } );
+                          } );
+        QTimer::singleShot( 5000, &loop, &QEventLoop::quit );
+        loop.exec();
+    }
+    CHECK( cancelled.value( "reason" ) == "cancelled" );
+    CHECK_FALSE( cancelled.contains( "fallbackReason" ) );
+    // Input the mapped carrier's route cannot carry falls back to that carrier's JSON preview,
+    // even when an earlier JSON-only definition matches the line too.
+    request.definitions
+        = R"({"version":1,"previews":[{"name":"Earlier JSON","regex":"^(?<payload>.*)$","fields":[{"name":"Earlier","source":"capture","capture":"payload","type":"string","format":"string"}]},{"name":"Mapped carrier","regex":"^(?<payload>.*)$","bufferCapture":"payload","type":"string","fields":[{"name":"Message","source":"capture","capture":"payload","type":"string","format":"string"}]}]})";
+    request.text = "invalid hex";
+    request.inputEncoding = "hex";
+    const auto selector = PreviewService::evaluateAndWait( request );
+    INFO( QJsonDocument::fromVariant( selector ).toJson( QJsonDocument::Compact ).toStdString() );
+    CHECK( selector.value( "backend" ) == "json_preview" );
+    CHECK( selector.value( "fallbackReason" ) == "invalid_hex" );
+    CHECK( selector.value( "previewName" ) == "Mapped carrier" );
+    CHECK( firstValue( selector ) == "invalid hex" );
+    CHECK_FALSE( selector.contains( "carrierName" ) );
+    // Explicit TShark shows the failure, without the internal carrier name.
+    request.decoder = "tshark";
+    const auto explicitFailure = PreviewService::evaluateAndWait( request );
+    CHECK( explicitFailure.value( "reason" ) == "invalid_hex" );
+    CHECK_FALSE( explicitFailure.contains( "carrierName" ) );
+}
+
+TEST_CASE( "A settings change during an Automatic engine run is not a decoder failure",
+           "[previewdecoder]" )
+{
+    const QVariantMap config{ { "previewRoutes",
+                                QVariantMap{ { "Mapped carrier",
+                                               QVariantMap{ { "dissector", "synthetic" } } } } } };
+    FixtureEngine engine( config );
+    QObject channel;
+    auto request = directRequest( "AB", "" );
+    request.decoder = "auto";
+    request.dissector.clear();
+    request.sessionOwner = &channel;
+    request.definitions = MappedCarrierDefinitions;
+    request.timeoutMs = 8000;
+    // The client exists before the request (FixtureEngine resets it), so it follows settings
+    // changes before the request does. The engine stalls until the change retires it.
+    qputenv( "CILOGG_PREVIEW_FIXTURE_MODE", "stall" );
+    QVariantMap result;
+    QEventLoop loop;
+    QPointer<QProcess> token = PreviewService::evaluate( &loop, request, [ & ]( QVariantMap value ) {
+        result = std::move( value );
+        loop.quit();
+    } );
+    REQUIRE( token );
+    // Once the engine runs, a settings change retires its channel (#182 review).
+    QObject::connect( token, QOverload<int, QProcess::ExitStatus>::of( &QProcess::finished ),
+                      &loop, [ & ]( int, QProcess::ExitStatus ) {
+                          QTimer::singleShot( 300, &loop, [ & ] {
+                              auto changed = PreviewDecoderSettings::instance().configuration();
+                              changed[ "defaultDissector" ] = "changed";
+                              PreviewDecoderSettings::instance().setConfiguration( changed );
+                          } );
+                      } );
+    QTimer::singleShot( 7000, &loop, &QEventLoop::quit );
+    loop.exec();
+    INFO( QJsonDocument::fromVariant( result ).toJson( QJsonDocument::Compact ).toStdString() );
+    CHECK( result.value( "reason" ) == "configuration_changed" );
+    CHECK( result.value( "backend" ) == "tshark_lua" );
+    CHECK_FALSE( result.contains( "fallbackReason" ) );
+    CHECK_FALSE( result.value( "decoderAttempts" ).toList().contains( "json_preview" ) );
+}
+
+TEST_CASE( "An Automatic engine result after the deadline gives way to the JSON fallback",
+           "[previewdecoder][previewdeadline]" )
+{
+    FixtureEngine engine( { { "previewRoutes",
+                              QVariantMap{ { "Mapped carrier",
+                                             QVariantMap{ { "dissector", "synthetic" } } } } } } );
+    qputenv( "CILOGG_PREVIEW_FIXTURE_MODE", "valid" );
+    auto& client = TsharkPreviewClient::instance();
+    QObject channel;
+    auto request = directRequest( "AB", "" );
+    request.decoder = "auto";
+    request.dissector.clear();
+    request.sessionOwner = &channel;
+    request.definitions = MappedCarrierDefinitions;
+    REQUIRE( PreviewService::evaluateAndWait( request ).value( "backend" ) == "tshark_lua" );
+    const auto processes = client.findChildren<QProcess*>();
+    REQUIRE( processes.size() == 1 );
+    QPointer<QProcess> worker = processes.front();
+    request.timeoutMs = 1000;
+    QVariantMap result;
+    QEventLoop loop;
+    auto* token = PreviewService::evaluate( &loop, request, [ & ]( QVariantMap value ) {
+        result = std::move( value );
+        loop.quit();
+    } );
+    REQUIRE( token );
+    bool forcedDelivery = false;
+    // As in the explicit overdue test: block the loop past the budget, then deliver the engine's
+    // success ahead of the overdue timers (#182 review).
+    QObject::connect( token, QOverload<int, QProcess::ExitStatus>::of( &QProcess::finished ), &loop,
+                      [ & ]( int, QProcess::ExitStatus ) {
+                          if ( !result.isEmpty() || !worker )
+                              return;
+                          QThread::msleep( static_cast<unsigned long>( request.timeoutMs + 50 ) );
+                          forcedDelivery = worker->waitForReadyRead( 1000 );
+                      } );
+    QTimer::singleShot( 6000, &loop, &QEventLoop::quit );
+    if ( result.isEmpty() )
+        loop.exec();
+    REQUIRE( forcedDelivery );
+    INFO( QJsonDocument::fromVariant( result ).toJson( QJsonDocument::Compact ).toStdString() );
+    CHECK( result.value( "backend" ) == "json_preview" );
+    CHECK( result.value( "state" ) == "completed" );
+    CHECK( result.value( "fallbackReason" ) == "timeout" );
+    CHECK( result.value( "previewName" ) == "Mapped carrier" );
+}
+
+TEST_CASE( "Explicit TShark resolves its dissector from the route Automatic would use",
+           "[previewdecoder]" )
+{
+    FixtureEngine engine(
+        { { "previewRoutes",
+            QVariantMap{ { "Mapped carrier", QVariantMap{ { "dissector", "carrier_entry" },
+                                                          { "protocol", "carrier_proto" } } } } },
+          { "protocolRoutes",
+            QVariantMap{ { "SYNTH", QVariantMap{ { "dissector", "protocol_entry" },
+                                                 { "inputEncoding", "utf8" } } } } } } );
+    qputenv( "CILOGG_PREVIEW_FIXTURE_MODE", "profile" );
+    QObject channel;
+    auto request = directRequest( "AB", "" );
+    request.dissector.clear(); // "Dissector from route / settings"
+    request.sessionOwner = &channel;
+    request.definitions = MappedCarrierDefinitions;
+    // The line's preview route, with no default dissector.
+    auto result = PreviewService::evaluateAndWait( request );
+    INFO( QJsonDocument::fromVariant( result ).toJson( QJsonDocument::Compact ).toStdString() );
+    REQUIRE( result.value( "available" ).toBool() );
+    CHECK( result.value( "backend" ) == "tshark_lua" );
+    CHECK( result.value( "previewName" ) == "Mapped carrier" );
+    CHECK( firstValue( result ) == "carrier_entry|carrier_proto" );
+    // An assembled message takes its protocol's route first, as in Automatic mode.
+    request.assemblyProtocol = "SYNTH";
+    result = PreviewService::evaluateAndWait( request );
+    INFO( QJsonDocument::fromVariant( result ).toJson( QJsonDocument::Compact ).toStdString() );
+    REQUIRE( result.value( "available" ).toBool() );
+    CHECK( result.value( "previewName" ) == "SYNTH" );
+    CHECK( firstValue( result ) == "protocol_entry|" );
+    // A named dissector still decodes the whole input directly.
+    request.dissector = "data";
+    result = PreviewService::evaluateAndWait( request );
+    REQUIRE( result.value( "available" ).toBool() );
+    CHECK( firstValue( result ) == "data|" );
+    // With no route for the line and no default dissector, there is nothing to run.
+    request.dissector.clear();
+    request.assemblyProtocol.clear();
+    request.text = "AB";
+    request.definitions = R"({"version":1,"previews":[]})";
+    CHECK( PreviewService::evaluateAndWait( request ).value( "reason" ) == "invalid_dissector" );
+    // Definitions it cannot parse leave explicit TShark the default dissector on the input, as
+    // before it looked up routes (#182 review).
+    auto withDefault = PreviewDecoderSettings::instance().configuration();
+    withDefault[ "defaultDissector" ] = "fallback_entry";
+    REQUIRE( PreviewDecoderSettings::instance().setConfiguration( withDefault ) );
+    request.definitions = "{ not json";
+    const auto unparsed = PreviewService::evaluateAndWait( request );
+    INFO( QJsonDocument::fromVariant( unparsed ).toJson( QJsonDocument::Compact ).toStdString() );
+    REQUIRE( unparsed.value( "available" ).toBool() );
+    CHECK( firstValue( unparsed ) == "fallback_entry|" );
 }
 
 TEST_CASE( "Native stop and worker timeout failures retain the same required envelope",
@@ -975,16 +1392,30 @@ TEST_CASE( "A warmed real Lua stall retains its carrier and recovers after resto
     REQUIRE( warmed.value( "enginePid" ).toLongLong() > 0 );
     request.text = "AB";
     request.timeoutMs = 4000;
+    const auto isTimeout = []( const QVariant& reason ) {
+        return reason == "timeout" || reason == "execution_timeout";
+    };
+    // Automatic mode shows the carrier's JSON preview and names the stall (#182); the stall used
+    // the whole budget, so the fallback has its own 3 s.
+    const auto fallback = PreviewService::evaluateAndWait( request );
+    INFO( QJsonDocument::fromVariant( fallback ).toJson( QJsonDocument::Compact ).toStdString() );
+    CHECK( fallback.value( "backend" ) == "json_preview" );
+    CHECK( fallback.value( "state" ) == "completed" );
+    CHECK( isTimeout( fallback.value( "fallbackReason" ) ) );
+    CHECK( fallback.value( "previewName" ) == "Mapped carrier" );
+    CHECK( fallback.value( "elapsedMs" ).toLongLong() < request.timeoutMs + 3000 );
+    // Explicit TShark shows the stall itself.
+    request.decoder = "tshark";
     const auto timed = PreviewService::evaluateAndWait( request );
     INFO( timed.value( "reason" ).toString().left( 128 ).toStdString() );
     CHECK( timed.value( "state" ) == "failed" );
-    CHECK( ( timed.value( "reason" ) == "timeout"
-             || timed.value( "reason" ) == "execution_timeout" ) );
+    CHECK( isTimeout( timed.value( "reason" ) ) );
     CHECK( timed.value( "previewName" ) == "Mapped carrier" );
     CHECK( timed.contains( "fields" ) );
     CHECK( timed.value( "fields" ).toList().isEmpty() );
     CHECK_FALSE( timed.value( "available" ).toBool() );
     CHECK_FALSE( timed.value( "complete" ).toBool() );
+    request.decoder = "auto";
     config[ "lua" ] = QVariantList{ publicLua };
     config[ "previewRoutes" ]
         = QVariantMap{ { "Mapped carrier", QVariantMap{ { "dissector", "cilogg_md01_probe" },
@@ -1020,7 +1451,8 @@ TEST_CASE( "Overdue successful delivery times out and retires only its owned cha
     RestoreEnvironment python( "CILOGG_SCRIPT_PYTHON" ), mode( "CILOGG_PREVIEW_FIXTURE_MODE" ),
         pid( "CILOGG_PREVIEW_FIXTURE_PID" );
     qputenv( "CILOGG_SCRIPT_PYTHON", QByteArray( PREVIEW_DECODER_FIXTURE_PATH ) );
-    qputenv( "CILOGG_PREVIEW_FIXTURE_MODE", "valid" );
+    // A result cut off at its limit: after the deadline it keeps no limit either (#183 review).
+    qputenv( "CILOGG_PREVIEW_FIXTURE_MODE", "limited_bytes" );
     qputenv( "CILOGG_PREVIEW_FIXTURE_PID",
              QByteArray::number( QCoreApplication::applicationPid() ) );
     REQUIRE( PreviewDecoderSettings::instance().setConfiguration(
@@ -1032,7 +1464,7 @@ TEST_CASE( "Overdue successful delivery times out and retires only its owned cha
     QObject channel;
     auto request = directRequest( "0102", "hex" );
     request.sessionOwner = &channel;
-    REQUIRE( PreviewService::evaluateAndWait( request ).value( "available" ).toBool() );
+    REQUIRE( PreviewService::evaluateAndWait( request ).value( "limit" ).toMap().size() == 5 );
     const auto processes = client.findChildren<QProcess*>();
     REQUIRE( processes.size() == 1 );
     QPointer<QProcess> worker = processes.front();
@@ -1083,6 +1515,8 @@ TEST_CASE( "Overdue successful delivery times out and retires only its owned cha
     CHECK_FALSE( result.value( "complete" ).toBool() );
     CHECK_FALSE( result.value( "limited" ).toBool() );
     CHECK( result.value( "fields" ).toList().isEmpty() );
+    CHECK_FALSE( result.contains( "limit" ) );
+    CHECK( PreviewService::limitText( result ).isEmpty() );
     CHECK_FALSE( result.contains( "fallbackReason" ) );
     CHECK_FALSE( result.contains( "id" ) );
     CHECK( result.value( "enginePid" ).toLongLong() == QCoreApplication::applicationPid() );

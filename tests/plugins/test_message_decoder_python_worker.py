@@ -447,6 +447,23 @@ class ResultTests(Case):
         self.assertLess(len(response["fields"]), 4)
         self.assertLessEqual(len(worker.encode_frame(response)) - 4, worker.RESPONSE_LIMIT)
 
+    def test_response_limit_keeps_every_row_that_fits(self):
+        # A Python result carries no TShark `limit` object, so its fit budgets none (#183 review):
+        # the row after the kept prefix would not fit either.
+        response = self.decode("""
+            def decode(payload, context):
+                return [{"name": "big", "value": "y" * 1200} for index in range(100)] + [
+                    {"name": "r", "value": "z"} for index in range(400)]
+        """)
+        self.assertEqual(response["reason"], "response_limit", response.get("reason"))
+        self.assertNotIn("limit", response)
+        fields = response["fields"]
+        self.assertEqual(fields[-1]["columns"][:2], ["r", "z"])
+        following = dict(fields[-1], id=str(len(fields)))
+        extended = dict(response, fields=fields + [following])
+        size = len(worker.encode_frame(extended, 2 * worker.RESPONSE_LIMIT)) - 4
+        self.assertGreater(size, worker.RESPONSE_LIMIT)
+
     def test_not_dispatched(self):
         response = self.decode("def decode(payload, context):\n    return None\n")
         self.assertEqual((response["state"], response["reason"]), ("failed", "decoder_not_dispatched"))
