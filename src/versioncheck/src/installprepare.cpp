@@ -1493,6 +1493,24 @@ std::vector<MovedFile> rollback( const fs::path& directory, const std::vector<Mo
 }
 
 namespace {
+// True (and logged) when the installation folder itself is a link or junction: every rename,
+// deletion and copy there would land in its target, outside the folder the installer was given.
+bool isLinkedRoot( const fs::path& directory, const Log& log )
+{
+#ifdef _WIN32
+    const auto attributes = GetFileAttributesW( directory.c_str() );
+    const bool linked = attributes != INVALID_FILE_ATTRIBUTES
+                        && ( attributes & FILE_ATTRIBUTE_REPARSE_POINT ) != 0;
+#else
+    std::error_code error;
+    const bool linked = fs::is_symlink( fs::symlink_status( directory, error ) );
+#endif
+    if ( linked )
+        log( "The installation folder " + toUtf8( directory )
+             + " is a link or junction; nothing is done there" );
+    return linked;
+}
+
 // A first installation: no previous version to restore, but a failed copy must not leave a part
 // of one behind, nor another program's file the installation overwrote. Each file already where
 // the installer writes (another program's, sharing the folder) stays in place and is copied, the
@@ -1565,6 +1583,8 @@ int runPrepare( const fs::path& directory, const fs::path& report, const Log& lo
             return ManifestFailedExitCode;
         }
     }
+    if ( isLinkedRoot( directory, log ) )
+        return ManifestFailedExitCode;
     const auto manifestPath = directory / ManifestFileName;
     // A record that cannot be checked is read like one that exists: then its read fails, and it
     // is kept, never taken as absent.
@@ -1702,6 +1722,8 @@ int runFinish( const fs::path& directory, const Log& log )
         log( "No files were moved aside" );
         return PreparedExitCode;
     }
+    if ( isLinkedRoot( directory, log ) )
+        return ManifestFailedExitCode;
     const auto record = readRecord( manifestPath, log );
     if ( !record )
         return ManifestFailedExitCode;
@@ -1744,6 +1766,8 @@ int runRollback( const fs::path& directory, const Log& log )
         log( "No files were moved aside" );
         return PreparedExitCode;
     }
+    if ( isLinkedRoot( directory, log ) )
+        return RollbackIncompleteExitCode;
     const auto record = readRecord( manifestPath, log );
     if ( !record )
         return RollbackIncompleteExitCode;

@@ -955,6 +955,41 @@ TEST_CASE( "A file that cannot be put back stays recorded for the next update",
     REQUIRE( movedAsideFiles( root ).empty() );
 }
 
+TEST_CASE( "An installation folder that is itself a junction is refused", "[installprepare]" )
+{
+    QTemporaryDir temporary;
+    REQUIRE( temporary.isValid() );
+    const auto target = nativePath( temporary.path() ) / "elsewhere";
+    const auto root = nativePath( temporary.path() ) / "cilogg";
+    writeText( target / "cilogg.exe", "someone else's executable" );
+    writeText( target / "library.dll", "someone else's library" );
+    REQUIRE( QProcess::execute( QStringLiteral( "cmd.exe" ),
+                                { QStringLiteral( "/c" ), QStringLiteral( "mklink" ),
+                                  QStringLiteral( "/J" ),
+                                  QString::fromStdWString( root.wstring() ),
+                                  QString::fromStdWString( target.wstring() ) } )
+             == 0 );
+    std::vector<std::string> lines;
+
+    REQUIRE( prepare::runPrepare( root, {}, recorder( lines ) ) == prepare::ManifestFailedExitCode );
+    REQUIRE( readText( target / "cilogg.exe" ) == "someone else's executable" );
+    REQUIRE( readText( target / "library.dll" ) == "someone else's library" );
+    REQUIRE( movedAsideFiles( target ).empty() );
+    REQUIRE_FALSE( fs::exists( target / prepare::ManifestFileName ) );
+
+    // A record found through it is not acted on either.
+    writeText( target / prepare::ManifestFileName,
+               prepare::formatManifestLine( { root / "library.dll", root / "library.dll.cilogg-old" } )
+                   + "\n#prepared\n" );
+    REQUIRE( prepare::runRollback( root, recorder( lines ) )
+             == prepare::RollbackIncompleteExitCode );
+    REQUIRE( prepare::runFinish( root, recorder( lines ) ) == prepare::ManifestFailedExitCode );
+    REQUIRE( readText( target / "library.dll" ) == "someone else's library" );
+    REQUIRE( readText( target / "cilogg.exe" ) == "someone else's executable" );
+    std::error_code removed;
+    fs::remove( root, removed );
+}
+
 TEST_CASE( "A junction in the installation folder never leads the installer outside it",
            "[installprepare]" )
 {
