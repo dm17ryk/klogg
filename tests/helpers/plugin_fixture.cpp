@@ -134,6 +134,9 @@ int main( int argc, char** argv )
                 return QJsonObject{ { "text", "slow" } };
             }
             if ( element == "latetip" ) {
+                // The test hears that this handler runs: the SDK drops a query whose deadline
+                // passed before its handler started, and then no late answer comes (#211).
+                plugin.notify( "log", { { "message", "latetip " + query.id } } );
                 // Ignores the cancellation: answers after the host stopped waiting.
                 while ( !query.expired() ) {
                     std::this_thread::sleep_for( std::chrono::milliseconds( 2 ) );

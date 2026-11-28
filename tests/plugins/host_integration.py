@@ -461,10 +461,17 @@ def run(build: Path, artifacts: Path) -> list[str]:
                             break
                         assert time.monotonic() < deadline, "View button did not start a job"
                         time.sleep(0.05)
-                    started = cli("invoke_plugin", "--plugin-id", demo, "--plugin-action", "process")
+                    # Cancelling a running job over MCP. The view demo's process job ends by itself
+                    # after about 2 s, and a busy machine took longer than that between starting
+                    # and cancelling it: the cancel found it completed (#212). A source stream with
+                    # no record limit ends only when it is cancelled, so the cancel always meets a
+                    # running job.
+                    started = mcp.command("invoke_plugin", {"plugin_id": source,
+                                          "plugin_action": "start",
+                                          "definition": {"count": 0, "interval": 0.05}})
                     deadline = time.monotonic() + 10
                     while cli("get_plugin_job", "--plugin-job-id", started["jobId"])["state"] != "running":
-                        assert time.monotonic() < deadline, "View demo job did not start"
+                        assert time.monotonic() < deadline, "Endless source job did not start"
                         time.sleep(0.05)
                     cancelled = mcp.command("cancel_plugin_job", {"plugin_job_id": started["jobId"]})
                     assert cancelled["state"] == "cancelling", cancelled

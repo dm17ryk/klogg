@@ -402,6 +402,17 @@ struct QueryFixture {
                                 return item.first == pluginId && item.second.value( "id" ) == id;
                             } );
     }
+    // The plugin sent a `log` notification with this message.
+    bool logged( const QString& pluginId, const QString& message ) const
+    {
+        return std::any_of( incoming.begin(), incoming.end(),
+                            [ & ]( const QPair<QString, QJsonObject>& item ) {
+                                return item.first == pluginId
+                                       && item.second.value( "method" ) == "log"
+                                       && item.second.value( "params" ).toObject().value( "message" )
+                                              == message;
+                            } );
+    }
     QVariantMap stats( const QString& id ) const
     {
         for ( const auto& item : manager->queries().statistics( id ) ) {
@@ -738,11 +749,22 @@ TEST_CASE( "E17 late answers and answers from another plugin are dropped", "[plu
     QueryFixture fixture( { queryManifest( "org.test.a" ), queryManifest( "org.test.b" ) } );
     fixture.start( "org.test.a" );
     fixture.start( "org.test.b" );
-    // The plugin ignores the cancellation and answers after the timeout.
-    const auto late = answer();
-    const auto lateId = fixture.ask( "org.test.a", "latetip", late, 100 );
-    REQUIRE( waitUntil( [ & ] { return late->done; } ) );
-    REQUIRE( late->outcome.status == Status::TimedOut );
+    // The plugin ignores the cancellation and answers after the timeout. The SDK drops a query
+    // whose deadline passed before its handler started (cilogg_plugin.h, runLane): a busy machine
+    // can start the handler more than 100 ms after the query arrives, and then no late answer
+    // comes (#211). Such a query is asked again; the checks hold for the one whose handler ran
+    // (the fixture logs "latetip <id>" when it starts).
+    QString lateId;
+    for ( int attempt = 0; attempt < 5 && lateId.isEmpty(); ++attempt ) {
+        const auto late = answer();
+        const auto id = fixture.ask( "org.test.a", "latetip", late, 100 );
+        REQUIRE( waitUntil( [ & ] { return late->done; } ) );
+        REQUIRE( late->outcome.status == Status::TimedOut );
+        if ( waitUntil( [ & ] { return fixture.logged( "org.test.a", "latetip " + id ); }, 2000 ) ) {
+            lateId = id;
+        }
+    }
+    REQUIRE_FALSE( lateId.isEmpty() );
     REQUIRE( waitUntil( [ & ] { return fixture.received( "org.test.a", lateId ); } ) );
     REQUIRE( fixture.manager->pluginState( "org.test.a" ) == "ready" );
     REQUIRE( fixture.stats( "org.test.a" ).value( "answered" ).toInt() == 0 );
