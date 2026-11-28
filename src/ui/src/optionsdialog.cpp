@@ -58,6 +58,7 @@
 #include "shortcuts.h"
 #include "styles.h"
 
+#include "crashdumps.h"
 #include "optionsdialog.h"
 
 static constexpr int PollIntervalMin = 10;
@@ -422,6 +423,7 @@ void OptionsDialog::updateDialogFromConfig()
 
     loggingCheckBox->setChecked( config.enableLogging() );
     verbositySpinBox->setValue( config.loggingLevel() );
+    fullMemoryCrashDumpsCheckBox->setChecked( config.fullMemoryCrashDumps() );
 
     extractArchivesCheckBox->setChecked( config.extractArchives() );
     extractArchivesAlwaysCheckBox->setChecked( config.extractArchivesAlways() );
@@ -634,6 +636,8 @@ void OptionsDialog::updateConfigFromDialog()
     config.setMinimizeToTray( minimizeToTrayCheckBox->isChecked() );
     config.setEnableLogging( loggingCheckBox->isChecked() );
     config.setLoggingLevel( verbositySpinBox->value() );
+    config.setFullMemoryCrashDumps( fullMemoryCrashDumpsCheckBox->isChecked() );
+    cilogg::diagnostics::CrashDumps::setFullMemory( config.fullMemoryCrashDumps() ); // R06b
 
     config.setExtractArchives( extractArchivesCheckBox->isChecked() );
     config.setExtractArchivesAlways( extractArchivesAlwaysCheckBox->isChecked() );

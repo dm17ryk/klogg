@@ -28,6 +28,7 @@
 
 #include <kzip.h>
 
+#include "crashdumps.h"
 #include "klogg_version.h"
 #include "log.h"
 #include "logger.h"
@@ -229,6 +230,9 @@ QString kindTitle( const QString& kind )
     if ( kind == QLatin1String( "bug" ) ) {
         return QStringLiteral( "Problem report" );
     }
+    if ( kind == QLatin1String( "crash" ) ) {
+        return QStringLiteral( "Crash report" );
+    }
     return QStringLiteral( "Diagnostic report" );
 }
 
@@ -245,7 +249,11 @@ QString summaryFor( const ReportRequest& request, const MemoryStatus& memory )
 {
     QString summary;
     const auto fileName = QFileInfo( request.filePath ).fileName();
-    if ( !request.operation.isEmpty() && request.error.isEmpty() ) {
+    if ( request.kind == QLatin1String( "crash" ) ) {
+        summary = QStringLiteral( "CILogg crashed during an earlier run: %1." )
+                      .arg( firstLine( request.error, 200 ) );
+    }
+    else if ( !request.operation.isEmpty() && request.error.isEmpty() ) {
         summary = QStringLiteral( "%1: CILogg saved a diagnostic report." ).arg( request.operation );
     }
     else if ( !request.operation.isEmpty() ) {
@@ -440,6 +448,60 @@ QString markdownFor( const ReportResult& result, const ReportRequest& request,
                           "- `cilogg.log`: recent CILogg log lines (warnings and errors always)\n"
                           "- `memory.csv`: memory samples\n"
                           "- `context.json`: windows, tabs and running automation\n" );
+    return md;
+}
+
+// R06b: the minidump written with an exception report.
+constexpr char ProcessDumpName[] = "process.dmp";
+constexpr int MaxCrashReportsAtStart = 3;
+
+bool isDumpFile( const QString& name )
+{
+    return name.endsWith( QLatin1String( ".dmp" ), Qt::CaseInsensitive );
+}
+
+// File names only: the zip may be shared, and a full path holds the user name.
+QStringList fileNames( const QStringList& paths )
+{
+    QStringList names;
+    for ( const auto& path : paths ) {
+        names.push_back( QFileInfo( path ).fileName() );
+    }
+    return names;
+}
+
+// R06b sections of report.md: the throw site, attached files and the dumps outside the zip.
+QString dumpMarkdown( const ReportRequest& request, const ReportResult& result,
+                      const QStringList& attached )
+{
+    QString md;
+    if ( !request.throwStack.isEmpty() ) {
+        md += QStringLiteral(
+                  "\n## Where the error was thrown\n\n"
+                  "The stack of the thread that hit the error, at the moment the exception was "
+                  "thrown, newest frame first. Windows frames are `module+offset`: the release's "
+                  "`-pdb.zip` (Linux: `-symbols.tar.xz`) gives their function "
+                  "names.\n\n```\n%1\n```\n" )
+                  .arg( request.throwStack.join( QLatin1Char( '\n' ) ) );
+    }
+    for ( const auto& name : attached ) {
+        md += QStringLiteral( "- `%1`: attached\n" ).arg( name );
+    }
+    auto dumps = fileNames( request.privateFiles );
+    for ( auto& dump : dumps ) {
+        dump += QStringLiteral( " (in the `crashes` folder next to the reports)" );
+    }
+    if ( !result.processDump.isEmpty() ) {
+        dumps.push_back( QStringLiteral( "private/" ) + QString::fromLatin1( ProcessDumpName )
+                         + QStringLiteral( " (in this report's folder)" ) );
+    }
+    if ( !dumps.isEmpty() ) {
+        md += QStringLiteral( "\n## Memory dumps (not in the zip)\n\n" );
+        for ( const auto& dump : std::as_const( dumps ) ) {
+            md += QStringLiteral( "- `%1`\n" ).arg( dump );
+        }
+        md += QStringLiteral( "\n%1\n" ).arg( DiagnosticReports::dumpPrivacyNote() );
+    }
     return md;
 }
 
@@ -772,6 +834,32 @@ ReportResult DiagnosticReports::create( const ReportRequest& request )
         return result;
     }
 
+    // R06b: attached files (a crash record) go into the folder and the zip; a minidump of this
+    // process goes into the folder only (it is a memory image: never zipped).
+    QStringList attached;
+    bool attachedAll = true; // a report without its attachment (the crash record) is incomplete
+    for ( const auto& path : request.attachments ) {
+        const auto target = QDir( result.directory ).filePath( QFileInfo( path ).fileName() );
+        if ( QFile::copy( path, target ) ) {
+            attached.push_back( QFileInfo( path ).fileName() );
+        }
+        else {
+            attachedAll = false;
+        }
+    }
+    QString processDumpError;
+    if ( request.processDump && CrashDumps::minidumpsSupported() ) {
+        // In a subfolder, which the zip (top-level files only) never takes; a user who drags the
+        // report folder somewhere still sees that it is set apart.
+        const auto privateFolder = QDir( result.directory ).filePath( QStringLiteral( "private" ) );
+        const auto dumpPath
+            = QDir( privateFolder ).filePath( QString::fromLatin1( ProcessDumpName ) );
+        if ( QDir().mkpath( privateFolder )
+             && CrashDumps::writeProcessDump( dumpPath, false, &processDumpError ) ) {
+            result.processDump = dumpPath;
+        }
+    }
+
     const auto memory = currentMemoryStatus();
     pushSample( memory );
     const auto samples = MemoryMonitor::samples();
@@ -848,13 +936,23 @@ ReportResult DiagnosticReports::create( const ReportRequest& request )
         { QStringLiteral( "environment" ), environmentMap() },
         { QStringLiteral( "context" ), context },
         { QStringLiteral( "steps" ), steps },
+        { QStringLiteral( "throwStack" ), request.throwStack },
+        { QStringLiteral( "attachments" ), attached },
+        { QStringLiteral( "processDump" ),
+          result.processDump.isEmpty()
+              ? QString{}
+              : QStringLiteral( "private/" ) + QString::fromLatin1( ProcessDumpName ) },
+        { QStringLiteral( "processDumpError" ), processDumpError },
+        { QStringLiteral( "privateFiles" ), fileNames( request.privateFiles ) },
     };
 
     bool written = writeJson( QDir( result.directory ).filePath( QStringLiteral( "report.json" ) ), report );
-    written = writeText( QDir( result.directory ).filePath( QStringLiteral( "report.md" ) ),
-                         markdownFor( result, request, fileInfo, memory, samples, entries, context )
-                             .toUtf8() )
-              && written;
+    written
+        = writeText( QDir( result.directory ).filePath( QStringLiteral( "report.md" ) ),
+                     ( markdownFor( result, request, fileInfo, memory, samples, entries, context )
+                       + dumpMarkdown( request, result, attached ) )
+                         .toUtf8() )
+          && written;
     written = writeText( QDir( result.directory ).filePath( QStringLiteral( "journal.log" ) ),
                          journalLines.join( QLatin1Char( '\n' ) ).toUtf8() + '\n' )
               && written;
@@ -871,6 +969,7 @@ ReportResult DiagnosticReports::create( const ReportRequest& request )
               && written;
     written = writeJson( QDir( result.directory ).filePath( QStringLiteral( "context.json" ) ), context )
               && written;
+    written = attachedAll && written;
     if ( !written ) {
         result.error = QStringLiteral( "Some report files could not be written in %1." )
                            .arg( result.directory );
@@ -881,7 +980,16 @@ ReportResult DiagnosticReports::create( const ReportRequest& request )
         KZip zip( archive );
         bool zipped = false;
         if ( zip.open( QIODevice::WriteOnly ) ) {
-            zipped = zip.addLocalDirectory( result.directory, result.id );
+            zipped = true;
+            // Every file but dumps (R06b, decision D16): the zip is what a user may share.
+            for ( const auto& file :
+                  QDir( result.directory ).entryInfoList( QDir::Files, QDir::Name ) ) {
+                if ( !isDumpFile( file.fileName() ) ) {
+                    zipped = zip.addLocalFile( file.absoluteFilePath(),
+                                               result.id + QLatin1Char( '/' ) + file.fileName() )
+                             && zipped;
+                }
+            }
             zipped = zip.close() && zipped;
         }
         if ( zipped ) {
@@ -901,6 +1009,53 @@ ReportResult DiagnosticReports::create( const ReportRequest& request )
     LOG_WARNING << "Diagnostic report " << result.id << ( written ? " written to " : " incomplete in " )
                 << result.directory;
     return result;
+}
+
+QString DiagnosticReports::dumpPrivacyNote()
+{
+    return QStringLiteral(
+        "A dump is an image of CILogg's memory: it can hold passwords, tokens and "
+        "log contents that were in use. It is not in the report's zip. Share it "
+        "only privately with the maintainer, never in a public issue." );
+}
+
+QVector<CrashReport> DiagnosticReports::reportPendingCrashes()
+{
+    QVector<CrashReport> reports;
+    auto pending = CrashDumps::pendingCrashes();
+    // Startup stays quick after many crashes: the newest few get reports, the older ones are only
+    // marked (their records stay in the crashes folder).
+    while ( pending.size() > MaxCrashReportsAtStart ) {
+        CrashDumps::markReported(
+            pending.takeFirst().toMap().value( QStringLiteral( "record" ) ).toString() );
+    }
+    for ( const auto& item : std::as_const( pending ) ) {
+        const auto crash = item.toMap();
+        const auto record = crash.value( QStringLiteral( "record" ) ).toString();
+        CrashReport report;
+        report.dump = crash.value( QStringLiteral( "dump" ) ).toString();
+        report.request.kind = QStringLiteral( "crash" );
+        report.request.operation = QStringLiteral( "Crash in an earlier run" );
+        report.request.error = crash.value( QStringLiteral( "summary" ) ).toString();
+        if ( report.request.error.isEmpty() ) {
+            report.request.error = QStringLiteral( "unknown reason" );
+        }
+        report.request.details
+            = { { QStringLiteral( "crashTime" ), crash.value( QStringLiteral( "time" ) ) },
+                { QStringLiteral( "crashRecord" ), QFileInfo( record ).fileName() } };
+        report.request.attachments = { record };
+        if ( !report.dump.isEmpty() ) {
+            report.request.privateFiles = { QDir::toNativeSeparators( report.dump ) };
+        }
+        report.result = create( report.request );
+        // Only a complete report: an incomplete one (a full disk, say) is tried again next start.
+        if ( report.result.ok ) {
+            CrashDumps::markReported( record );
+        }
+        reports.push_back( report );
+    }
+    CrashDumps::prune();
+    return reports;
 }
 
 QVariantList DiagnosticReports::list()

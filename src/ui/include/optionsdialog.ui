@@ -900,6 +900,16 @@
             </item>
            </layout>
           </item>
+          <item>
+           <widget class="QCheckBox" name="fullMemoryCrashDumpsCheckBox">
+            <property name="toolTip">
+             <string>A crash dump then holds all of CILogg's memory: much larger, and it can hold passwords, tokens and log contents. Share such a dump only privately.</string>
+            </property>
+            <property name="text">
+             <string>Full-memory crash dumps</string>
+            </property>
+           </widget>
+          </item>
          </layout>
         </widget>
        </item>

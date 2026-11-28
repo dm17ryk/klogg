@@ -59,9 +59,10 @@
 #include <QFileOpenEvent>
 #endif
 
-#include "configuration.h"
 #include "actionsmanager.h"
 #include "commander.h"
+#include "configuration.h"
+#include "crashdumps.h"
 #include "crashhandler.h"
 #include "diagnostics.h"
 #include "issuereporter.h"
@@ -326,6 +327,11 @@ class KloggApp : public QApplication {
     void initCrashHandler()
     {
         crashHandler_ = std::make_unique<CrashHandler>();
+        // R06b: Sentry (when built in) puts its own crash handlers in place without a DSN; the
+        // local crash records and dumps take precedence again.
+        if ( cilogg::diagnostics::CrashDumps::installed() ) {
+            cilogg::diagnostics::CrashDumps::install( cilogg::diagnostics::CrashDumps::folder() );
+        }
     }
 
     MainWindow* reloadSession()
@@ -1582,6 +1588,13 @@ class KloggApp : public QApplication {
         const QFileInfo pluginData( cilogg::plugins::PluginRepository::defaultDataRoot() );
         DiagnosticReports::setRoot( QDir( pluginData.absolutePath() ).filePath( "reports" ) );
         DiagnosticReports::setContextProvider( [ this ]() { return diagnosticContext(); } );
+        // R06b: a crash leaves a record (and on Windows a minidump) in reports/crashes; the next
+        // start reports it. Every C++ throw records where it came from.
+        CrashDumps::setFullMemory( Configuration::get().fullMemoryCrashDumps() );
+        if ( !CrashDumps::install( QDir( DiagnosticReports::root() ).filePath( "crashes" ) ) ) {
+            LOG_WARNING << "Crash dumps are off: cannot create the crash folder";
+        }
+        installThrowSiteCapture();
         MemoryMonitor::start();
         ActivityJournal::record( QStringLiteral( "app" ),
                                  QStringLiteral( "CILogg %1 started (pid %2)" )

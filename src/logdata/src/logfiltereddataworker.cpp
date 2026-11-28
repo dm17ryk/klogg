@@ -51,6 +51,7 @@
 #include <vector>
 
 #include "configuration.h"
+#include "crashdumps.h"
 #include "dispatch_to.h"
 #include "issuereporter.h"
 #include "linetypes.h"
@@ -453,17 +454,24 @@ SearchOperation::SearchOperation( const LogData& sourceLogData,
 
 void SearchOperation::reportSearchFailure( const QString& operation, const QString& error ) const
 {
+    // R06b: first, before anything here can throw and catch on this thread. Called in the catch
+    // block, so this thread's latest throw is the one that failed.
+    auto throwStack = cilogg::diagnostics::currentThrowStack();
     LOG_ERROR << error;
     QVariantMap details{ { QStringLiteral( "pattern" ), regexp_.pattern },
                          { QStringLiteral( "fileBytes" ), sourceLogData_.getFileSize() },
                          { QStringLiteral( "startLine" ), static_cast<qint64>( startLine_.get() ) },
                          { QStringLiteral( "endLine" ), static_cast<qint64>( endLine_.get() ) },
                          { QStringLiteral( "thread" ), QThread::currentThread()->objectName() } };
-    const auto fileName = sourceLogData_.getFileName();
-    dispatchToMainThread( [ operation, error, fileName, details ]() {
-        IssueReporter::reportException( cilogg::diagnostics::ReportRequest{
-            QStringLiteral( "exception" ), operation, error, fileName, details } );
-    } );
+    cilogg::diagnostics::ReportRequest request;
+    request.kind = QStringLiteral( "exception" );
+    request.operation = operation;
+    request.error = error;
+    request.filePath = sourceLogData_.getFileName();
+    request.details = std::move( details );
+    request.throwStack = std::move( throwStack );
+    request.processDump = true;
+    dispatchToMainThread( [ request ]() { IssueReporter::reportException( request ); } );
 }
 
 void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )

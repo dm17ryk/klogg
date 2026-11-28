@@ -229,6 +229,22 @@ if(MSVC AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 19.14)
   set(CMAKE_INCLUDE_SYSTEM_FLAG_CXX "/external:I ")
 endif()
 
+# R06b: Release builds (what CI packages) keep their optimizations and also write .pdb files, so a
+# crash dump of a release can be symbolized. CMake's MSVC Release flags have no debug information,
+# which left the release's -pdb.zip empty. /Z7 keeps the debug information in the objects (no
+# shared compile-time PDB for parallel Ninja jobs); the linker writes one .pdb per binary next to
+# it. /DEBUG turns /OPT:REF and /OPT:ICF off, so they are named again.
+if(MSVC)
+  foreach(_klogg_lang C CXX)
+    string(APPEND CMAKE_${_klogg_lang}_FLAGS_RELEASE " /Z7")
+  endforeach()
+  foreach(_klogg_kind EXE SHARED MODULE)
+    string(APPEND CMAKE_${_klogg_kind}_LINKER_FLAGS_RELEASE " /DEBUG /OPT:REF /OPT:ICF")
+  endforeach()
+  unset(_klogg_lang)
+  unset(_klogg_kind)
+endif()
+
 set(out_dir "${CMAKE_BINARY_DIR}/output")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${out_dir}")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${out_dir}")
