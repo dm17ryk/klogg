@@ -366,3 +366,20 @@ TEST_CASE( "A real crash leaves a crash record (and on Windows a minidump)", "[d
         }
     }
 }
+
+TEST_CASE( "A report whose attachment cannot be copied is incomplete, so a crash is retried",
+           "[diagnostics]" )
+{
+    // reportPendingCrashes() marks a crash reported only when its report is complete; a report
+    // without the crash record (a full disk, say) must not count as one.
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    ReportRootGuard guard;
+    DiagnosticReports::setRoot( root.filePath( "reports" ) );
+    ReportRequest request( "crash", "Crash in an earlier run", "boom", {} );
+    request.attachments = { root.filePath( "missing-crash-record.txt" ) };
+    const auto result = DiagnosticReports::create( request );
+    CHECK_FALSE( result.ok );
+    CHECK_FALSE( result.directory.isEmpty() ); // the partial folder stays as evidence
+    CHECK_FALSE( result.error.isEmpty() );
+}

@@ -837,10 +837,14 @@ ReportResult DiagnosticReports::create( const ReportRequest& request )
     // R06b: attached files (a crash record) go into the folder and the zip; a minidump of this
     // process goes into the folder only (it is a memory image: never zipped).
     QStringList attached;
+    bool attachedAll = true; // a report without its attachment (the crash record) is incomplete
     for ( const auto& path : request.attachments ) {
         const auto target = QDir( result.directory ).filePath( QFileInfo( path ).fileName() );
         if ( QFile::copy( path, target ) ) {
             attached.push_back( QFileInfo( path ).fileName() );
+        }
+        else {
+            attachedAll = false;
         }
     }
     QString processDumpError;
@@ -965,6 +969,7 @@ ReportResult DiagnosticReports::create( const ReportRequest& request )
               && written;
     written = writeJson( QDir( result.directory ).filePath( QStringLiteral( "context.json" ) ), context )
               && written;
+    written = attachedAll && written;
     if ( !written ) {
         result.error = QStringLiteral( "Some report files could not be written in %1." )
                            .arg( result.directory );
@@ -1043,7 +1048,8 @@ QVector<CrashReport> DiagnosticReports::reportPendingCrashes()
             report.request.privateFiles = { QDir::toNativeSeparators( report.dump ) };
         }
         report.result = create( report.request );
-        if ( !report.result.directory.isEmpty() ) {
+        // Only a complete report: an incomplete one (a full disk, say) is tried again next start.
+        if ( report.result.ok ) {
             CrashDumps::markReported( record );
         }
         reports.push_back( report );
