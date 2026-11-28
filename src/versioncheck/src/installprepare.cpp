@@ -789,7 +789,8 @@ bool discardManifest( const fs::path& path, const Log& log )
 {
     std::error_code removeError;
     std::error_code error;
-    if ( fs::remove( path, removeError ) || !fs::exists( path, error ) )
+    // Only a record confirmed gone counts: a failed check is not an absent record.
+    if ( fs::remove( path, removeError ) || pathState( path ) == PathState::Missing )
         return true;
     log( "Cannot delete " + toUtf8( path ) + ": " + removeError.message() );
     {
@@ -1387,14 +1388,13 @@ std::size_t removeNewFiles( const fs::path& directory, const std::vector<MovedFi
     std::size_t removed = 0;
     std::size_t kept = 0;
     for ( const auto& file : added ) {
-        fs::path newCopy;
-        std::string error;
-        if ( moveToFreeName( file, directory, &newCopy, &error ) != RenameResult::Renamed ) {
-            log( "Cannot remove the new " + toUtf8( file ) + ": " + error );
+        // Deleted where it is. Never only moved aside: a later setup puts back a moved-aside file
+        // whose original is missing, which would bring this new-only file back.
+        if ( !deleteOrSchedule( file, directory, log ) ) {
+            log( "Cannot remove the new " + toUtf8( file ) + "; the record is kept to try again" );
             ++kept;
             continue;
         }
-        deleteOrSchedule( newCopy, directory, log );
         ++removed;
     }
     if ( removed > 0 )
