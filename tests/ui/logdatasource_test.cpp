@@ -5,7 +5,9 @@
 
 #include <catch2/catch.hpp>
 
+#include <algorithm>
 #include <limits>
+#include <new>
 #include <type_traits>
 
 #include <QFile>
@@ -595,4 +597,96 @@ TEST_CASE( "Read failures never publish successful full or partial indexes",
     CHECK_FALSE( snapshot.available );
     CHECK( snapshot.indexedBytes == 0 );
     CHECK( snapshot.lineCount == 0_lcount );
+}
+
+namespace {
+// Records the largest read the file-change check asks for.
+class RecordingCheckFile : public QFile {
+public:
+    RecordingCheckFile( const QString& path, std::shared_ptr<qint64> maxRead )
+        : QFile( path )
+        , maxRead_( std::move( maxRead ) )
+    {
+    }
+
+protected:
+    qint64 readData( char* bytes, qint64 size ) override
+    {
+        *maxRead_ = std::max( *maxRead_, size );
+        return QFile::readData( bytes, size );
+    }
+
+private:
+    std::shared_ptr<qint64> maxRead_;
+};
+
+// Can fail inside the check with std::bad_alloc, as the system does when its commit is
+// exhausted (#201).
+class RecordingCheckOperation : public CheckFileChangesOperation {
+public:
+    RecordingCheckOperation( const QString& path, const std::shared_ptr<IndexingData>& data,
+                             AtomicFlag& interrupt, bool outOfMemory,
+                             std::shared_ptr<qint64> maxRead )
+        : CheckFileChangesOperation( path, data, interrupt )
+        , outOfMemory_( outOfMemory )
+        , maxRead_( std::move( maxRead ) )
+    {
+    }
+
+protected:
+    std::unique_ptr<QFile> createFile() const override
+    {
+        if ( outOfMemory_ ) {
+            throw std::bad_alloc();
+        }
+        return std::make_unique<RecordingCheckFile>( fileName_, maxRead_ );
+    }
+
+private:
+    bool outOfMemory_;
+    std::shared_ptr<qint64> maxRead_;
+};
+} // namespace
+
+TEST_CASE( "File change checks read in bounded blocks and survive out-of-memory",
+           "[logdata][source][issue201]" )
+{
+    QTemporaryDir directory;
+    REQUIRE( directory.isValid() );
+    const auto path = directory.filePath( "followed.log" );
+    // Larger than the indexing block, so the indexed header and tail hashes are 5 MiB each.
+    writeSourceData( path, QByteArray( 6 * 1024 * 1024 - 1, 'x' ) + "\n" );
+    auto data = std::make_shared<IndexingData>();
+    AtomicFlag interrupt;
+    FullIndexOperation initial( path, data, interrupt );
+    REQUIRE( std::get<bool>( initial.run() ) );
+    const auto indexed = IndexingData::ConstAccessor{ data.get() }.sourceSnapshot();
+    REQUIRE( indexed.available );
+    writeSourceData( path, "appended\n", QIODevice::WriteOnly | QIODevice::Append );
+
+    SECTION( "the check never asks for more than one small block" )
+    {
+        auto maxRead = std::make_shared<qint64>( 0 );
+        RecordingCheckOperation check( path, data, interrupt, false, maxRead );
+        QSignalSpy finished( &check, &IndexOperation::fileCheckFinished );
+        CHECK( std::get<MonitoredFileStatus>( check.run() ) == MonitoredFileStatus::DataAdded );
+        REQUIRE( finished.count() == 1 );
+        CHECK( *maxRead > 0 );
+        CHECK( *maxRead <= CheckFileChangesOperation::HashBlockSize );
+    }
+
+    SECTION( "out of memory keeps the index instead of forcing a reload" )
+    {
+        auto maxRead = std::make_shared<qint64>( 0 );
+        RecordingCheckOperation check( path, data, interrupt, true, maxRead );
+        QSignalSpy finished( &check, &IndexOperation::fileCheckFinished );
+        CHECK( std::get<MonitoredFileStatus>( check.run() ) == MonitoredFileStatus::Unchanged );
+        REQUIRE( finished.count() == 1 );
+        CHECK( finished.takeFirst().front().value<MonitoredFileStatus>()
+               == MonitoredFileStatus::Unchanged );
+        const auto after = IndexingData::ConstAccessor{ data.get() }.sourceSnapshot();
+        CHECK( after.available );
+        CHECK( after.indexedBytes == indexed.indexedBytes );
+        CHECK( after.generation == indexed.generation );
+    }
 }
