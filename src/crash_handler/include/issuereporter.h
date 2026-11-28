@@ -43,6 +43,10 @@ class IssueReporter {
     // Help > Report a problem: writes a report bundle, opens its folder and a prefilled issue.
     static void reportProblem();
 
+    // R06b, at startup (GUI thread): a report for each crash an earlier run left, and a notice for
+    // the newest one (never in automation). The dump stays outside the report's zip.
+    static void reportPendingCrashes();
+
     static void setInteractive( bool interactive );
 };
 

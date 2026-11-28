@@ -385,6 +385,16 @@ class Configuration final : public Persistable<Configuration> {
         loggingLevel_ = level;
     }
 
+    // R06b: crash dumps of all of CILogg's memory instead of the small default (opt-in).
+    bool fullMemoryCrashDumps() const
+    {
+        return fullMemoryCrashDumps_;
+    }
+    void setFullMemoryCrashDumps( bool fullMemory )
+    {
+        fullMemoryCrashDumps_ = fullMemory;
+    }
+
     // Default settings for new views
     bool isSearchAutoRefreshDefault() const
     {
@@ -748,6 +758,7 @@ class Configuration final : public Persistable<Configuration> {
     bool useCompressedIndex_ = true;
 
     bool enableLogging_ = false;
+    bool fullMemoryCrashDumps_ = false;
     int loggingLevel_ = 4;
 
     bool enableVersionChecking_ = true;

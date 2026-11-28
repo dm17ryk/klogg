@@ -232,6 +232,10 @@ void Configuration::retrieveFromStorage( QSettings& settings )
         = settings.value( "logging.enableLogging", DefaultConfiguration.enableLogging_ ).toBool();
     loggingLevel_
         = settings.value( "logging.verbosity", DefaultConfiguration.loggingLevel_ ).toInt();
+    fullMemoryCrashDumps_
+        = settings
+              .value( "logging.fullMemoryCrashDumps", DefaultConfiguration.fullMemoryCrashDumps_ )
+              .toBool();
 
     enableVersionChecking_
         = settings.value( "versionchecker.enabled", DefaultConfiguration.enableVersionChecking_ )
@@ -480,6 +484,7 @@ void Configuration::saveToStorage( QSettings& settings ) const
 
     settings.setValue( "logging.enableLogging", enableLogging_ );
     settings.setValue( "logging.verbosity", loggingLevel_ );
+    settings.setValue( "logging.fullMemoryCrashDumps", fullMemoryCrashDumps_ );
 
     settings.setValue( "versionchecker.enabled", enableVersionChecking_ );
     settings.setValue( "versionchecker.plugins", enablePluginUpdateChecking_ );

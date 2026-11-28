@@ -2,6 +2,10 @@
 add_executable(preview_decoder_fixture previewdecoder_fixture.cpp)
 target_link_libraries(preview_decoder_fixture PRIVATE Qt${QT_VERSION_MAJOR}::Core)
 
+# R06b: a process that installs CILogg's crash handlers and crashes on purpose.
+add_executable(crash_fixture crash_fixture.cpp)
+target_link_libraries(crash_fixture PRIVATE klogg_crash_handler)
+
 add_executable(cilogg_tests
     actionsconfig_test.cpp
     analysissource_test.cpp
@@ -9,6 +13,7 @@ add_executable(cilogg_tests
     actionparametersdialog_test.cpp
     actionparameterseditorwidget_test.cpp
     commander_test.cpp
+    crashdumps_test.cpp
     diagnostics_test.cpp
     fieldvalue_test.cpp
     datasetcontracts_test.cpp
@@ -75,8 +80,10 @@ target_compile_definitions(cilogg_tests PRIVATE
     PREVIEW_PUBLIC_LUA_PATH="${CMAKE_SOURCE_DIR}/test_data/message_decoders/pdu_probe.lua"
     CILOGG_EXAMPLE_PACK_PATH="${CMAKE_SOURCE_DIR}/plugins/examples/protocol-pack"
     PREVIEW_DECODER_FIXTURE_PATH="$<TARGET_FILE:preview_decoder_fixture>"
-    PREVIEW_FIXTURE_PATH="$<TARGET_FILE:preview_worker_fixture>")
-add_dependencies(cilogg_tests plugin_fixture preview_worker_fixture preview_decoder_fixture fake_git klogg)
+    PREVIEW_FIXTURE_PATH="$<TARGET_FILE:preview_worker_fixture>"
+    CRASH_FIXTURE_PATH="$<TARGET_FILE:crash_fixture>")
+add_dependencies(cilogg_tests plugin_fixture preview_worker_fixture preview_decoder_fixture fake_git klogg
+    crash_fixture)
 set_target_properties(
     cilogg_tests
     PROPERTIES AUTOMOC ON

@@ -3082,17 +3082,20 @@
         "Reported 2026-11-15: the exception issue for 'CheckFileChangesOperation failed: bad allocation' (release 1203, during automatic actions) held only the message and versions. Measured at the time: system commit 84/85.9 GB used (1.9 GB free), RAM 2/31.8 GB free, CILogg main process 0.83 GB private; most memory was held by other processes, so the 5 MB change-check buffer failed because the computer was out of memory.",
         "R06a local qualification 2026-11-15 (Windows, RelWithDebInfo, Qt 6.10.1, VS 2022, build-windows.ps1 exit 0): cilogg_tests [diagnostics] 9 cases / 113 assertions passed; full cilogg_tests 343 cases / 14325 assertions passed; ctest 10/10 passed; plan validator valid.",
         "R06a end-to-end check in an isolated portable copy (offscreen, CLI): create_report wrote report.md/json, journal.log, repro.json, cilogg.log, memory.csv, context.json and the zip; the journal held startup, open_file, the indexing, set_regex_lab with its payload reduced to key names, and create_report; context.json listed the open tab; list_reports returned the report.",
-        "Independent C++ review (cpp-reviewer): no critical findings; the high finding (pruning foreign folders) and the medium findings (paths in the public issue text, denylist journal, report id order, report/notice storms, warning floods in the log tail, test state) were fixed with tests before the PR."
+        "Independent C++ review (cpp-reviewer): no critical findings; the high finding (pruning foreign folders) and the medium findings (paths in the public issue text, denylist journal, report id order, report/notice storms, warning floods in the log tail, test state) were fixed with tests before the PR.",
+        "R06b local qualification 2026-11-28 (Windows 11, VS 2026 v145, RelWithDebInfo, Qt 6.10.1, offscreen): cilogg_tests [diagnostics] 18 cases / 272 assertions passed, including crash_fixture really crashing by access violation (main and worker thread), uncaught C++ exception and abort(), each leaving exactly one crash record and one minidump; full cilogg_tests 582 cases / 26676 assertions passed after the review fixes (an earlier full run hit an unrelated load-dependent flake in the plugin capture quota test, which passes 5/5 alone: issue #210). An independent C++ review (cpp-reviewer) of the diff found no compile or privacy problems; its crash-path findings (stack overflow on Windows, record before dump, concurrent crashes, terminate re-entry, GUI-thread process dump, gmtime lock, LTO export, setFolder race, macOS TLS in the signal handler, dump paths in the zip, dump size cap, startup cost) were fixed with tests or documented as limits. Hosted CI (Linux, macOS, Windows) on the PR head is the gate.",
+        "R06b root cause of empty release symbols: CI builds Windows with Ninja and CMAKE_BUILD_TYPE=Release, whose MSVC flags write no debug information, so prepare_release.cmd zipped only NO_PDB_SYMBOLS.txt (the continuous-26.04.2.1529 -pdb.zip assets are 213 bytes)."
       ],
       "limitations": [
-        "R06a (journal, memory status, report bundle, notice, list_reports/create_report) is the first slice; R06b (crash minidumps, throw-site stacks, published Windows symbols) is planned.",
-        "Release builds still have crash dumps disabled until R06b.",
         "The notice and the Help > Report a problem flow were not exercised on a real desktop (offscreen tests only).",
-        "A folder with spaces in a path other than the report's own file can leave a folder fragment in the public issue text."
+        "A folder with spaces in a path other than the report's own file can leave a folder fragment in the public issue text.",
+        "R06b: Linux and macOS write a crash record with the stack but no minidump; CILogg does not raise the core dump limit.",
+        "R06b: on macOS only throws compiled into CILogg itself are recorded as throw sites (two-level namespace); a throw inside a system library is not.",
+        "R06b: KLOGG_USE_SENTRY stays as it is in CI because it also produces the Linux .debug and macOS .dSym symbols; CILogg sets its own crash handlers again after Sentry starts."
       ],
       "slices": [
         "R06a: activity journal, memory status, report bundle, notice, commands, PR https://github.com/dm17ryk/klogg/pull/112, merged as d15f1509 on 2026-11-16",
-        "R06b: crash minidumps, throw-site stacks, published debug symbols, planned"
+        "R06b: crash records and minidumps, throw-site stacks, release PDBs, issue https://github.com/dm17ryk/klogg/issues/155, PR open"
       ]
     }
   },

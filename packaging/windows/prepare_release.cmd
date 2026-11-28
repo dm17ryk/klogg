@@ -144,13 +144,14 @@ set "PDB_LIST=%CILOGG_WORKSPACE%\release\pdb_file_list.txt"
 if exist "%PDB_LIST%" del "%PDB_LIST%"
 for /f "delims=" %%F in ('dir /b /a-d "%CILOGG_WORKSPACE%\release\*.pdb" 2^>nul') do echo %CILOGG_WORKSPACE%\release\%%F>>"%PDB_LIST%"
 
-if exist "%PDB_LIST%" (
-  7z a "%PDB_ARCHIVE%" @"%PDB_LIST%"
-) else (
-  echo No PDB files were produced for this build>"%CILOGG_WORKSPACE%\release\NO_PDB_SYMBOLS.txt"
-  7z a "%PDB_ARCHIVE%" "%CILOGG_WORKSPACE%\release\NO_PDB_SYMBOLS.txt"
-  del "%CILOGG_WORKSPACE%\release\NO_PDB_SYMBOLS.txt"
+rem R06b: the -pdb.zip is how a crash dump of this release gets its function names. Without
+rem cilogg.pdb it would be empty (as it was before Release builds wrote PDBs), so stop here.
+if not exist "%CILOGG_WORKSPACE%\release\cilogg.pdb" (
+  echo ERROR: cilogg.pdb was not produced; a crash dump of this release could not be symbolized.
+  exit /b 1
 )
+7z a "%PDB_ARCHIVE%" @"%PDB_LIST%"
+if errorlevel 1 exit /b 1
 
 if exist "%PDB_LIST%" del "%PDB_LIST%"
 

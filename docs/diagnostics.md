@@ -60,7 +60,64 @@ Windows has promised to all processes, limited by RAM plus the page file. When i
 up, any allocation can fail in any program, and CILogg is often only the one that noticed. The
 journal records when the system runs low and when CILogg grows by more than 1 GB.
 
-## Not yet included
+## Crashes and dumps
 
-Crash dumps for real crashes, the stack where an error was thrown, and published Windows debug
-symbols are the second slice of R06 (R06b).
+When CILogg itself crashes, it writes a **crash record** into `reports/crashes`. A crash is:
+
+- an access violation or another unhandled exception;
+- a fatal signal (`SIGSEGV`, `SIGBUS`, `SIGFPE`, `SIGILL`, `SIGABRT`);
+- an uncaught C++ exception (`std::terminate`);
+- `abort()`.
+
+The record is a text file, `crash-<time>-<pid>.txt`, holding:
+
+- the reason (with the uncaught exception's text, when there is one);
+- the version and commit;
+- the stack of the crashing thread;
+- the stack where that thread last threw a C++ exception.
+
+On Windows CILogg also writes a **minidump** next to the record (`.dmp`). By default it is small: every thread's stack, the loaded modules and the thread data. CILogg writes the record before the dump, so a dump that takes too long or is cut short still leaves a record. A dump the record does not call written is removed at the next start. On Linux and macOS there is no minidump. The record says whether the system keeps a core dump (the core dump limit), and CILogg does not change that limit.
+
+Nothing is uploaded. The 10 newest crash records are kept, and their dumps are kept within 2 GiB in all (the newest dump is always kept).
+
+The crash handlers work from buffers prepared in advance and avoid the heap and locks where they can. That is best effort, not a guarantee, in a process that is already broken. On Linux and macOS a stack overflow on a thread other than the main thread ends CILogg without a record.
+
+The next start turns each new crash record into a **crash report**, a report folder like the ones above:
+
+- The report holds the crash record.
+- It names the dump file, but it does not copy the dump, and the zip never contains it. The notice shows the dump's full path. The zipped report gives only the file name, since a full path holds the user name.
+- At most the 3 newest crashes get a report at one start. Older ones are only marked, and their records stay in `reports/crashes`.
+- A record written in the last 10 seconds may belong to another CILogg that is still writing it, so it waits for a later start.
+- A notice shows the newest crash. In automation only the report is written.
+
+**Full-memory crash dumps** (*Options > Advanced > Logging*) make the Windows crash dump hold all of CILogg's memory. Such a dump is much larger and can hold anything that was in memory. The setting is off by default, and it applies only to crashes.
+
+### Where an error was thrown
+
+CILogg records, for every thread, the stack where its latest C++ exception was thrown. A background error report gets a **Where the error was thrown** section with those frames, newest first.
+
+On Windows a report of a background error also gets a small minidump of the whole process, `private/process.dmp`. It sits in a subfolder of the report folder and is never in the zip. If it is not written within 30 seconds, the report goes on without it.
+
+Platform limits:
+
+- **Windows:** frames are `module+offset`, plus the function name where a `.pdb` is next to the binary (a development build).
+- **Linux:** every throw is recorded, also those inside Qt and the C++ library.
+- **macOS:** only the throws compiled into CILogg itself are recorded, and function names stay mangled.
+- On Windows, a `throw;` that rethrows a caught exception records the rethrow's site; on Linux and macOS the original site stays.
+
+### Debug symbols
+
+Every release publishes the symbols that turn `module+offset` frames and dumps into function names:
+
+- Windows: `cilogg-<version>-<arch>-Qt6-pdb.zip`. Release builds write a `.pdb` for each binary, and the Windows package step fails if `cilogg.pdb` is missing.
+- Linux: `cilogg-<version>-symbols.tar.xz`.
+
+To symbolize a Windows dump, unpack the matching `-pdb.zip` next to the dump and open the dump in WinDbg or Visual Studio. The `.pdb` files must come from the same release as the dump.
+
+### Privacy of dumps
+
+A dump is an image of CILogg's memory. It can hold passwords, tokens (for example a plugin repository token, decision D16) and log contents that were in use. That is why dumps stay out of every report zip, and why the notice and `report.md` say where the dump is and that it must be shared only privately with the maintainer, never in a public issue. The crash record and the throw-site frames hold no memory contents. The public GitHub issue text gets neither of them.
+
+### Sentry builds
+
+A build with `KLOGG_USE_SENTRY=ON` still starts Sentry (no DSN is configured). CILogg then sets its own crash handlers again, so the local crash record and dump are written as in every other build.

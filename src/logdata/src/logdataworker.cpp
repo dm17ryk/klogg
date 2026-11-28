@@ -53,6 +53,7 @@
 
 #include "configuration.h"
 #include "containers.h"
+#include "crashdumps.h"
 #include "diagnostics.h"
 #include "dispatch_to.h"
 #include "encodingdetector.h"
@@ -76,12 +77,20 @@ namespace {
 void reportOperationFailure( const QString& operation, const QString& error,
                              const QString& fileName, QVariantMap details )
 {
+    // R06b: first, before anything here can throw and catch on this thread. Called in the catch
+    // block, so this thread's latest throw is the one that failed.
+    auto throwStack = cilogg::diagnostics::currentThrowStack();
     LOG_ERROR << error;
     details.insert( QStringLiteral( "thread" ), QThread::currentThread()->objectName() );
-    dispatchToMainThread( [ operation, error, fileName, details ]() {
-        IssueReporter::reportException( cilogg::diagnostics::ReportRequest{
-            QStringLiteral( "exception" ), operation, error, fileName, details } );
-    } );
+    cilogg::diagnostics::ReportRequest request;
+    request.kind = QStringLiteral( "exception" );
+    request.operation = operation;
+    request.error = error;
+    request.filePath = fileName;
+    request.details = std::move( details );
+    request.throwStack = std::move( throwStack );
+    request.processDump = true;
+    dispatchToMainThread( [ request ]() { IssueReporter::reportException( request ); } );
 }
 
 QVariantMap indexedSizeDetails( const std::shared_ptr<IndexingData>& indexingData )

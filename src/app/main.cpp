@@ -56,6 +56,7 @@
 #include <QSize>
 #include <QSplashScreen>
 #include <QThread>
+#include <QTimer>
 #include <algorithm>
 #include <cstdio>
 
@@ -890,6 +891,8 @@ int main( int argc, char* argv[] )
     }
 
     app.startBackgroundTasks();
+    // R06b: a crash of an earlier run becomes a report (and a notice) once the window is up.
+    QTimer::singleShot( 0, &app, [] { IssueReporter::reportPendingCrashes(); } );
 
     return app.exec();
 }

@@ -123,6 +123,15 @@ void showReportNotice( const cilogg::diagnostics::ReportResult& result,
                       .arg( QDir::toNativeSeparators( result.archive.isEmpty() ? result.directory
                                                                                : result.archive ) )
                 : QStringLiteral( "\n\nThe report could not be saved: %1" ).arg( result.error );
+    // R06b: a dump is never in the zip, and it must not go into the public issue.
+    auto dumps = request.privateFiles;
+    if ( !result.processDump.isEmpty() ) {
+        dumps.push_back( QDir::toNativeSeparators( result.processDump ) );
+    }
+    if ( !dumps.isEmpty() ) {
+        text += QStringLiteral( "\n\nMemory dump (not in the zip):\n%1\n%2" )
+                    .arg( dumps.join( QLatin1Char( '\n' ) ), DiagnosticReports::dumpPrivacyNote() );
+    }
 
     // One notice at a time: further problems are still journaled and reported, not shown again.
     static QPointer<QMessageBox> openNotice;
@@ -207,6 +216,21 @@ void IssueReporter::reportException( const cilogg::diagnostics::ReportRequest& r
     const auto result = DiagnosticReports::create( reportRequest );
     if ( canShowDialogs() ) {
         showReportNotice( result, reportRequest, repeatsBefore );
+    }
+}
+
+void IssueReporter::reportPendingCrashes()
+{
+    using namespace cilogg::diagnostics;
+    const auto crashes = DiagnosticReports::reportPendingCrashes();
+    for ( const auto& crash : crashes ) {
+        ActivityJournal::record(
+            QStringLiteral( "error" ),
+            QStringLiteral( "An earlier run crashed: %1" ).arg( crash.request.error ) );
+    }
+    // The newest crash gets the notice; every crash has its own report.
+    if ( !crashes.isEmpty() && canShowDialogs() ) {
+        showReportNotice( crashes.back().result, crashes.back().request, 0 );
     }
 }
 
