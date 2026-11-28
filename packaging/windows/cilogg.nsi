@@ -1,5 +1,7 @@
 # NSIS script creating the Windows installer for cilogg
 
+Unicode true
+
 # Is passed to the script using -DVERSION=$(git describe) on the command line
 !ifndef VERSION
     !define VERSION 'dev-build'
@@ -15,12 +17,17 @@
 
 # Headers
 !include "MUI2.nsh"
-!include "FileAssociation.nsh"
+; Next to this script, also when it is compiled with /NOCD from the package folder.
+!include "${__FILEDIR__}\FileAssociation.nsh"
 !include "LogicLib.nsh"
-!include "StrFunc.nsh"
+!include "FileFunc.nsh"
 
 # General
+!ifdef OUTFILE
+OutFile "${OUTFILE}"
+!else
 OutFile "cilogg-${VERSION}-${PLATFORM}-${QT_MAJOR}-setup.exe"
+!endif
 
 XpStyle on
 
@@ -37,7 +44,13 @@ InstallDirRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\cilog
 ; cilogg icon
 ; !define MUI_ICON cilogg.ico
 
+!ifdef CILOGG_TEST_INSTALL
+; Test builds (tests/packaging/windows_installer_test.ps1) install into a temporary folder
+; without administrator rights and leave the registry, Start menu and Send To alone.
+RequestExecutionLevel user
+!else
 RequestExecutionLevel admin
+!endif
 
 Name "CILogg"
 Caption "CILogg ${VERSION} Setup"
@@ -66,72 +79,168 @@ the COPYING and NOTICE files.$\r$\n$\r$\n$_CLICK"
 # Languages
 !insertmacro MUI_LANGUAGE "English"
 
-${StrCase}
-${StrStr}
+; Installer log (UTF-16LE) in the installation folder: the update helper runs setup silently,
+; which discards DetailPrint, and copies this log next to its own. Like the report, it is written
+; into $INSTDIR, where setup copies its files anyway, never into the user's profile.
+Var CiloggLog
+; The files that blocked the installation and the processes using them.
+Var CiloggReport
+; 1 once files in $INSTDIR were moved aside: a failure from then on puts them back.
+Var CiloggPrepared
+; 1 when a new file could not be written.
+Var CiloggCopyFailed
+; 1 when the previous files could not all be put back after a failure.
+Var CiloggRestoreFailed
+; $INSTDIR as a command-line argument: "C:\." for a drive root, whose trailing backslash would
+; escape the closing quote.
+Var CiloggDir
+; 1 when a rollback found the update's cleanup already started and completed it instead.
+Var CiloggFinishedInstead
+; 1 when that completed cleanup could not put back every file it did not replace.
+Var CiloggNotPutBack
 
-; Stop every instance, including headless MCP servers launched by different tools.
-; Verify the process list instead of assuming taskkill's exit code means files are free.
-Function StopCILoggProcessesByImage
+Function CiloggWriteLog
     Exch $0
     Push $1
     Push $2
-    Push $3
-    Push $4
-    ${StrCase} $0 $0 "L"
-    StrCpy $4 0
-
-    check_processes:
-    nsExec::ExecToStack /TIMEOUT=10000 '"$SYSDIR\tasklist.exe" /FO CSV /NH /FI "IMAGENAME eq $0"'
-    Pop $1
-    Pop $2
-    DetailPrint "CILogg process check: image=$0, attempt=$4, exit=$1"
-    ${If} $1 != "0"
-        DetailPrint "CILogg process query failed: $2"
-        SetErrorLevel 2
-        Abort "Cannot inspect running CILogg processes. Installation cancelled."
+    DetailPrint "$0"
+    ${If} $CiloggLog != ""
+        FileOpen $1 "$CiloggLog" a
+        ${If} $1 != ""
+            FileSeek $1 0 END $2
+            ${If} $2 == 0
+                FileWriteWord $1 0xFEFF
+            ${EndIf}
+            FileWriteUTF16LE $1 "$0$\r$\n"
+            FileClose $1
+        ${EndIf}
     ${EndIf}
-    ${StrCase} $2 $2 "L"
-    ${StrStr} $3 $2 '"$0","'
-    ${If} $3 == ""
-        DetailPrint "CILogg process check complete: no instances of $0 remain"
-        Goto processes_stopped
-    ${EndIf}
-    ${If} $4 >= 10
-        DetailPrint "CILogg shutdown failed after $4 attempts: image=$0, remaining=$2"
-        SetErrorLevel 2
-        Abort "CILogg processes are still running. Installation cancelled before replacing files."
-    ${EndIf}
-
-    DetailPrint "Stopping all running instances of $0"
-    ; Do not use /T: this installer may be a descendant of an MCP server.
-    nsExec::ExecToStack /TIMEOUT=10000 '"$SYSDIR\taskkill.exe" /F /IM "$0"'
-    Pop $1
-    Pop $2
-    DetailPrint "CILogg shutdown request: image=$0, exit=$1, output=$2"
-    IntOp $4 $4 + 1
-    Sleep 250
-    Goto check_processes
-
-    processes_stopped:
-    Pop $4
-    Pop $3
     Pop $2
     Pop $1
     Pop $0
 FunctionEnd
 
-Function StopRunningCILogg
-    Push "cilogg.exe"
-    Call StopCILoggProcessesByImage
-    Push "cilogg_portable.exe"
-    Call StopCILoggProcessesByImage
-    Push "cilogg_grep.exe"
-    Call StopCILoggProcessesByImage
-    Push "cilogg_crashpad_handler.exe"
-    Call StopCILoggProcessesByImage
-    Push "cilogg_minidump_dump.exe"
-    Call StopCILoggProcessesByImage
-    ; cilogg_updater.exe may be waiting for setup to finish and must stay alive.
+!macro CiloggLog text
+    Push "${text}"
+    Call CiloggWriteLog
+!macroend
+!define CiloggLog "!insertmacro CiloggLog"
+
+Function CiloggStartLog
+    CreateDirectory "$INSTDIR"
+    ; Names shared with cilogg_updater (update_protocol::InstallerLogFileName and
+    ; InstallerReportFileName).
+    StrCpy $CiloggLog "$INSTDIR\cilogg-installer.log"
+    StrCpy $CiloggReport "$INSTDIR\cilogg-installer-report.txt"
+    Delete "$CiloggLog"
+    Delete "$CiloggReport"
+    StrCpy $CiloggDir "$INSTDIR"
+    StrCpy $0 "$INSTDIR" 1 -1
+    ${If} $0 == "\"
+        StrCpy $CiloggDir "$INSTDIR."
+    ${EndIf}
+    ${GetTime} "" "L" $0 $1 $2 $3 $4 $5 $6
+    ${CiloggLog} "CILogg ${VERSION} setup started $2-$1-$0 $4:$5:$6"
+FunctionEnd
+
+; Running CILogg processes are not closed: Windows lets a running executable or a loaded DLL be
+; renamed, so the helper moves the files that may be in use aside (*.cilogg-old) and the new
+; ones are copied in. MCP servers started by AI agents, CLI jobs and other windows keep their
+; old copy; nothing outside $INSTDIR is touched. The helper is this installer's own copy, run
+; from its temporary folder.
+Function CiloggPrepareInstallDirectory
+    Call CiloggStartLog
+    ${CiloggLog} "CILogg installation directory: $INSTDIR"
+    InitPluginsDir
+    File "/oname=$PLUGINSDIR\cilogg_updater.exe" release\cilogg_updater.exe
+    nsExec::ExecToLog '"$PLUGINSDIR\cilogg_updater.exe" --installer-prepare "$CiloggDir" --log "$CiloggLog" --report "$CiloggReport"'
+    Pop $0
+    ${If} $0 == 0
+        StrCpy $CiloggPrepared 1
+        Return
+    ${EndIf}
+    ${If} $0 == 2
+        ; Exit codes: update_protocol::Installer*ExitCode.
+        ${CiloggLog} "Setup cancelled before replacing files: files in $INSTDIR are in use and could not be moved aside"
+        SetErrorLevel 2
+        Abort "Some CILogg files are in use and cannot be replaced. Installation cancelled before replacing files."
+    ${EndIf}
+    ${If} $0 == 3
+        ; Files were moved aside (by this run or an interrupted earlier one, as recorded in
+        ; cilogg-update-moves.txt) and not all of them could be put back: try once more.
+        StrCpy $CiloggPrepared 1
+        Call CiloggRollback
+        ${If} $CiloggFinishedInstead == 1
+            ${CiloggLog} "An earlier update's cleanup was completed; run setup again"
+            SetErrorLevel 5
+            Abort "An earlier CILogg update was completed first. Run setup again."
+        ${EndIf}
+        ${If} $CiloggRestoreFailed == 1
+            ${CiloggLog} "Files recorded in $INSTDIR\cilogg-update-moves.txt could not be put back; close the programs using CILogg files and run setup again"
+            SetErrorLevel 4
+            Abort "Some CILogg files could not be put back. Close the programs using CILogg files, then run setup again."
+        ${EndIf}
+        SetErrorLevel 2
+        Abort "Some CILogg files are in use and cannot be replaced. Installation cancelled."
+    ${EndIf}
+    ${If} $0 == "error"
+        ${If} ${FileExists} "$PLUGINSDIR\cilogg_updater.exe"
+            ${CiloggLog} "Setup could not start $PLUGINSDIR\cilogg_updater.exe"
+        ${Else}
+            ${CiloggLog} "Setup could not unpack $PLUGINSDIR\cilogg_updater.exe"
+        ${EndIf}
+    ${Else}
+        ; The helper stopped unexpectedly (for example, it was killed) and may have moved files
+        ; aside already: put back what its manifest records.
+        StrCpy $CiloggPrepared 1
+        Call CiloggRollback
+        ${If} $CiloggRestoreFailed == 1
+            ${CiloggLog} "Setup cancelled: the installation folder could not be prepared (result $0) or restored"
+            SetErrorLevel 4
+            Abort "The CILogg folder could not be prepared, and the previous version could not be fully restored. Run setup again."
+        ${EndIf}
+    ${EndIf}
+    ${CiloggLog} "Setup cancelled before replacing files: the installation folder could not be prepared (result $0)"
+    SetErrorLevel 5
+    Abort "The CILogg folder could not be prepared. Installation cancelled before replacing files."
+FunctionEnd
+
+; Puts the moved-aside previous files back (once).
+Function CiloggRollback
+    ${If} $CiloggPrepared == 1
+        Push $0
+        ${CiloggLog} "Restoring the previous files"
+        nsExec::ExecToLog '"$PLUGINSDIR\cilogg_updater.exe" --installer-rollback "$CiloggDir" --log "$CiloggLog"'
+        Pop $0
+        StrCpy $CiloggPrepared 0
+        ${If} $0 == 7
+        ${OrIf} $0 == 8
+            ; FinishedInsteadExitCode (8: with files not put back): the new version is installed.
+            StrCpy $CiloggFinishedInstead 1
+            ${If} $0 == 8
+                StrCpy $CiloggNotPutBack 1
+            ${EndIf}
+            ${CiloggLog} "The update's cleanup had started; it was completed instead of undone"
+        ${ElseIf} $0 != 0
+            StrCpy $CiloggRestoreFailed 1
+            ${CiloggLog} "Some previous files could not be restored (result $0); run setup again"
+        ${EndIf}
+        Pop $0
+    ${EndIf}
+FunctionEnd
+
+; Also after NSIS itself stopped the installation (a file it could not write, in GUI mode once
+; the user closes the page).
+Function .onInstFailed
+    ${If} $CiloggPrepared == 1
+        Call CiloggRollback
+        ${If} $CiloggRestoreFailed == 1
+            SetErrorLevel 4
+        ${Else}
+            SetErrorLevel 3
+        ${EndIf}
+    ${EndIf}
+    ${CiloggLog} "CILogg ${VERSION} setup failed"
 FunctionEnd
 
 # Installer sections
@@ -139,14 +248,10 @@ Section "CILogg" cilogg
     ; Prevent this section from being unselected
     SectionIn RO
 
-    DetailPrint "CILogg installation directory: $INSTDIR"
-    Call StopRunningCILogg
+    Call CiloggPrepareInstallDirectory
     SetOutPath $INSTDIR
-File release\cilogg.exe
-File release\cilogg_grep.exe
-File release\cilogg_updater.exe
-    File /nonfatal release\cilogg_crashpad_handler.exe
-    File /nonfatal release\cilogg_minidump_dump.exe
+    ClearErrors
+    ; Every executable is written by the last section, once the files it loads are in place.
     File /nonfatal release\tbb12.dll
 
     File COPYING
@@ -156,43 +261,22 @@ File release\cilogg_updater.exe
     File MCP.md
     File release\documentation.html
     SetOutPath $INSTDIR\python_runtime
-    File /nonfatal /r release\python_runtime\*
+    File /nonfatal /r /x *.exe release\python_runtime\*
     SetOutPath $INSTDIR\plugins
-    File /r release\plugins\*
+    File /r /x *.exe release\plugins\*
     SetOutPath $INSTDIR\plugin-sdk
-    File /r release\plugin-sdk\*
+    File /r /x *.exe release\plugin-sdk\*
     SetOutPath $INSTDIR
     File release\plugin-sdk.md
+    ${If} ${Errors}
+        StrCpy $CiloggCopyFailed 1
+    ${EndIf}
 
-    ; Create the 'sendto' link
-    CreateShortCut "$SENDTO\cilogg.lnk" "$INSTDIR\cilogg.exe" "" "$INSTDIR\cilogg.exe" 0
-
-    ; Register as an otion (but not main handler) for some files (.txt, .Log, .cap)
-    WriteRegStr HKCR "Applications\cilogg.exe" "" ""
-    WriteRegStr HKCR "Applications\cilogg.exe\shell" "" "open"
-    WriteRegStr HKCR "Applications\cilogg.exe\shell\open" "CILogg log viewer" "cilogg"
-    WriteRegStr HKCR "Applications\cilogg.exe\shell\open\command" "" '"$INSTDIR\cilogg.exe" "%1"'
-    WriteRegStr HKCR "*\OpenWithList\cilogg.exe" "" ""
-    WriteRegStr HKCR ".txt\OpenWithList\cilogg.exe" "" ""
-    WriteRegStr HKCR ".Log\OpenWithList\cilogg.exe" "" ""
-    WriteRegStr HKCR ".cap\OpenWithList\cilogg.exe" "" ""
-
-    ; Register uninstaller
-    WriteRegExpandStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\cilogg"\
-"UninstallString" '"$INSTDIR\Uninstall.exe"'
-    WriteRegExpandStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\cilogg"\
-"InstallLocation" "$INSTDIR"
-    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\cilogg" "DisplayName" "CILogg"
-    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\cilogg" "DisplayVersion" "${VERSION}"
-    WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\cilogg" "NoModify" "1"
-    WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\cilogg" "NoRepair" "1"
-
-    ; Create uninstaller
-    WriteUninstaller "$INSTDIR\Uninstall.exe"
 SectionEnd
 
 Section "Qt Runtime libraries" qtlibs
     SetOutPath $INSTDIR
+    ClearErrors
     File /nonfatal release\Qt*.dll
     File /nonfatal release\icu*.dll
     File /nonfatal release\D3Dcompiler_47.dll
@@ -217,15 +301,19 @@ Section "Qt Runtime libraries" qtlibs
     File /nonfatal /r release\tls\*
     SetOutPath $INSTDIR\translations
     File /nonfatal /r release\translations\*
+    ${If} ${Errors}
+        StrCpy $CiloggCopyFailed 1
+    ${EndIf}
 
 SectionEnd
 
 Section "MSVC Runtime libraries" vcruntime
     SetOutPath $INSTDIR
+    ClearErrors
     File release\msvcp140.dll
     File release\msvcp140_1.dll
     File release\vcruntime140.dll
-    
+
 !if ${PLATFORM} == "x64"
     File release\vcruntime140_1.dll
 
@@ -235,17 +323,122 @@ Section "MSVC Runtime libraries" vcruntime
     File /nonfatal release\libcrypto-1_1.dll
     File /nonfatal release\libssl-1_1.dll
 !endif
+    ${If} ${Errors}
+        StrCpy $CiloggCopyFailed 1
+    ${EndIf}
 
 SectionEnd
 
+; The executable is written last: a CILogg started from the folder while files are copied
+; fails to start instead of loading a mix of old and new files. Then the moved-aside files are
+; deleted (or, while still in use, left for the next update and the next restart) and the ones
+; this installation did not replace are put back.
+Section "-CILogg executable" ciloggexe
+    ${If} $CiloggCopyFailed != 1
+        ; Only into a complete folder: a CILogg MCP server that keeps running starts
+        ; cilogg_grep.exe and Python from here at any time.
+        ClearErrors
+        SetOutPath $INSTDIR\python_runtime
+        File /nonfatal /r release\python_runtime\*.exe
+        SetOutPath $INSTDIR\plugins
+        File /nonfatal /r release\plugins\*.exe
+        SetOutPath $INSTDIR\plugin-sdk
+        File /nonfatal /r release\plugin-sdk\*.exe
+        SetOutPath $INSTDIR
+        File release\cilogg_grep.exe
+        File release\cilogg_updater.exe
+        File /nonfatal release\cilogg_crashpad_handler.exe
+        File /nonfatal release\cilogg_minidump_dump.exe
+        File release\cilogg.exe
+        WriteUninstaller "$INSTDIR\Uninstall.exe"
+        ${If} ${Errors}
+            StrCpy $CiloggCopyFailed 1
+        ${EndIf}
+    ${EndIf}
+    ${If} $CiloggCopyFailed == 1
+        ${CiloggLog} "Copying the new files into $INSTDIR failed"
+        Call CiloggRollback
+        ${If} $CiloggRestoreFailed == 1
+            SetErrorLevel 4
+            Abort "CILogg files could not be written, and the previous version could not be fully restored. Run setup again."
+        ${EndIf}
+        SetErrorLevel 3
+        Abort "CILogg files could not be written. The previous version was restored."
+    ${EndIf}
+    nsExec::ExecToLog '"$PLUGINSDIR\cilogg_updater.exe" --installer-finish "$CiloggDir" --log "$CiloggLog"'
+    Pop $0
+    ; 0 (done) and 5 (FinishIncompleteExitCode) leave the new version installed. Any other result
+    ; (the helper did not start, was stopped, could not write the finishing mark, or failed) goes
+    ; through the rollback: it undoes the installation, or, when the cleanup had already started,
+    ; completes it instead.
+    ${If} $0 != 0
+    ${AndIf} $0 != 5
+        ${CiloggLog} "The update could not be completed (result $0)"
+        Call CiloggRollback
+        ${If} $CiloggFinishedInstead == 1
+            StrCpy $0 0
+            ${If} $CiloggNotPutBack == 1
+                StrCpy $0 5
+            ${EndIf}
+        ${EndIf}
+    ${EndIf}
+    ${If} $0 != 0
+    ${AndIf} $0 != 5
+        ${If} $CiloggRestoreFailed == 1
+            SetErrorLevel 4
+            Abort "CILogg could not be updated, and the previous version could not be fully restored. Run setup again."
+        ${EndIf}
+        SetErrorLevel 3
+        Abort "CILogg could not be updated. The previous version was restored."
+    ${EndIf}
+    StrCpy $CiloggPrepared 0
+    ${If} $0 != 0
+        ${CiloggLog} "Some files of the previous version that this installation does not replace could not be put back (result $0); run setup again"
+        SetErrorLevel 6
+        MessageBox MB_OK|MB_ICONEXCLAMATION "CILogg was installed, but some files of the previous version could not be put back. Run setup again." /SD IDOK
+    ${EndIf}
+!ifndef CILOGG_TEST_INSTALL
+    ; Registered only once the new version is in place.
+    ; Create the 'sendto' link
+    CreateShortCut "$SENDTO\cilogg.lnk" "$INSTDIR\cilogg.exe" "" "$INSTDIR\cilogg.exe" 0
+
+    ; Register as an otion (but not main handler) for some files (.txt, .Log, .cap)
+    WriteRegStr HKCR "Applications\cilogg.exe" "" ""
+    WriteRegStr HKCR "Applications\cilogg.exe\shell" "" "open"
+    WriteRegStr HKCR "Applications\cilogg.exe\shell\open" "CILogg log viewer" "cilogg"
+    WriteRegStr HKCR "Applications\cilogg.exe\shell\open\command" "" '"$INSTDIR\cilogg.exe" "%1"'
+    WriteRegStr HKCR "*\OpenWithList\cilogg.exe" "" ""
+    WriteRegStr HKCR ".txt\OpenWithList\cilogg.exe" "" ""
+    WriteRegStr HKCR ".Log\OpenWithList\cilogg.exe" "" ""
+    WriteRegStr HKCR ".cap\OpenWithList\cilogg.exe" "" ""
+
+    ; Register uninstaller
+    WriteRegExpandStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\cilogg"\
+"UninstallString" '"$INSTDIR\Uninstall.exe"'
+    WriteRegExpandStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\cilogg"\
+"InstallLocation" "$INSTDIR"
+    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\cilogg" "DisplayName" "CILogg"
+    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\cilogg" "DisplayVersion" "${VERSION}"
+    WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\cilogg" "NoModify" "1"
+    WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\cilogg" "NoRepair" "1"
+!endif
+    ${CiloggLog} "CILogg ${VERSION} installed in $INSTDIR"
+SectionEnd
+
+; After the last section: they point at the new executable, so only once it is in place.
 Section "Create Start menu shortcut" shortcut
+!ifndef CILOGG_TEST_INSTALL
     SetShellVarContext all
     CreateShortCut "$SMPROGRAMS\cilogg.lnk" "$INSTDIR\cilogg.exe" "" "$INSTDIR\cilogg.exe" 0
+!endif
 SectionEnd
 
 Section /o "Associate with .log files" associate
+!ifndef CILOGG_TEST_INSTALL
     ${registerExtension} "$INSTDIR\cilogg.exe" ".log" "Log file"
+!endif
 SectionEnd
+
 
 # Descriptions
 !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
@@ -260,15 +453,21 @@ you already have the Microsoft Visual C++ 2017 Redistributable installed."
 
 # Uninstaller
 Section "Uninstall"
-    RMDir /r "$INSTDIR\plugins"
-    RMDir /r "$INSTDIR\plugin-sdk"
+    RMDir /r /REBOOTOK "$INSTDIR\plugins"
+    RMDir /r /REBOOTOK "$INSTDIR\plugin-sdk"
     Delete "$INSTDIR\plugin-sdk.md"
     Delete "$INSTDIR\Uninstall.exe"
 
     Delete "$INSTDIR\cilogg.exe"
     Delete "$INSTDIR\cilogg_grep.exe"
+    Delete "$INSTDIR\cilogg_updater.exe"
     Delete "$INSTDIR\cilogg_crashpad_handler.exe"
     Delete "$INSTDIR\cilogg_minidump_dump.exe"
+    ; Files an update moved aside while a process used them, and its record.
+    Delete /REBOOTOK "$INSTDIR\*.cilogg-old*"
+    Delete "$INSTDIR\cilogg-update-moves.txt"
+    Delete "$INSTDIR\cilogg-installer.log"
+    Delete "$INSTDIR\cilogg-installer-report.txt"
     Delete "$INSTDIR\README.md"
     Delete "$INSTDIR\COPYING"
     Delete "$INSTDIR\NOTICE"
@@ -316,16 +515,16 @@ Section "Uninstall"
     Delete "$INSTDIR\mimalloc-redirect.dll"
     Delete "$INSTDIR\mimalloc-redirect32.dll"
     Delete "$INSTDIR\*.dll"
-    RMDir /r "$INSTDIR\python_runtime"
-    RMDir /r "$INSTDIR\platforms"
-    RMDir /r "$INSTDIR\generic"
-    RMDir /r "$INSTDIR\iconengines"
-    RMDir /r "$INSTDIR\imageformats"
-    RMDir /r "$INSTDIR\networkinformation"
-    RMDir /r "$INSTDIR\sqldrivers"
-    RMDir /r "$INSTDIR\styles"
-    RMDir /r "$INSTDIR\tls"
-    RMDir /r "$INSTDIR\translations"
+    RMDir /r /REBOOTOK "$INSTDIR\python_runtime"
+    RMDir /r /REBOOTOK "$INSTDIR\platforms"
+    RMDir /r /REBOOTOK "$INSTDIR\generic"
+    RMDir /r /REBOOTOK "$INSTDIR\iconengines"
+    RMDir /r /REBOOTOK "$INSTDIR\imageformats"
+    RMDir /r /REBOOTOK "$INSTDIR\networkinformation"
+    RMDir /r /REBOOTOK "$INSTDIR\sqldrivers"
+    RMDir /r /REBOOTOK "$INSTDIR\styles"
+    RMDir /r /REBOOTOK "$INSTDIR\tls"
+    RMDir /r /REBOOTOK "$INSTDIR\translations"
     RMDir "$INSTDIR"
 
     ; Remove settings in %appdata%

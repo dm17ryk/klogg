@@ -81,6 +81,18 @@ struct PendingUpdate {
     static PendingUpdate fromJson( const QJsonObject& json, QString* errorMessage = nullptr );
 };
 
+// A process that kept files of the installation folder in use, so the Windows installer could not
+// replace them (a "blocker=" line of install-result.txt).
+struct InstallBlocker {
+    qint64 pid = 0;
+    QString name;
+    // Empty when the installer could not query it.
+    QString imagePath;
+    qint64 parentPid = 0;
+    // Empty when the parent had exited.
+    QString parentName;
+};
+
 QString installKindName( InstallKind kind );
 InstallKind installKindFromName( const QString& name );
 QString updateStateName( UpdateState state );

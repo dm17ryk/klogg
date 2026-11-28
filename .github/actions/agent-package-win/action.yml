@@ -49,10 +49,19 @@ runs:
         xcopy cilogg-%CILOGG_VERSION%-%CILOGG_ARCH%-%CILOGG_QT%-pdb.zip %CILOGG_BUILD_ROOT%\packages /y
         xcopy cilogg-%CILOGG_VERSION%-%CILOGG_ARCH%-%CILOGG_QT%-setup.exe %CILOGG_BUILD_ROOT%\packages /y
 
-    - name: Test installer process shutdown
+    - name: Test installer with running CILogg MCP servers
+      if: ${{ env.CILOGG_ARCH != 'arm64' }}
       shell: cmd
       run: |
         powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests\packaging\windows_installer_test.ps1 -OutputDirectory "%CILOGG_BUILD_ROOT%\reports\installer-processes"
+
+    # The arm64 package is cross-compiled on an x64 runner and cannot run here: compile its
+    # installer, and run the whole test in the "Windows arm64 installer" job on an arm64 runner.
+    - name: Compile the arm64 test installer
+      if: ${{ env.CILOGG_ARCH == 'arm64' }}
+      shell: cmd
+      run: |
+        powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests\packaging\windows_installer_test.ps1 -CompileOnly -OutputDirectory "%CILOGG_BUILD_ROOT%\reports\installer-processes"
 
     #- name: Win codesign installer
     #  if: ${{ github.event_name != 'pull_request' }}

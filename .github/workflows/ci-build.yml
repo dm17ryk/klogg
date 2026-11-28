@@ -763,3 +763,57 @@ jobs:
           name: packages-${{ matrix.config.artifacts_id }}
           path: '${{ env.CILOGG_BUILD_ROOT }}/packages/*'
           if-no-files-found: error
+
+      # The files cilogg.nsi packages, for the installer test on a native arm64 runner.
+      - name: Upload the arm64 installer test package
+        if: ${{ matrix.config.arch == 'arm64' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-test-package-${{ matrix.config.artifacts_id }}
+          path: |
+            release/**
+            !release/**/*.pdb
+            COPYING
+            NOTICE
+            README.md
+            DOCUMENTATION.md
+            MCP.md
+          if-no-files-found: error
+          retention-days: 7
+
+  # The arm64 package is cross-compiled on an x64 runner, where it cannot run: install it here,
+  # on an arm64 runner, while its MCP servers run (issue #191).
+  WindowsArm64Installer:
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    name: Windows arm64 installer (native arm64)
+    needs: Windows
+    runs-on: windows-11-arm
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: installer-test-package-windows-arm64-vectorscan-qt6
+          path: ${{ runner.temp }}\arm64-package
+
+      - name: Install NSIS
+        shell: pwsh
+        run: |
+          $makensis = Get-Command makensis.exe -ErrorAction SilentlyContinue
+          if (!$makensis -and !(Test-Path -LiteralPath "${env:ProgramFiles(x86)}\NSIS\makensis.exe")) {
+            choco install nsis -y --no-progress
+            if ($LASTEXITCODE -ne 0) { throw "NSIS installation failed: $LASTEXITCODE" }
+          }
+
+      - name: Test installer with running CILogg MCP servers
+        shell: cmd
+        run: |
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests\packaging\windows_installer_test.ps1 -Platform arm64 -PackageRoot "%RUNNER_TEMP%\arm64-package" -OutputDirectory "%RUNNER_TEMP%\installer-processes"
+
+      - name: Upload installer test diagnostics
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-processes-windows-arm64
+          path: ${{ runner.temp }}\installer-processes
+          if-no-files-found: warn

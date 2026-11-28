@@ -7,6 +7,7 @@
 #include <thread>
 #include <vector>
 
+#include "installprepare.h"
 #include "updatearguments.h"
 #include "updatefiles.h"
 
@@ -50,6 +51,9 @@ struct Arguments {
 std::ofstream logFile;
 // Which step produced the transaction's exit code (see update_protocol::*Phase).
 std::string resultPhase = cilogg::update_protocol::InstallerPhase;
+// Added to install-result.txt after a failed Windows installer.
+std::string resultInstallerLog;
+std::vector<std::string> resultBlockers;
 
 void log( const std::string& message )
 {
@@ -283,13 +287,82 @@ int runElevated( const fs::path& executable, const std::wstring& parameters )
     }
 }
 
-bool launch( const Arguments& args )
+// The installer writes its log and report into the installation folder; the log is copied here,
+// next to the helper's own log.
+fs::path installerLogCopyPath( const Arguments& args )
 {
-    std::wstring command = quote( args.relaunch ) + L" "
-                           + cilogg::update_protocol::StartupTokenOptionWide + L" "
-                           + std::wstring( args.token.begin(), args.token.end() ) + L" "
-                           + cilogg::update_protocol::StartupAcknowledgementOptionWide + L" "
-                           + quote( args.acknowledgement );
+    return args.log.parent_path() / cilogg::update_protocol::InstallerLogFileName;
+}
+
+// The installer moves the files of running instances aside instead of closing them, so these
+// processes (MCP servers started by AI agents, CLI jobs, other windows) keep running.
+void logRunningInstances( const fs::path& installDir )
+{
+    const auto running = cilogg::install_prepare::processesRunningFrom( installDir );
+    log( "Processes running from " + installDir.u8string() + ": "
+         + std::to_string( running.size() ) );
+    for ( const auto& process : running )
+        log( "  " + cilogg::install_prepare::describeProcess( process ) );
+}
+
+// True when `file` was written by the installer run that started at `started`, not left by an
+// earlier one.
+bool writtenSince( const fs::path& file, fs::file_time_type started )
+{
+    std::error_code error;
+    const auto written = fs::last_write_time( file, error );
+    return !error && written + std::chrono::seconds( 2 ) >= started;
+}
+
+// Copies the installer's log next to the helper log, so both are found in one place.
+void copyInstallerLog( const Arguments& args, const fs::path& installDir,
+                       fs::file_time_type started )
+{
+    const auto source = installDir / cilogg::update_protocol::InstallerLogFileName;
+    std::error_code error;
+    if ( !fs::is_regular_file( source, error ) || !writtenSince( source, started ) ) {
+        log( "The installer wrote no log in " + installDir.u8string() );
+        return;
+    }
+    fs::copy_file( source, installerLogCopyPath( args ), fs::copy_options::overwrite_existing,
+                   error );
+    if ( error ) {
+        log( "Could not copy the installer log: " + error.message() );
+        return;
+    }
+    resultInstallerLog = installerLogCopyPath( args ).u8string();
+    log( "Installer log: " + resultInstallerLog );
+}
+
+// After a failed installer: keeps the processes its report names for install-result.txt.
+void collectInstallerReport( const fs::path& installDir, fs::file_time_type started )
+{
+    const auto path = installDir / cilogg::update_protocol::InstallerReportFileName;
+    if ( !writtenSince( path, started ) )
+        return;
+    std::ifstream report( path, std::ios::binary );
+    const auto blockerPrefix = std::string( cilogg::update_protocol::BlockerKey ) + "=";
+    std::string line;
+    while ( std::getline( report, line ) ) {
+        if ( !line.empty() && line.back() == '\r' )
+            line.pop_back();
+        log( "Installer report: " + line );
+        if ( line.rfind( blockerPrefix, 0 ) == 0 )
+            resultBlockers.push_back( line.substr( blockerPrefix.size() ) );
+    }
+}
+
+// Starts CILogg from `args.relaunch`. With `acknowledge`, the updated build confirms its start
+// through the transaction's acknowledgement file; the previous version is started without it.
+bool launch( const Arguments& args, bool acknowledge = true )
+{
+    std::wstring command = quote( args.relaunch );
+    if ( acknowledge ) {
+        command += L" " + std::wstring( cilogg::update_protocol::StartupTokenOptionWide ) + L" "
+                   + std::wstring( args.token.begin(), args.token.end() ) + L" "
+                   + cilogg::update_protocol::StartupAcknowledgementOptionWide + L" "
+                   + quote( args.acknowledgement );
+    }
     STARTUPINFOW startup{};
     PROCESS_INFORMATION process{};
     startup.cb = sizeof( startup );
@@ -341,15 +414,20 @@ bool requireSystemTool( const fs::path& path, const char* purpose )
     return true;
 }
 
-bool launch( const Arguments& args )
+bool launch( const Arguments& args, bool acknowledge = true )
 {
     const auto pid = fork();
     if ( pid == 0 ) {
         const auto relaunch = args.relaunch.string();
         const auto ack = args.acknowledgement.string();
-        execl( relaunch.c_str(), relaunch.c_str(), cilogg::update_protocol::StartupTokenOption,
-               args.token.c_str(), cilogg::update_protocol::StartupAcknowledgementOption,
-               ack.c_str(), static_cast<char*>( nullptr ) );
+        if ( acknowledge ) {
+            execl( relaunch.c_str(), relaunch.c_str(), cilogg::update_protocol::StartupTokenOption,
+                   args.token.c_str(), cilogg::update_protocol::StartupAcknowledgementOption,
+                   ack.c_str(), static_cast<char*>( nullptr ) );
+        }
+        else {
+            execl( relaunch.c_str(), relaunch.c_str(), static_cast<char*>( nullptr ) );
+        }
         _exit( 127 );
     }
     return pid > 0;
@@ -557,11 +635,20 @@ int installSystemPackage( const Arguments& args )
         return refused;
     }
 #ifdef _WIN32
+    namespace protocol = cilogg::update_protocol;
     const auto installDir = args.current.parent_path();
+    logRunningInstances( installDir );
     // NSIS requires /D to be last and unquoted, even when the path contains spaces.
     const auto parameters = L"/S /D=" + installDir.wstring();
     log( "Launching NSIS setup with visible UAC; install directory=" + installDir.u8string() );
-    return runElevated( args.staged, parameters );
+    const auto started = fs::file_time_type::clock::now();
+    const auto code = runElevated( args.staged, parameters );
+    if ( resultPhase == protocol::InstallerPhase ) {
+        copyInstallerLog( args, installDir, started );
+        if ( code != 0 )
+            collectInstallerReport( installDir, started );
+    }
+    return code;
 #else
     if ( args.mode != "deb" && args.mode != "rpm" ) {
         log( "System-package installation blocked: unsupported install mode=" + args.mode );
@@ -606,19 +693,33 @@ void writeResult( const Arguments& args, int code )
            << "mode=" << args.mode << "\n"
            << "phase=" << resultPhase << "\n"
            << "code=" << code << "\n";
+    if ( !resultInstallerLog.empty() )
+        result << cilogg::update_protocol::InstallerLogKey << "=" << resultInstallerLog << "\n";
+    for ( const auto& blocker : resultBlockers )
+        result << cilogg::update_protocol::BlockerKey << "=" << blocker << "\n";
     if ( !result )
         log( "Could not write the install result file" );
 }
 
-int runTransaction( const Arguments& args )
+// `relaunchPrevious` is set when the update failed and the previous version, still installed,
+// is to be started again once the result is recorded: the user exited CILogg to update it, not
+// to close it.
+int runTransaction( const Arguments& args, bool* relaunchPrevious )
 {
     const bool selfContained
         = args.mode == "windows-portable" || args.mode == "macos-bundle" || args.mode == "appimage";
     if ( !selfContained ) {
         const auto code = installSystemPackage( args );
         log( "System installer completed with exit code " + std::to_string( code ) );
-        if ( code != 0 )
+        if ( code != 0 ) {
+            // After an incomplete restore the previous version may not start either; the
+            // report asks for setup to be run again.
+            *relaunchPrevious
+                = args.mode != "windows-setup"
+                  || resultPhase != cilogg::update_protocol::InstallerPhase
+                  || code != cilogg::update_protocol::InstallerRestoreIncompleteExitCode;
             return code;
+        }
         // Installed: a failure from here on is the restart of CILogg, not the installer.
         resultPhase = cilogg::update_protocol::RelaunchPhase;
         if ( launch( args ) )
@@ -627,8 +728,10 @@ int runTransaction( const Arguments& args )
         return cilogg::update_protocol::RelaunchFailedExitCode;
     }
     resultPhase = cilogg::update_protocol::ReplacePhase;
-    if ( !replaceSelfContained( args ) )
+    if ( !replaceSelfContained( args ) ) {
+        *relaunchPrevious = true;
         return 4;
+    }
     if ( !launch( args ) ) {
         log( "New-version launch failed immediately" );
         return rollback( args ) ? 0 : 5;
@@ -640,6 +743,90 @@ int runTransaction( const Arguments& args )
     log( "New version did not acknowledge startup before timeout" );
     return rollback( args ) ? 0 : 6;
 }
+
+#ifdef _WIN32
+std::wstring widenUtf8( const std::string& text )
+{
+    if ( text.empty() )
+        return {};
+    const auto size = MultiByteToWideChar( CP_UTF8, 0, text.data(),
+                                           static_cast<int>( text.size() ), nullptr, 0 );
+    std::wstring wide( static_cast<size_t>( size > 0 ? size : 0 ), L'\0' );
+    if ( size > 0 )
+        MultiByteToWideChar( CP_UTF8, 0, text.data(), static_cast<int>( text.size() ),
+                             wide.data(), size );
+    return wide;
+}
+
+// Appends a line to the installer log, which cilogg.nsi writes in UTF-16LE with a BOM. The
+// installer never has the file open while it runs this helper.
+void appendInstallerLog( const fs::path& path, const std::string& line )
+{
+    if ( path.empty() )
+        return;
+    const auto file = CreateFileW( path.c_str(), FILE_APPEND_DATA,
+                                   FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS,
+                                   FILE_ATTRIBUTE_NORMAL, nullptr );
+    if ( file == INVALID_HANDLE_VALUE )
+        return;
+    LARGE_INTEGER size{};
+    DWORD written = 0;
+    if ( GetFileSizeEx( file, &size ) && size.QuadPart == 0 ) {
+        const wchar_t byteOrderMark = 0xFEFF;
+        WriteFile( file, &byteOrderMark, sizeof( byteOrderMark ), &written, nullptr );
+    }
+    const auto text = widenUtf8( line ) + L"\r\n";
+    WriteFile( file, text.data(), static_cast<DWORD>( text.size() * sizeof( wchar_t ) ), &written,
+               nullptr );
+    CloseHandle( file );
+}
+
+// The modes cilogg.nsi runs, elevated, from its own copy of this helper:
+//   --installer-prepare <install dir> [--log <file>] [--report <file>]
+//   --installer-finish <install dir> [--log <file>]
+//   --installer-rollback <install dir> [--log <file>]
+int runInstallerMode( int argc, wchar_t** argv )
+{
+    namespace prepare = cilogg::install_prepare;
+    if ( argc < 3 || ( argc - 3 ) % 2 != 0 )
+        return prepare::UsageExitCode;
+    const std::wstring mode = argv[ 1 ];
+    const fs::path directory( argv[ 2 ] );
+    fs::path logPath;
+    fs::path report;
+    for ( int i = 3; i + 1 < argc; i += 2 ) {
+        const std::wstring key = argv[ i ];
+        if ( key == L"--log" )
+            logPath = argv[ i + 1 ];
+        else if ( key == L"--report" )
+            report = argv[ i + 1 ];
+        else
+            return prepare::UsageExitCode;
+    }
+    const prepare::Log sink = [ &logPath ]( const std::string& line ) {
+        const auto text = "[cilogg_updater] " + line;
+        std::cout << text << std::endl;
+        appendInstallerLog( logPath, text );
+    };
+    if ( !directory.is_absolute() ) {
+        sink( "The installation folder must be an absolute path" );
+        return prepare::UsageExitCode;
+    }
+    try {
+        if ( mode == L"--installer-prepare" )
+            return prepare::runPrepare( directory, report, sink );
+        if ( mode == L"--installer-finish" )
+            return prepare::runFinish( directory, sink );
+        if ( mode == L"--installer-rollback" )
+            return prepare::runRollback( directory, sink );
+    } catch ( const std::exception& error ) {
+        // The installer then restores what the manifest records.
+        sink( std::string( "Unexpected error: " ) + error.what() );
+        return prepare::UnexpectedErrorExitCode;
+    }
+    return prepare::UsageExitCode;
+}
+#endif
 } // namespace
 
 #ifdef _WIN32
@@ -648,6 +835,10 @@ int wmain( int argc, wchar_t** argv )
 int main( int argc, char** argv )
 #endif
 {
+#ifdef _WIN32
+    if ( argc >= 2 && std::wstring( argv[ 1 ] ).rfind( L"--installer-", 0 ) == 0 )
+        return runInstallerMode( argc, argv );
+#endif
     Arguments args;
     if ( !parse( argc, argv, args ) ) {
         std::cerr << "Invalid cilogg_updater arguments\n";
@@ -668,9 +859,16 @@ int main( int argc, char** argv )
     std::error_code error;
     fs::remove( args.acknowledgement, error );
 
-    const auto code = runTransaction( args );
-    // The result first: whoever finds the lock free must also find the result.
+    bool relaunchPrevious = false;
+    const auto code = runTransaction( args, &relaunchPrevious );
+    // The result first: whoever finds the lock free must also find the result. The previous
+    // version is started after both, so it reports this failure as soon as it starts.
     writeResult( args, code );
     updaterLock.release();
+    if ( relaunchPrevious ) {
+        const bool started = launch( args, false );
+        log( started ? "Previous CILogg version started again after the failed update"
+                     : "The previous CILogg version could not be started again" );
+    }
     return code;
 }

@@ -119,6 +119,11 @@ public:
     // ran and returned `code`), "replace" (self-contained replacement) or "relaunch" (installed,
     // then the updated CILogg could not be started); empty for results without a phase.
     static QString describeInstallResult( int code, const QString& phase = {} );
+    // One "blocker=" value of install-result.txt: "<pid>\t<name>\t<image>\t<parent pid>\t<parent
+    // name>". Nothing for a malformed value.
+    static std::optional<InstallBlocker> parseInstallBlocker( const QString& value );
+    // The processes, one per line, with the programs that started them; empty for none.
+    static QString describeInstallBlockers( const QList<InstallBlocker>& blockers );
     // The package and staging paths of `pending` must lie inside `updateRoot`; a system
     // installer (setup, deb, rpm) must run exactly the verified package.
     static bool validateLaunchPaths( const PendingUpdate& pending, const QString& updateRoot,
@@ -150,6 +155,10 @@ public Q_SLOTS:
     void downloadUpdate( const ReleaseInfo& release, bool installOnExit );
     void cancelDownload();
     void launchPendingUpdate();
+    // Schedules the verified update that is ready (for example after a failed exit-time
+    // install) to be installed when CILogg exits. False, with the reason, when there is none or
+    // its package no longer matches its verified digest.
+    bool scheduleReadyUpdate( QString* errorMessage = nullptr );
     // Confirms to the updater helper that an updated build started. Call early in startup, in
     // every process that carries the acknowledgement arguments; it touches no transaction.
     void acknowledgeStartup();

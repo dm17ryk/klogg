@@ -3,8 +3,10 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/updatetypes.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/updatearguments.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/updatefiles.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/installprepare.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/versionchecker.h
   ${CMAKE_CURRENT_SOURCE_DIR}/src/updatefiles.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/installprepare.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/updatetypes.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/versionchecker.cpp
 )
@@ -21,3 +23,8 @@ target_link_libraries(
          klogg_karchive
          Qt${QT_VERSION_MAJOR}::Network
 )
+
+if(WIN32)
+  # installprepare.cpp asks the Restart Manager which processes use a file.
+  target_link_libraries(klogg_versioncheck PRIVATE rstrtmgr)
+endif()

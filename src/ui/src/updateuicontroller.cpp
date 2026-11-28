@@ -1,8 +1,10 @@
 #include "updateuicontroller.h"
 
+#include <QAbstractButton>
 #include <QDesktopServices>
 #include <QMessageBox>
 #include <QProgressDialog>
+#include <QPushButton>
 
 #include "log.h"
 #include "updatedialog.h"
@@ -108,7 +110,38 @@ void UpdateUiController::updateFailed( const QString& message )
 void UpdateUiController::installFailed( const QString& message )
 {
     LOG_WARNING << "Update UI reports a failed exit-time install; context=" << context_;
-    QMessageBox::warning( parentWidget(), tr( "CILogg Update" ), message );
+    QMessageBox box( QMessageBox::Warning, tr( "CILogg Update" ), message, QMessageBox::NoButton,
+                     parentWidget() );
+    // The verified package stays ready after a failed install; it can be scheduled again.
+    const bool retryable = checker_.state() == UpdateState::Ready;
+    QAbstractButton* retryNow = nullptr;
+    QAbstractButton* retryOnExit = nullptr;
+    if ( retryable ) {
+        if ( exitHandler_ )
+            retryNow = box.addButton( tr( "Retry Now" ), QMessageBox::AcceptRole );
+        retryOnExit = box.addButton( tr( "Retry on Exit" ), QMessageBox::ActionRole );
+        box.setInformativeText(
+            exitHandler_ ? tr( "Retry Now exits CILogg, installs the update and starts CILogg "
+                               "again. Retry on Exit installs it the next time CILogg exits." )
+                         : tr( "Retry on Exit installs the update the next time CILogg exits." ) );
+    }
+    box.addButton( QMessageBox::Close );
+    box.exec();
+    const auto* clicked = box.clickedButton();
+    if ( clicked == nullptr || ( clicked != retryNow && clicked != retryOnExit ) ) {
+        LOG_INFO << "Failed exit-time install acknowledged; context=" << context_;
+        return;
+    }
+    QString error;
+    if ( !checker_.scheduleReadyUpdate( &error ) ) {
+        QMessageBox::warning( parentWidget(), tr( "CILogg Update" ), error );
+        return;
+    }
+    const bool now = clicked == retryNow;
+    LOG_INFO << "Failed exit-time install scheduled again; context=" << context_
+             << ", exit-now=" << now;
+    if ( now )
+        exitHandler_();
 }
 
 void UpdateUiController::closeProgress()

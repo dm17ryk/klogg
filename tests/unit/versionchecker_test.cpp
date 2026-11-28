@@ -514,13 +514,187 @@ TEST_CASE( "A failed exit-time install is reported once and not re-armed", "[upd
     REQUIRE( second->state() == UpdateState::Ready );
 }
 
+TEST_CASE( "A failed install names the programs that kept its files in use", "[updater]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    const QDir rootDir( root.path() );
+    const auto launched = makeTransaction( root.path(), "999.0.0", thisInstallation() );
+    writeTransaction( rootDir.filePath( LaunchedName ), launched );
+    const auto logDirectory = QFileInfo( launched.helperLogPath ).dir();
+    const auto installerLog = logDirectory.filePath(
+        QString::fromLatin1( cilogg::update_protocol::InstallerLogFileName ) );
+    // UTF-8 with tabs between the fields, as the helper writes it.
+    writeFile( logDirectory.filePath( cilogg::update_protocol::InstallResultFileName ),
+               "token=" + launched.transactionToken.toLatin1()
+                   + "\nmode=windows-setup\nphase=installer\ncode=2\ninstaller-log="
+                   + installerLog.toUtf8()
+                   + "\nblocker=4321\tcilogg.exe\tC:\\Program Files\\cilogg\\cilogg.exe\t99\t"
+                     "claude.exe\nblocker=77\tnotepad.exe\t\t0\t\nblocker=broken\n" );
+
+    const auto checker = makeOfflineChecker( root.path(), "26.04.2.1197" );
+    QSignalSpy failed( checker.get(), &VersionChecker::installFailed );
+    checker->activate();
+    REQUIRE( failed.wait( 2000 ) );
+    const auto message = failed.at( 0 ).at( 0 ).toString();
+    REQUIRE( message.contains( "stopped before replacing any files" ) );
+    REQUIRE( message.contains( "cilogg.exe (PID 4321, C:\\Program Files\\cilogg\\cilogg.exe), "
+                               "started by claude.exe (PID 99)" ) );
+    REQUIRE( message.contains( "notepad.exe (PID 77)" ) );
+    REQUIRE_FALSE( message.contains( "broken" ) );
+    REQUIRE( message.contains( QDir::toNativeSeparators( installerLog ) ) );
+    REQUIRE( message.contains( QDir::toNativeSeparators( launched.helperLogPath ) ) );
+    REQUIRE( checker->state() == UpdateState::Ready );
+}
+
+TEST_CASE( "Install blockers are parsed only from complete lines", "[updater]" )
+{
+    const auto full = VersionChecker::parseInstallBlocker(
+        "12\tcilogg.exe\tC:\\cilogg\\cilogg.exe\t7\tcodex.exe" );
+    REQUIRE( full.has_value() );
+    REQUIRE( full->pid == 12 );
+    REQUIRE( full->name == "cilogg.exe" );
+    REQUIRE( full->parentPid == 7 );
+    REQUIRE( full->parentName == "codex.exe" );
+    // A process the installer could not name gets its file name.
+    const auto unnamed = VersionChecker::parseInstallBlocker( "12\t\tC:\\cilogg\\python.exe\t0\t" );
+    REQUIRE( unnamed.has_value() );
+    REQUIRE( unnamed->name == "python.exe" );
+    REQUIRE_FALSE( VersionChecker::parseInstallBlocker( "12\tcilogg.exe" ).has_value() );
+    REQUIRE_FALSE( VersionChecker::parseInstallBlocker( "x\ta\tb\t1\tc" ).has_value() );
+    REQUIRE_FALSE( VersionChecker::parseInstallBlocker( "0\ta\tb\t1\tc" ).has_value() );
+    REQUIRE( VersionChecker::describeInstallBlockers( {} ).isEmpty() );
+    REQUIRE( VersionChecker::describeInstallBlockers( { *full } )
+             == "- cilogg.exe (PID 12, C:\\cilogg\\cilogg.exe), started by codex.exe (PID 7)" );
+}
+
+TEST_CASE( "A failed install can be scheduled again", "[updater]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    const QDir rootDir( root.path() );
+    const auto launched = makeTransaction( root.path(), "999.0.0", thisInstallation() );
+    writeTransaction( rootDir.filePath( LaunchedName ), launched );
+    writeFile( QFileInfo( launched.helperLogPath )
+                   .dir()
+                   .filePath( cilogg::update_protocol::InstallResultFileName ),
+               "token=" + launched.transactionToken.toLatin1()
+                   + "\nmode=windows-setup\nphase=installer\ncode=2\n" );
+
+    const auto checker = makeOfflineChecker( root.path(), "26.04.2.1197" );
+    QSignalSpy failed( checker.get(), &VersionChecker::installFailed );
+    checker->activate();
+    REQUIRE( failed.wait( 2000 ) );
+    REQUIRE( checker->state() == UpdateState::Ready );
+
+    QString error;
+    REQUIRE( checker->scheduleReadyUpdate( &error ) );
+    REQUIRE( error.isEmpty() );
+    REQUIRE( checker->state() == UpdateState::Scheduled );
+    const auto scheduled = readTransaction( rootDir.filePath( PendingName ) );
+    REQUIRE( scheduled.transactionToken == launched.transactionToken );
+    REQUIRE( scheduled.installOnExit );
+    REQUIRE( scheduled.launchedAt == 0 );
+
+    // A package changed since it was verified is never scheduled.
+    writeFile( launched.packagePath, "tampered" );
+    REQUIRE_FALSE( checker->scheduleReadyUpdate( &error ) );
+    REQUIRE( error.contains( "verified" ) );
+
+    // An updater that is not active (CLI, MCP and secondary processes) never schedules.
+    const auto passive = makeOfflineChecker( root.path(), "26.04.2.1197" );
+    REQUIRE_FALSE( passive->scheduleReadyUpdate( &error ) );
+}
+
+TEST_CASE( "A ready update whose staged copy is gone is not scheduled again", "[updater]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    auto ready = makeTransaction( root.path(), "999.0.0", thisInstallation() );
+    ready.installOnExit = false;
+    // A failed portable replacement used up its staged copy.
+    ready.stagedPath = QFileInfo( ready.packagePath ).dir().filePath( QStringLiteral( "staged" ) );
+    writeTransaction( QDir( root.path() ).filePath( PendingName ), ready );
+
+    const auto checker = makeOfflineChecker( root.path(), "26.04.2.1197" );
+    checker->activate();
+    REQUIRE( checker->state() == UpdateState::Ready );
+    QString error;
+    REQUIRE_FALSE( checker->scheduleReadyUpdate( &error ) );
+    REQUIRE( error.contains( "can no longer be installed" ) );
+    REQUIRE( checker->state() == UpdateState::Ready );
+}
+
+TEST_CASE( "An installed update that could not put files back is reported once", "[updater]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    const QDir rootDir( root.path() );
+    const auto launched = makeTransaction( root.path(), "26.04.2.1203", thisInstallation() );
+    writeTransaction( rootDir.filePath( LaunchedName ), launched );
+    writeFile( QFileInfo( launched.helperLogPath )
+                   .dir()
+                   .filePath( cilogg::update_protocol::InstallResultFileName ),
+               "token=" + launched.transactionToken.toLatin1()
+                   + "\nmode=windows-setup\nphase=installer\ncode="
+                   + QByteArray::number( cilogg::update_protocol::InstallerFinishIncompleteExitCode )
+                   + "\n" );
+
+    const auto checker = makeOfflineChecker( root.path(), "26.04.2.1203" );
+    QSignalSpy reported( checker.get(), &VersionChecker::installFailed );
+    checker->activate();
+    REQUIRE( reported.wait( 2000 ) );
+    const auto message = reported.at( 0 ).at( 0 ).toString();
+    REQUIRE( message.contains( "was installed" ) );
+    REQUIRE( message.contains( "could not be put back" ) );
+    REQUIRE_FALSE( QFile::exists( rootDir.filePath( LaunchedName ) ) );
+    REQUIRE( checker->state() == UpdateState::Idle );
+
+    const auto later = makeOfflineChecker( root.path(), "26.04.2.1203" );
+    QSignalSpy again( later.get(), &VersionChecker::installFailed );
+    later->activate();
+    REQUIRE_FALSE( again.wait( 200 ) );
+}
+
+TEST_CASE( "A new version left by an incomplete restore reports it", "[updater]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    const QDir rootDir( root.path() );
+    const auto launched = makeTransaction( root.path(), "26.04.2.1203", thisInstallation() );
+    writeTransaction( rootDir.filePath( LaunchedName ), launched );
+    // The rollback could not move the new cilogg.exe aside: it starts, but the folder may mix
+    // files of both versions.
+    writeFile( QFileInfo( launched.helperLogPath )
+                   .dir()
+                   .filePath( cilogg::update_protocol::InstallResultFileName ),
+               "token=" + launched.transactionToken.toLatin1()
+                   + "\nmode=windows-setup\nphase=installer\ncode="
+                   + QByteArray::number( cilogg::update_protocol::InstallerRestoreIncompleteExitCode )
+                   + "\n" );
+
+    const auto checker = makeOfflineChecker( root.path(), "26.04.2.1203" );
+    QSignalSpy reported( checker.get(), &VersionChecker::installFailed );
+    checker->activate();
+    REQUIRE( reported.wait( 2000 ) );
+    const auto message = reported.at( 0 ).at( 0 ).toString();
+    REQUIRE( message.contains( "did not complete" ) );
+    REQUIRE( message.contains( "Run the installer again" ) );
+    REQUIRE_FALSE( QFile::exists( rootDir.filePath( LaunchedName ) ) );
+}
+
 TEST_CASE( "A completed exit-time install clears its record silently", "[updater]" )
 {
     QTemporaryDir root;
     REQUIRE( root.isValid() );
     const auto launchedPath = QDir( root.path() ).filePath( LaunchedName );
-    writeTransaction( launchedPath,
-                      makeTransaction( root.path(), "26.04.2.1203", thisInstallation() ) );
+    const auto launched = makeTransaction( root.path(), "26.04.2.1203", thisInstallation() );
+    writeTransaction( launchedPath, launched );
+    writeFile( QFileInfo( launched.helperLogPath )
+                   .dir()
+                   .filePath( cilogg::update_protocol::InstallResultFileName ),
+               "token=" + launched.transactionToken.toLatin1()
+                   + "\nmode=windows-setup\nphase=relaunch\ncode=0\n" );
 
     const auto checker = makeOfflineChecker( root.path(), "26.04.2.1203" );
     QSignalSpy failed( checker.get(), &VersionChecker::installFailed );
@@ -528,6 +702,38 @@ TEST_CASE( "A completed exit-time install clears its record silently", "[updater
     REQUIRE_FALSE( failed.wait( 200 ) );
     REQUIRE_FALSE( QFile::exists( launchedPath ) );
     REQUIRE( checker->state() == UpdateState::Idle );
+}
+
+TEST_CASE( "A new version started while its install finishes waits for the result", "[updater]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    const QDir rootDir( root.path() );
+    const auto launchedPath = rootDir.filePath( LaunchedName );
+    const auto launched = makeTransaction( root.path(), "26.04.2.1203", thisInstallation() );
+    writeTransaction( launchedPath, launched );
+    // The helper still runs the installer, which is deleting the old copies.
+    cilogg::update_files::ExclusiveFileLock helperLock;
+    REQUIRE( helperLock.acquire( helperLockPath( root.path() ), 4242 ) );
+
+    const auto checker = makeOfflineChecker( root.path(), "26.04.2.1203" );
+    QSignalSpy reported( checker.get(), &VersionChecker::installFailed );
+    checker->activate();
+    REQUIRE_FALSE( reported.wait( 300 ) );
+    REQUIRE( QFile::exists( launchedPath ) );
+
+    // The installer then reports files it could not put back, and the helper ends.
+    writeFile( QFileInfo( launched.helperLogPath )
+                   .dir()
+                   .filePath( cilogg::update_protocol::InstallResultFileName ),
+               "token=" + launched.transactionToken.toLatin1()
+                   + "\nmode=windows-setup\nphase=installer\ncode="
+                   + QByteArray::number( cilogg::update_protocol::InstallerFinishIncompleteExitCode )
+                   + "\n" );
+    helperLock.release();
+    REQUIRE( reported.wait( 10000 ) );
+    REQUIRE( reported.at( 0 ).at( 0 ).toString().contains( "could not be put back" ) );
+    REQUIRE_FALSE( QFile::exists( launchedPath ) );
 }
 
 TEST_CASE( "The helper retries only transient installer launch failures", "[updater]" )
@@ -552,7 +758,16 @@ TEST_CASE( "The helper retries only transient installer launch failures", "[upda
                  .contains( "missing" ) );
     // The same numbers returned by a running installer mean something else.
     REQUIRE( VersionChecker::describeInstallResult( 2, installer ).contains( "stopped before" ) );
-    REQUIRE( VersionChecker::describeInstallResult( 5, installer ).contains( "exit code 5" ) );
+    REQUIRE( VersionChecker::describeInstallResult( 2, installer ).contains( "in use" ) );
+    REQUIRE( VersionChecker::describeInstallResult( 7, installer ).contains( "exit code 7" ) );
+    REQUIRE( VersionChecker::describeInstallResult( protocol::InstallerCopyFailedExitCode, installer )
+                 .contains( "restored the previous version" ) );
+    REQUIRE( VersionChecker::describeInstallResult( protocol::InstallerRestoreIncompleteExitCode,
+                                                    installer )
+                 .contains( "Run the installer again" ) );
+    REQUIRE( VersionChecker::describeInstallResult( protocol::InstallerPrepareFailedExitCode,
+                                                    installer )
+                 .contains( "could not prepare" ) );
     REQUIRE( VersionChecker::describeInstallResult( protocol::PackageVerificationFailedExitCode,
                                                     launch )
                  .contains( "verification" ) );

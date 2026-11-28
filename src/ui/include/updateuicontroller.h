@@ -20,6 +20,13 @@ public:
     UpdateUiController( VersionChecker& checker, ParentProvider parentProvider,
                         ActionProvider actionProvider, QString context, QObject* parent = nullptr );
 
+    // Exits CILogg the way File > Exit does. When set, the report of a failed exit-time install
+    // offers "Retry Now": CILogg exits, the update is installed and CILogg starts again.
+    void setExitHandler( std::function<void()> exitHandler )
+    {
+        exitHandler_ = std::move( exitHandler );
+    }
+
 private:
     QWidget* parentWidget() const;
     void presentRelease( const ReleaseInfo& release );
@@ -33,5 +40,6 @@ private:
     ParentProvider parentProvider_;
     ActionProvider actionProvider_;
     QString context_;
+    std::function<void()> exitHandler_;
     QPointer<QProgressDialog> progress_;
 };

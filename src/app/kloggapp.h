@@ -105,6 +105,9 @@ class KloggApp : public QApplication {
         QFontDatabase::addApplicationFont( ":/fonts/DejaVuSansMono.ttf" );
 
         QNetworkProxyFactory::setUseSystemConfiguration( true );
+        // "Retry Now" after a failed exit-time install exits like File > Exit, so the update
+        // helper installs the update at once and starts CILogg again.
+        updateUiController_.setExitHandler( [ this ] { exitApplication(); } );
         // Commander clients reach this instance through its single-application name.
         pluginManager_.setInstanceId( singleApplication_.name() );
         // Enabled configuration packs feed previews and the TShark decoder (E16).

@@ -48,6 +48,31 @@ inline constexpr char InstallerPhase[] = "installer";
 inline constexpr char ReplacePhase[] = "replace";
 inline constexpr char RelaunchPhase[] = "relaunch";
 
+// install-result.txt keys added by the helper after a failed Windows installer: the installer's
+// log, and one line per process that kept files in the installation folder in use
+// ("<pid>\t<name>\t<image path>\t<parent pid>\t<parent name>", UTF-8).
+inline constexpr char InstallerLogKey[] = "installer-log";
+inline constexpr char BlockerKey[] = "blocker";
+
+// Written by the Windows installer (cilogg.nsi) into the installation folder, where it copies
+// its files anyway, never into the user's profile. The helper copies the log next to its own
+// log and reads the report.
+inline constexpr char InstallerLogFileName[] = "cilogg-installer.log";
+inline constexpr char InstallerReportFileName[] = "cilogg-installer-report.txt";
+
+// Exit codes of the Windows installer besides 0 (installed) and NSIS's 1 (cancelled):
+// files in the CILogg folder are in use and could not be moved aside; nothing was replaced (2 is
+// also NSIS's code for any installation stopped by the script),
+inline constexpr int InstallerFilesInUseExitCode = 2;
+// the new files could not be written and the previous version was restored,
+inline constexpr int InstallerCopyFailedExitCode = 3;
+// as InstallerCopyFailedExitCode, but some previous files could not be restored,
+inline constexpr int InstallerRestoreIncompleteExitCode = 4;
+// the installation folder could not be prepared; nothing was replaced,
+inline constexpr int InstallerPrepareFailedExitCode = 5;
+// installed, but files of the previous version that it does not replace could not be put back.
+inline constexpr int InstallerFinishIncompleteExitCode = 6;
+
 // Helper exit codes for its own failures. System error codes pass through unchanged.
 inline constexpr int RelaunchFailedExitCode = 3;
 inline constexpr int StagedPackageMissingExitCode = 9;

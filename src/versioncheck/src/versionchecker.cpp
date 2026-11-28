@@ -52,6 +52,8 @@ constexpr auto RestoreFilePrefix = "pending-update.restore-";
 // A claimed transaction whose helper neither holds the updater lock nor left a result is
 // still given this long to start before it counts as abandoned.
 constexpr qint64 AbandonedClaimAgeMs = 2 * 60 * 1000;
+// How often a started new version checks again for the result of the install that started it.
+constexpr int CompletedRecheckMs = 2000;
 // A claim that fails for another reason than "busy" or "gone" (typically a sharing violation
 // while security software reads the record) is retried briefly at exit.
 constexpr int ClaimRenameAttempts = 5;
@@ -160,24 +162,43 @@ std::optional<PendingUpdate> readPendingFile( const QString& path, QString* erro
     return pending;
 }
 
+struct InstallResult {
+    int code = 0;
+    QString phase;
+    // Set after a failed Windows installer.
+    QString installerLog;
+    QList<InstallBlocker> blockers;
+};
+
 // Parses the helper's install-result.txt; true only for a result of transaction `token`.
-bool readInstallResult( const QString& directory, const QString& token, int* code,
-                        QString* phase )
+bool readInstallResult( const QString& directory, const QString& token, InstallResult* result )
 {
-    QFile file( QDir( directory ).filePath(
-        QString::fromLatin1( cilogg::update_protocol::InstallResultFileName ) ) );
+    namespace protocol = cilogg::update_protocol;
+    QFile file( QDir( directory ).filePath( QString::fromLatin1( protocol::InstallResultFileName ) ) );
     if ( !file.open( QIODevice::ReadOnly | QIODevice::Text ) )
         return false;
+    const auto installerLogPrefix = QString::fromLatin1( protocol::InstallerLogKey ) + '=';
+    const auto blockerPrefix = QString::fromLatin1( protocol::BlockerKey ) + '=';
     QString resultToken;
     bool haveCode = false;
     while ( !file.atEnd() ) {
-        const auto line = QString::fromUtf8( file.readLine() ).trimmed();
+        // Only the line break: blocker fields are separated by tabs.
+        auto line = QString::fromUtf8( file.readLine() );
+        while ( line.endsWith( '\n' ) || line.endsWith( '\r' ) )
+            line.chop( 1 );
         if ( line.startsWith( QLatin1String( "token=" ) ) )
-            resultToken = line.mid( 6 );
+            resultToken = line.mid( 6 ).trimmed();
         else if ( line.startsWith( QLatin1String( "phase=" ) ) )
-            *phase = line.mid( 6 );
+            result->phase = line.mid( 6 ).trimmed();
         else if ( line.startsWith( QLatin1String( "code=" ) ) )
-            *code = static_cast<int>( line.mid( 5 ).toLongLong( &haveCode ) );
+            result->code = static_cast<int>( line.mid( 5 ).trimmed().toLongLong( &haveCode ) );
+        else if ( line.startsWith( installerLogPrefix ) )
+            result->installerLog = line.mid( installerLogPrefix.size() ).trimmed();
+        else if ( line.startsWith( blockerPrefix ) ) {
+            if ( const auto blocker
+                 = VersionChecker::parseInstallBlocker( line.mid( blockerPrefix.size() ) ) )
+                result->blockers.append( *blocker );
+        }
     }
     return haveCode && resultToken == token;
 }
@@ -1310,9 +1331,21 @@ QString VersionChecker::describeInstallResult( int code, const QString& phase )
             return tr( "The installer completed, but the new version did not start." );
         case 1:
             return tr( "The installer was cancelled." );
-        case 2:
+        case protocol::InstallerFilesInUseExitCode:
             return tr( "The installer stopped before replacing any files, for example because "
-                       "CILogg processes could not be closed." );
+                       "files in the CILogg folder were in use and could not be replaced." );
+        case protocol::InstallerCopyFailedExitCode:
+            return tr( "The installer could not write the new files, so it restored the "
+                       "previous version." );
+        case protocol::InstallerRestoreIncompleteExitCode:
+            return tr( "The installer could not write the new files, and it could not restore "
+                       "every file of the previous version. Run the installer again." );
+        case protocol::InstallerPrepareFailedExitCode:
+            return tr( "The installer could not prepare the CILogg folder and stopped before "
+                       "replacing any files." );
+        case protocol::InstallerFinishIncompleteExitCode:
+            return tr( "The update was installed, but some files of the previous version that "
+                       "it does not replace could not be put back. Run the installer again." );
         default:
             return tr( "The installer failed with exit code %1." ).arg( code );
         }
@@ -1347,6 +1380,50 @@ QString VersionChecker::describeInstallResult( int code, const QString& phase )
         }
     }
     return tr( "The update helper finished with code %1." ).arg( code );
+}
+
+std::optional<InstallBlocker> VersionChecker::parseInstallBlocker( const QString& value )
+{
+    const auto fields = value.split( '\t' );
+    if ( fields.size() != 5 )
+        return std::nullopt;
+    bool pidValid = false;
+    bool parentValid = false;
+    InstallBlocker blocker;
+    blocker.pid = fields.at( 0 ).toLongLong( &pidValid );
+    blocker.name = fields.at( 1 ).trimmed();
+    blocker.imagePath = fields.at( 2 ).trimmed();
+    blocker.parentPid = fields.at( 3 ).toLongLong( &parentValid );
+    blocker.parentName = fields.at( 4 ).trimmed();
+    if ( !pidValid || !parentValid || blocker.pid <= 0 )
+        return std::nullopt;
+    if ( blocker.name.isEmpty() ) {
+        // A Windows path, also when this check runs elsewhere.
+        const auto separator = std::max( blocker.imagePath.lastIndexOf( '/' ),
+                                         blocker.imagePath.lastIndexOf( '\\' ) );
+        blocker.name = blocker.imagePath.isEmpty() ? tr( "Unknown program" )
+                                                   : blocker.imagePath.mid( separator + 1 );
+    }
+    return blocker;
+}
+
+QString VersionChecker::describeInstallBlockers( const QList<InstallBlocker>& blockers )
+{
+    QStringList lines;
+    for ( const auto& blocker : blockers ) {
+        auto line = blocker.imagePath.isEmpty()
+                        ? tr( "%1 (PID %2)" ).arg( blocker.name ).arg( blocker.pid )
+                        : tr( "%1 (PID %2, %3)" )
+                              .arg( blocker.name )
+                              .arg( blocker.pid )
+                              .arg( QDir::toNativeSeparators( blocker.imagePath ) );
+        if ( !blocker.parentName.isEmpty() )
+            line = tr( "%1, started by %2 (PID %3)" )
+                       .arg( line, blocker.parentName )
+                       .arg( blocker.parentPid );
+        lines.append( QStringLiteral( "- " ) + line );
+    }
+    return lines.join( '\n' );
 }
 
 void VersionChecker::downloadUpdate( const ReleaseInfo& release, bool installOnExit )
@@ -1631,11 +1708,63 @@ void VersionChecker::reconcileLaunchedUpdate()
         LOG_INFO << "Exit-time install record belongs to " << launched->currentPath
                  << "; left untouched";
         return;
-    case PendingDisposition::Completed:
+    case PendingDisposition::Completed: {
+        // The new executable is in place, but the helper may still be finishing (deleting old
+        // copies) and may yet roll back or report a warning: the record waits for its result.
+        // Checked again soon: a record left behind would stop the next exit-time install.
+        if ( isUpdaterRunning() ) {
+            LOG_INFO << "Exit-time install of " << launched->release.version
+                     << " is still finishing (the updater lock is held); its record is kept";
+            QTimer::singleShot( CompletedRecheckMs, this,
+                                &VersionChecker::reconcileLaunchedUpdate );
+            return;
+        }
+        // Installed, yet the installer may have reported that files of the previous version it
+        // does not replace could not be put back. Only the process that removes the record
+        // reports it.
+        InstallResult result;
+        const bool haveResult = readInstallResult(
+            QFileInfo( launched->helperLogPath ).absolutePath(), launched->transactionToken,
+            &result );
+        if ( !haveResult && qAbs( claimAgeMs( *launched, path ) ) < AbandonedClaimAgeMs ) {
+            LOG_INFO << "Exit-time install of " << launched->release.version
+                     << " has no result yet; its record is kept";
+            QTimer::singleShot( CompletedRecheckMs, this,
+                                &VersionChecker::reconcileLaunchedUpdate );
+            return;
+        }
         LOG_INFO << "Exit-time install of " << launched->release.version
                  << " completed; clearing its record";
-        QFile::remove( path );
+        // Also when the installer could not fully restore the previous version and left the new
+        // executable in place: the folder may then hold files of both versions.
+        const bool installerPhase
+            = haveResult && result.phase == QLatin1String( cilogg::update_protocol::InstallerPhase );
+        const bool finishIncomplete
+            = installerPhase
+              && result.code == cilogg::update_protocol::InstallerFinishIncompleteExitCode;
+        const bool restoreIncomplete
+            = installerPhase
+              && result.code == cilogg::update_protocol::InstallerRestoreIncompleteExitCode;
+        if ( QFile::remove( path ) && ( finishIncomplete || restoreIncomplete ) ) {
+            auto details = QDir::toNativeSeparators( launched->helperLogPath );
+            if ( !result.installerLog.isEmpty() )
+                details += QStringLiteral( "\n" ) + QDir::toNativeSeparators( result.installerLog );
+            const auto summary
+                = finishIncomplete
+                      ? tr( "CILogg %1 was installed when CILogg last exited." )
+                      : tr( "The update to CILogg %1 did not complete when CILogg last exited." );
+            const auto message
+                = tr( "%1\n\n%2\n\nDetails: %3" )
+                      .arg( summary.arg( launched->release.version ),
+                            describeInstallResult( result.code, result.phase ), details );
+            LOG_WARNING << "Exit-time install of " << launched->release.version
+                        << " completed with a warning: " << message;
+            QMetaObject::invokeMethod(
+                this, [ this, message ] { Q_EMIT installFailed( message ); },
+                Qt::QueuedConnection );
+        }
         return;
+    }
     case PendingDisposition::Applicable:
         break;
     }
@@ -1648,11 +1777,9 @@ void VersionChecker::reconcileLaunchedUpdate()
                  << " is still running (the updater lock is held); its record is kept";
         return;
     }
-    int code = 0;
-    QString phase;
+    InstallResult result;
     const auto logDirectory = QFileInfo( launched->helperLogPath ).absolutePath();
-    const bool haveResult
-        = readInstallResult( logDirectory, launched->transactionToken, &code, &phase );
+    const bool haveResult = readInstallResult( logDirectory, launched->transactionToken, &result );
     if ( !haveResult ) {
         const auto age = claimAgeMs( *launched, path );
         if ( qAbs( age ) < AbandonedClaimAgeMs ) {
@@ -1687,8 +1814,14 @@ void VersionChecker::reconcileLaunchedUpdate()
         return;
     }
 
-    const auto reason = haveResult ? describeInstallResult( code, phase )
-                                   : tr( "The update installer did not start or finish." );
+    auto reason = haveResult ? describeInstallResult( result.code, result.phase )
+                             : tr( "The update installer did not start or finish." );
+    if ( haveResult && !result.blockers.isEmpty() ) {
+        reason += QStringLiteral( "\n\n" )
+                  + tr( "These programs were using files in the CILogg folder:\n%1\n"
+                        "Close them, then install the update again." )
+                        .arg( describeInstallBlockers( result.blockers ) );
+    }
     LOG_WARNING << "Exit-time install of " << launched->release.version
                 << " did not complete: " << reason;
     restoreReadyUpdate( *consumed );
@@ -1696,12 +1829,14 @@ void VersionChecker::reconcileLaunchedUpdate()
         LOG_WARNING << "Cannot remove " << reconcilingPath
                     << "; the next start recovers it without a report";
     }
+    auto details = QDir::toNativeSeparators( launched->helperLogPath );
+    if ( haveResult && !result.installerLog.isEmpty() )
+        details += QStringLiteral( "\n" ) + QDir::toNativeSeparators( result.installerLog );
     const auto message
         = tr( "CILogg %1 was downloaded but was not installed when CILogg last exited.\n\n%2\n\n"
               "It will not be retried automatically. Use Help > Check for Updates to install "
               "it.\n\nDetails: %3" )
-              .arg( launched->release.version, reason,
-                    QDir::toNativeSeparators( launched->helperLogPath ) );
+              .arg( launched->release.version, reason, details );
     QMetaObject::invokeMethod(
         this, [ this, message ] { Q_EMIT installFailed( message ); }, Qt::QueuedConnection );
 }
@@ -1891,6 +2026,42 @@ void VersionChecker::launchPendingUpdate()
         setState( UpdateState::Installing, QStringLiteral( "helper detached" ) );
     else
         releaseClaim();
+}
+
+bool VersionChecker::scheduleReadyUpdate( QString* errorMessage )
+{
+    const auto refuse = [ errorMessage ]( const QString& reason ) {
+        LOG_WARNING << "Ready update not scheduled: " << reason;
+        if ( errorMessage )
+            *errorMessage = reason;
+        return false;
+    };
+    if ( !active_ )
+        return refuse( tr( "Updates are not active in this CILogg window." ) );
+    QString error;
+    const auto ready = readPendingFile( pendingFilePath(), &error );
+    if ( !ready )
+        return refuse( tr( "No downloaded update is waiting to be installed." ) );
+    const auto disposition = classifyPendingUpdate(
+        *ready, currentVersion(), installationPath( ready->release.asset.installKind ) );
+    if ( disposition != PendingDisposition::Applicable )
+        return refuse( tr( "The downloaded update is not for this installation." ) );
+    if ( !fileMatchesVerifiedAsset( ready->packagePath, ready->release.asset ) )
+        return refuse( tr( "The downloaded update package no longer matches its verified "
+                           "digest. Use Help > Check for Updates to download it again." ) );
+    // A failed portable or macOS replacement can have used up its staged copy.
+    if ( !validateLaunchPaths( *ready, updateRoot(), &error ) )
+        return refuse( tr( "The downloaded update can no longer be installed (%1). Use Help > "
+                           "Check for Updates to download it again." )
+                           .arg( error ) );
+    auto scheduled = *ready;
+    scheduled.installOnExit = true;
+    scheduled.launchedAt = 0;
+    if ( !writePendingUpdate( scheduled, &error ) )
+        return refuse( error );
+    pendingUpdate_ = scheduled;
+    setState( UpdateState::Scheduled, QStringLiteral( "ready update scheduled for exit" ) );
+    return true;
 }
 
 void VersionChecker::acknowledgeStartup()
