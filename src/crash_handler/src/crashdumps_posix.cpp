@@ -187,7 +187,10 @@ void installPlatformHandlers()
     backtrace( frames, 1 );
     struct sigaction action{};
     action.sa_sigaction = onFatalSignal;
-    action.sa_flags = SA_SIGINFO | SA_ONSTACK | SA_RESETHAND;
+    // glibc's SA_RESETHAND is 0x80000000 (unsigned); sa_flags is an int.
+    action.sa_flags = static_cast<decltype( action.sa_flags )>(
+        static_cast<unsigned>( SA_SIGINFO ) | static_cast<unsigned>( SA_ONSTACK )
+        | static_cast<unsigned>( SA_RESETHAND ) );
     sigemptyset( &action.sa_mask );
     for ( const auto number : { SIGSEGV, SIGBUS, SIGFPE, SIGILL, SIGABRT } ) {
         sigaction( number, &action, nullptr );
