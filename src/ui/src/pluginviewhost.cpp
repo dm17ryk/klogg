@@ -195,6 +195,14 @@ struct PluginViewHost::Open {
     bool closeConfirmed = false; // the user chose Discard: the next close goes through
     bool confirming = false;     // the question is open
     quint64 serial = ++nextOpenSerial;
+
+    // E17f: closing asks "Discard changes?" only while the plugin could still save them. A view
+    // whose plugin stopped, or that waits for the root of a restarted plugin, has nothing left
+    // to save: its changes are gone with the process or replaced by the new root (#168).
+    bool asksBeforeClosing() const
+    {
+        return view && view->modified() && !stopped && !awaitingRoot;
+    }
 };
 
 struct PluginViewHost::Message {
@@ -1022,7 +1030,7 @@ bool PluginViewHost::confirmDiscard( const QString& key )
     if ( it == open_.end() || !it->second->view || it->second->confirming ) {
         return false;
     }
-    if ( !it->second->view->modified() ) {
+    if ( !it->second->asksBeforeClosing() ) {
         return true;
     }
     auto& open = *it->second;
@@ -1473,7 +1481,7 @@ bool PluginViewHost::eventFilter( QObject* watched, QEvent* event )
                 const auto closedKey = key;
                 // E17f: a modified view asks "Discard changes?" first (section 29.3), after the
                 // close event, since the question runs its own event loop.
-                if ( open->view && open->view->modified() && !open->closeConfirmed && !closing_ ) {
+                if ( open->asksBeforeClosing() && !open->closeConfirmed && !closing_ ) {
                     event->ignore();
                     const auto serial = open->serial;
                     QTimer::singleShot( 0, this, [ this, closedKey, serial ] {

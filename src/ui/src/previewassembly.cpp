@@ -9,6 +9,7 @@ namespace {
 constexpr int MaxRows = 1024;
 constexpr int MaxBodyBytes = 64 * 1024;
 constexpr int MaxContextBytes = 1024 * 1024;
+const QString EhciProtocol = QStringLiteral( "EHCI" );
 struct Operation {
     QString flow;
     QStringList lines;
@@ -33,6 +34,11 @@ bool acceptedHost( const QString& header, const QStringList& hosts )
            && ( hosts.isEmpty() || hosts.contains( host.captured( 1 ), Qt::CaseInsensitive ) );
 }
 } // namespace
+
+QStringList assembledPreviewProtocols()
+{
+    return { EhciProtocol };
+}
 
 QVariantMap PreviewAssembly::metadata() const
 {
@@ -182,7 +188,7 @@ PreviewAssembly assemblePreviewMessage( const QStringList& lines, int targetInde
                     }
                     Frame frame;
                     frame.result.state = "incomplete";
-                    frame.result.protocol = "EHCI";
+                    frame.result.protocol = EhciProtocol;
                     frame.result.flow = operation.flow;
                     frame.result.expectedBytes = expected;
                     for ( int i = body; i < payloadRows.size(); ++i )

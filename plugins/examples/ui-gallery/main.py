@@ -1190,12 +1190,24 @@ def toggle_modified() -> Tuple[str, List[JsonObject]]:
     return f"modified {'true' if value else 'false'}", [set_props(LAYOUT_BODY, modified=value)]
 
 
+def focus_name() -> List[JsonObject]:
+    """Focus the Name field. A hidden field takes no focus, so the Form tab becomes current
+    first (a `current` the plugin sets sends no `changed`). An older CILogg shows the tabs as
+    groups, all visible: there only the focus goes."""
+    global current_tab
+    if not plugin.supports("layout"):
+        return [focus_element("form_name")]
+    with state_lock:
+        current_tab = "tab_form"
+    return [set_props("layout_tabs", current="tab_form"), focus_element("form_name")]
+
+
 def layout_clicked(element_id: object, window_id: Optional[str]) -> None:
     """The buttons of the layout window."""
     if element_id == "tool_button":
         show_layout(*add_point())
     elif element_id == "link_button":
-        show_layout("focus form_name", [focus_element("form_name")])
+        show_layout("focus form_name", focus_name())
     elif element_id == "busy_button":
         start_work()
     elif element_id == "edit_button":

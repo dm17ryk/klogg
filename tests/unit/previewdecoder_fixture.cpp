@@ -31,6 +31,47 @@ QByteArray frame( const QJsonObject& value )
     qToBigEndian<quint32>( static_cast<quint32>( bytes.size() ), header );
     return QByteArray( header, 4 ) + bytes;
 }
+// A fake TShark for the decoder settings dialog (issue #180): `-G folders` reports the folders the
+// environment gives (or a global plugin folder outside it, CILOGG_FAKE_TSHARK_MODE=unisolated),
+// `-G protocols` a short list (slowly: "slow", or failing: "fail"). Each call is appended to
+// CILOGG_FAKE_TSHARK_LOG.
+int fakeTshark( const QByteArray& report )
+{
+    const auto mode = qEnvironmentVariable( "CILOGG_FAKE_TSHARK_MODE" );
+    const auto log = qEnvironmentVariable( "CILOGG_FAKE_TSHARK_LOG" );
+    if ( !log.isEmpty() ) {
+        QFile file( log );
+        if ( file.open( QIODevice::Append ) )
+            file.write( report + '\n' );
+    }
+    QByteArray output;
+    if ( report == "folders" ) {
+        const auto config = qEnvironmentVariable( "WIRESHARK_CONFIG_DIR" );
+        const auto plugins = mode == "unisolated" ? QStringLiteral( "/usr/lib/wireshark/plugins" )
+                                                  : qEnvironmentVariable( "WIRESHARK_PLUGIN_DIR" );
+        output = QStringLiteral( "Temp:\t/tmp\n"
+                                 "Personal configuration:\t%1\n"
+                                 "Personal Plugins:\t%1/plugins/4.6\n"
+                                 "Global Plugins:\t%2/4.6\n"
+                                 "Personal Lua Plugins:\t%1/plugins\n"
+                                 "Global Lua Plugins:\t%2\n" )
+                     .arg( config, plugins )
+                     .toUtf8();
+    }
+    else if ( report == "protocols" ) {
+        if ( mode == "fail" )
+            return 3;
+        if ( mode == "slow" )
+            QThread::msleep( 1500 );
+        output = "Data\tData\tdata\tT\tT\tF\n"
+                 "Fake protocol\tFAKE\tfake_tshark_proto\tT\tT\tT\n";
+    }
+    else
+        return 1;
+    std::fwrite( output.constData(), 1, static_cast<size_t>( output.size() ), stdout );
+    std::fflush( stdout );
+    return 0;
+}
 } // namespace
 int main( int argc, char** argv )
 {
@@ -39,6 +80,8 @@ int main( int argc, char** argv )
     _setmode( _fileno( stdout ), _O_BINARY );
 #endif
     QCoreApplication app( argc, argv );
+    if ( argc >= 3 && QByteArray( argv[ 1 ] ) == "-G" )
+        return fakeTshark( QByteArray( argv[ 2 ] ) );
     // Opt-in cold-start simulation for supervision tests; keep normal fixtures fast.
     if ( qEnvironmentVariableIsSet( "CILOGG_PREVIEW_FIXTURE_COLD_START" ) )
         QThread::msleep( 1200 );

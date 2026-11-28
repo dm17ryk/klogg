@@ -109,6 +109,7 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/previewservice.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/previewdecodersettings.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/previewdecodersettingsdialog.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/previewroutechoices.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/tsharkpreviewclient.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/previewworkerclient.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/pythondecoderclient.h
@@ -221,6 +222,7 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/previewservice.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/previewdecodersettings.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/previewdecodersettingsdialog.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/previewroutechoices.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/tsharkpreviewclient.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/previewworkerclient.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/pythondecoderclient.cpp

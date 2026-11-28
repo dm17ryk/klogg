@@ -37,6 +37,7 @@
  */
 
 #include <chrono>
+#include <algorithm>
 #include <exception>
 #include <functional>
 #include <qglobal.h>
@@ -983,17 +984,17 @@ OperationResult PartialIndexOperation::run()
 
 OperationResult CheckFileChangesOperation::run()
 {
+    auto result = MonitoredFileStatus::Unchanged;
     try {
         LOG_INFO << "CheckFileChangesOperation::run(), file " << fileName_.toStdString();
-        const auto result = doCheckFileChanges();
-        if ( result == MonitoredFileStatus::Truncated ) {
-            cilogg::diagnostics::ActivityJournal::record(
-                QStringLiteral( "file" ),
-                QStringLiteral( "%1 was truncated or changed in its indexed part; reloading" )
-                    .arg( fileName_ ) );
-        }
-        Q_EMIT fileCheckFinished( result );
-        return result;
+        result = doCheckFileChanges();
+    } catch ( const std::bad_alloc& ) {
+        // The system is out of memory (commit), which is not a CILogg defect (#201). Reporting
+        // the file as changed would start a full reindex, which needs far more memory than this
+        // check, so keep the current index and let the next change notification check again.
+        result = MonitoredFileStatus::Unchanged;
+        recordBestEffort( QStringLiteral( "not enough memory to check %1 for changes; will "
+                                          "retry on the next change" ) );
     } catch ( const std::exception& err ) {
         const auto errorString
             = QString( "CheckFileChangesOperation failed: %1" ).arg( err.what() );
@@ -1001,6 +1002,25 @@ OperationResult CheckFileChangesOperation::run()
                                 fileName_, indexedSizeDetails( indexing_data_ ) );
         Q_EMIT fileCheckFinished( MonitoredFileStatus::Truncated );
         return MonitoredFileStatus::Truncated;
+    }
+
+    if ( result == MonitoredFileStatus::Truncated ) {
+        // A completed check result must survive a failure to journal it.
+        recordBestEffort(
+            QStringLiteral( "%1 was truncated or changed in its indexed part; reloading" ) );
+    }
+    Q_EMIT fileCheckFinished( result );
+    return result;
+}
+
+void CheckFileChangesOperation::recordBestEffort( const QString& messageWithFileName ) const
+{
+    try {
+        const auto message = messageWithFileName.arg( fileName_ );
+        LOG_WARNING << "CheckFileChangesOperation: " << message.toStdString();
+        cilogg::diagnostics::ActivityJournal::record( QStringLiteral( "file" ), message );
+    } catch ( const std::exception& ) {
+        // Journaling needs memory too; the check result is what matters.
     }
 }
 
@@ -1015,9 +1035,12 @@ MonitoredFileStatus CheckFileChangesOperation::doCheckFileChanges()
         return MonitoredFileStatus::Truncated;
     }
     else {
-        QFile file( fileName_ );
+        const auto filePtr = createFile();
+        auto& file = *filePtr;
 
-        QByteArray buffer{ IndexingBlockSize, Qt::Uninitialized };
+        // Every hashed range lies inside the indexed size, so a small file needs no more than that.
+        const auto bufferSize = std::clamp<qint64>( indexedHash.size, 1, HashBlockSize );
+        QByteArray buffer{ static_cast<int>( bufferSize ), Qt::Uninitialized };
 
         bool isFileModified = false;
         const auto& config = Configuration::get();

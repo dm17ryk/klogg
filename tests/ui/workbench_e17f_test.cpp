@@ -42,9 +42,11 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
+#include <algorithm>
 #include <catch2/catch.hpp>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <utility>
 
 using cilogg::plugins::PluginManager;
@@ -87,6 +89,7 @@ struct View {
     QImage picture;
     QList<QSize> pictureSizes; // the sizes the view asked pictures for
     QList<QJsonObject> tooltipQueries; // tooltip/resolve parameters
+    QList<QJsonValue> iconReferences;  // every reference the view resolved
 
     explicit View( const QJsonObject& root )
         : view( PluginId, "main", {} )
@@ -96,7 +99,8 @@ struct View {
         picture = QImage( 30, 20, QImage::Format_ARGB32 );
         picture.fill( Qt::darkGreen );
         PluginViewQueries queries;
-        queries.icon = []( const QJsonValue& reference ) {
+        queries.icon = [ this ]( const QJsonValue& reference ) {
+            iconReferences.append( reference );
             return reference.toString().startsWith( "builtin:" ) ? QIcon( QPixmap( 16, 16 ) ) : QIcon{};
         };
         queries.picture = [ this ]( const QJsonValue& reference, const QSize& size ) {
@@ -656,6 +660,58 @@ TEST_CASE( "E17f images, sparklines and charts", "[ui][workbench][E17]" )
     }
     fixture.patch( { QJsonObject{ { "id", "chart" }, { "set", QJsonObject{ { "series", many } } } } } );
     REQUIRE( chart->series().size() == 8 );
+}
+
+TEST_CASE( "E17f an empty or dropped icon removes the icon without resolving an empty reference",
+           "[ui][workbench][E17]" )
+{
+    // #168: an empty reference used to reach the icon registry, which warned "An icon reference
+    // is 1 to 256 characters" although removing the icon is what was meant.
+    const auto root = []( const std::optional<QString>& icon ) {
+        QJsonObject button{ { "label", "Pin" } };
+        QJsonObject tab{ { "title", "Page" },
+                         { "children", QJsonArray{ element( "label", "inside", { { "text", "x" } } ) } } };
+        if ( icon ) {
+            button.insert( "icon", *icon );
+            tab.insert( "icon", *icon );
+        }
+        return column( QJsonArray{
+            element( "button", "pin", button ),
+            element( "tabs", "pages", { { "children", QJsonArray{ element( "tab", "page", tab ) } } } ) } );
+    };
+    View fixture( root( QStringLiteral( "builtin:pin" ) ) );
+    auto* pin = fixture.get<QPushButton>( "pin" );
+    auto* tabs = fixture.get<QTabWidget>( "pages" );
+    REQUIRE( pin );
+    REQUIRE( tabs );
+    REQUIRE_FALSE( pin->icon().isNull() );
+    REQUIRE_FALSE( tabs->tabIcon( 0 ).isNull() );
+    const auto emptyResolved = [ & ] {
+        return std::any_of( fixture.iconReferences.begin(), fixture.iconReferences.end(),
+                            []( const QJsonValue& reference ) {
+                                return reference.isString() && reference.toString().isEmpty();
+                            } );
+    };
+    // A same-shaped root that drops `icon`.
+    fixture.view.setRoot( root( std::nullopt ) );
+    REQUIRE( fixture.get<QPushButton>( "pin" ) == pin );
+    REQUIRE( pin->icon().isNull() );
+    REQUIRE( tabs->tabIcon( 0 ).isNull() );
+    REQUIRE_FALSE( emptyResolved() );
+    // The icon back, then the plugin's own `icon: ""`, as a root and as a patch.
+    fixture.view.setRoot( root( QStringLiteral( "builtin:pin" ) ) );
+    REQUIRE_FALSE( pin->icon().isNull() );
+    fixture.view.setRoot( root( QString() ) );
+    REQUIRE( pin->icon().isNull() );
+    REQUIRE( tabs->tabIcon( 0 ).isNull() );
+    fixture.patch( { QJsonObject{ { "id", "pin" }, { "set", QJsonObject{ { "icon", "builtin:pin" } } } },
+                     QJsonObject{ { "id", "page" }, { "set", QJsonObject{ { "icon", "builtin:pin" } } } } } );
+    REQUIRE_FALSE( pin->icon().isNull() );
+    fixture.patch( { QJsonObject{ { "id", "pin" }, { "set", QJsonObject{ { "icon", "" } } } },
+                     QJsonObject{ { "id", "page" }, { "set", QJsonObject{ { "icon", "" } } } } } );
+    REQUIRE( pin->icon().isNull() );
+    REQUIRE( tabs->tabIcon( 0 ).isNull() );
+    REQUIRE_FALSE( emptyResolved() );
 }
 
 TEST_CASE( "E17f buttons: icons, styles, checkable, drop-down menus, shortcuts and default",
@@ -1340,4 +1396,84 @@ TEST_CASE( "E17f the answer to Discard changes? is only for the view it asked ab
                       10000 ) );
     REQUIRE( dismissedInTime );
     REQUIRE( waitFor( [ & ] { return recorded( fixture.folder, "view/closed" ).size() == 2; } ) );
+}
+
+TEST_CASE( "E17f closing a view whose plugin stopped does not ask Discard changes?",
+           "[ui][workbench][E17]" )
+{
+    // #168: nothing can save the changes of a stopped plugin, so the question is not asked.
+    LayoutsWindow fixture;
+    auto* view = fixture.open( "layouts" );
+    REQUIRE( waitFor( [ & ] { return view->modified(); } ) );
+    auto* dock = qobject_cast<QDockWidget*>( fixture.host()->container( PluginId, "layouts" ) );
+    REQUIRE( dock );
+    // A modified dialog too.
+    auto* ask = fixture.open( "ask" );
+    Q_EMIT fixture.manager->viewRequest(
+        PluginId, "view/update",
+        QJsonObject{ { "view_id", "ask" },
+                     { "root", element( "column", "m_body",
+                                        { { "modified", true },
+                                          { "children", QJsonArray{ element( "field", "m_name",
+                                                                             { { "kind", "text" } } ) } } } ) } } );
+    fixture.host()->flush();
+    REQUIRE( ask->modified() );
+    auto* dialog = qobject_cast<QDialog*>( fixture.host()->container( PluginId, "ask" ) );
+    REQUIRE( dialog );
+
+    Q_EMIT fixture.manager->pluginStopped( PluginId );
+    REQUIRE_FALSE( view->isEnabled() );
+    REQUIRE_FALSE( ask->isEnabled() );
+    REQUIRE( dock->windowTitle() == "Layouts *" ); // still marked, but nothing can be saved
+
+    dock->close();
+    REQUIRE( waitFor( [ & ] { return fixture.host()->container( PluginId, "layouts" ) == nullptr; } ) );
+    dialog->reject(); // Esc
+    REQUIRE( waitFor( [ & ] { return fixture.host()->container( PluginId, "ask" ) == nullptr; } ) );
+    REQUIRE( fixture.confirmations.isEmpty() );
+}
+
+TEST_CASE( "E17f Enter in a dialog field presses no element button that is not the default",
+           "[ui][workbench][E17]" )
+{
+    // #168: `confirm` declares buttons but no `default`; its element buttons are not `default`
+    // either. Qt makes push buttons in a dialog auto-default, which must not give Enter a target.
+    LayoutsWindow fixture;
+    fixture.open( "confirm" );
+    auto* dialog = qobject_cast<QDialog*>( fixture.host()->container( PluginId, "confirm" ) );
+    REQUIRE( dialog );
+    REQUIRE( waitFor( [ & ] { return dialog->isVisible() && fixture.button( "confirm", "ok" )->isEnabled(); } ) );
+    Q_EMIT fixture.manager->viewRequest(
+        PluginId, "view/update",
+        QJsonObject{ { "view_id", "confirm" },
+                     { "root", element( "column", "e_body",
+                                        { { "children",
+                                            QJsonArray{ element( "field", "e_name", { { "kind", "text" } } ),
+                                                        element( "button", "e_pick",
+                                                                 { { "label", "Pick" }, { "event", true } } ) } } } ) } } );
+    fixture.host()->flush();
+    auto* view = fixture.host()->view( PluginId, "confirm" );
+    auto* field = view->element( "e_name" );
+    auto* pick = qobject_cast<QPushButton*>( view->element( "e_pick" ) );
+    REQUIRE( field );
+    REQUIRE( pick );
+    CHECK_FALSE( pick->autoDefault() );
+    const auto pressed = [ & ] {
+        const auto events = recorded( fixture.folder, "view/event" );
+        return std::count_if( events.begin(), events.end(), []( const QJsonObject& event ) {
+            return event.value( "view_id" ) == "confirm"
+                   && ( event.value( "element_id" ) == "e_pick" || event.value( "element_id" ) == "#buttons" );
+        } );
+    };
+    dialog->activateWindow();
+    REQUIRE( QTest::qWaitForWindowActive( dialog ) );
+    // The button has had the focus (an auto-default button would now be the dialog's default).
+    pick->setFocus();
+    REQUIRE( waitFor( [ & ] { return pick->hasFocus(); } ) );
+    field->setFocus();
+    REQUIRE( waitFor( [ & ] { return field->hasFocus(); } ) );
+    QTest::keyClick( field, Qt::Key_Return );
+    QTest::qWait( 300 );
+    REQUIRE( pressed() == 0 );
+    REQUIRE( fixture.host()->container( PluginId, "confirm" ) == dialog );
 }
