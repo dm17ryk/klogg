@@ -98,7 +98,10 @@ TEST_CASE( "Preview dialog rejects invalid settings atomically", "[ui][previewde
     RestoreDecoder restore;
     const auto revision = PreviewDecoderSettings::instance().revision();
     PreviewDecoderSettingsDialog dialog;
-    dialog.findChild<QLineEdit*>( "decoderDefaultDissector" )->setText( "bad\n" );
+    auto* defaultDissector = dialog.findChild<QComboBox*>( "decoderDefaultDissector" );
+    REQUIRE( defaultDissector );
+    REQUIRE( defaultDissector->isEditable() );
+    defaultDissector->setEditText( "bad\n" );
     dialog.findChild<QDialogButtonBox*>()->button( QDialogButtonBox::Apply )->click();
     CHECK( PreviewDecoderSettings::instance().revision() == revision );
     CHECK( dialog.findChild<QLabel*>( "decoderValidationError" )
