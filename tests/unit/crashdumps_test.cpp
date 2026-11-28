@@ -290,6 +290,32 @@ TEST_CASE( "At most three crashes are reported at a start, and a dump cut short 
     CHECK( DiagnosticReports::list().size() == 3 );
 }
 
+TEST_CASE( "Without a crash folder nothing in the working directory is read or deleted",
+           "[diagnostics]" )
+{
+    // QDir( "" ) is the working directory: an unset folder must not mean "here".
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    const auto previous = QDir::currentPath();
+    REQUIRE( QDir::setCurrent( root.path() ) );
+    struct Restore {
+        QString path;
+        ~Restore()
+        {
+            QDir::setCurrent( path );
+        }
+    } restore{ previous };
+    for ( const auto* name : { "crash-20260101-000000-1.txt", "crash-20260102-000000-2.txt" } ) {
+        writeFile( root.filePath( name ), "reason: not CILogg's\ndump result: written\n" );
+        age( root.filePath( name ) );
+    }
+    REQUIRE( CrashDumps::setFolder( {} ) );
+    CHECK( CrashDumps::folder().isEmpty() );
+    CHECK( CrashDumps::pendingCrashes().isEmpty() );
+    CrashDumps::prune( 1 );
+    CHECK( QDir( root.path() ).entryList( { "crash-*.txt" }, QDir::Files ).size() == 2 );
+}
+
 TEST_CASE( "Only the newest crash records are kept", "[diagnostics]" )
 {
     QTemporaryDir root;
@@ -325,11 +351,13 @@ TEST_CASE( "A real crash leaves a crash record (and on Windows a minidump)", "[d
     const Case cases[] = { { "segv", "access violation" },
                            { "thread", "access violation" },
                            { "throw", "uncaught exception: fixture boom" },
+                           { "noexcept", "std::terminate: uncaught exception: fixture boom" },
                            { "abort", "reason: abort" } };
 #else
     const Case cases[] = { { "segv", "SIGSEGV" },
                            { "thread", "SIGSEGV" },
                            { "throw", "uncaught exception: fixture boom" },
+                           { "noexcept", "std::terminate: uncaught exception: fixture boom" },
                            { "abort", "SIGABRT" } };
 #endif
     for ( const auto& crashCase : cases ) {
@@ -352,8 +380,12 @@ TEST_CASE( "A real crash leaves a crash record (and on Windows a minidump)", "[d
         INFO( text.toStdString() );
         CHECK( text.contains( QString::fromLatin1( crashCase.reason ) ) );
         CHECK( text.contains( "stack:" ) );
-        if ( QLatin1String( crashCase.mode ) == QLatin1String( "throw" ) ) {
-            CHECK( text.contains( "last C++ throw on this thread:" ) );
+        const auto mode = QLatin1String( crashCase.mode );
+        if ( mode == QLatin1String( "throw" ) || mode == QLatin1String( "noexcept" ) ) {
+            // The site of the fixture's throw (not of a rethrow made to name the exception).
+            const auto site = text.indexOf( "last C++ throw on this thread:" );
+            REQUIRE( site >= 0 );
+            CHECK( text.mid( site ).contains( "crash_fixture", Qt::CaseInsensitive ) );
         }
         const auto dumps
             = QDir( folder ).entryList( { QStringLiteral( "crash-*.dmp" ) }, QDir::Files );

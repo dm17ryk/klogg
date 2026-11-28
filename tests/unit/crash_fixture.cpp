@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // R06b test fixture: installs CILogg's crash handlers with <folder> and crashes as <mode> asks
-// (segv, thread: segv on a worker thread, throw, abort). crashdumps_test.cpp checks the crash
+// (segv, thread: segv on a worker thread, throw, noexcept: a throw out of a noexcept function,
+// abort). crashdumps_test.cpp checks the crash
 // record (and minidump) it leaves.
 
 #include "crashdumps.h"
@@ -27,6 +28,12 @@ int* volatile nullPointer = nullptr;
 [[noreturn]] void throwUncaught()
 {
     throw std::runtime_error( "fixture boom" );
+}
+
+// An exception that leaves a noexcept function calls std::terminate directly, on every platform.
+void throwThroughNoexcept() noexcept
+{
+    throwUncaught();
 }
 } // namespace
 
@@ -58,6 +65,9 @@ int main( int argc, char** argv )
     }
     else if ( std::strcmp( mode, "throw" ) == 0 ) {
         throwUncaught();
+    }
+    else if ( std::strcmp( mode, "noexcept" ) == 0 ) {
+        throwThroughNoexcept();
     }
     else if ( std::strcmp( mode, "abort" ) == 0 ) {
         std::abort();

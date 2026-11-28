@@ -202,6 +202,11 @@ void writeCrashNow( const char* reason )
     writeCrash( reason, nullptr, false );
 }
 
+void freezeThrowSite()
+{
+    // Nothing to do: std::rethrow_exception does not go through __cxa_throw, so the site stays.
+}
+
 void resetCrashStateForTest()
 {
     crashing = false;

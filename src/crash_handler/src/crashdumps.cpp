@@ -73,11 +73,10 @@ QString recordField( const QString& text, const QString& name )
         std::abort();
     }
     // The uncaught exception's text, when there is one; this thread's latest throw is its site.
+    // Keep that site first: on Windows the rethrow below records a throw of its own.
+    freezeThrowSite();
     terminateReason[ 0 ] = 0;
     append( terminateReason, sizeof( terminateReason ), "std::terminate" );
-#ifndef Q_OS_WIN
-    // (On Windows an uncaught exception reaches the unhandled-exception filter, which names it;
-    // a rethrow here would also replace this thread's recorded throw site.)
     if ( const auto current = std::current_exception() ) {
         try {
             std::rethrow_exception( current );
@@ -88,7 +87,6 @@ QString recordField( const QString& text, const QString& name )
             append( terminateReason, sizeof( terminateReason ), ": uncaught exception" );
         }
     }
-#endif
     writeCrashNow( terminateReason );
     std::abort(); // the abort handler sees the record is written and writes no second one
 }
@@ -175,8 +173,13 @@ bool CrashDumps::writeProcessDump( const QString& path, bool fullMemory, QString
 QVariantList CrashDumps::pendingCrashes()
 {
     QVariantList crashes;
-    const QDir dir( folder() );
-    if ( dir.path().isEmpty() || !dir.exists() ) {
+    const auto path = folder();
+    // QDir( "" ) is the working directory: never read crash records from there.
+    if ( path.isEmpty() ) {
+        return crashes;
+    }
+    const QDir dir( path );
+    if ( !dir.exists() ) {
         return crashes;
     }
     const auto records
@@ -222,8 +225,13 @@ void CrashDumps::markReported( const QString& record )
 
 void CrashDumps::prune( int keep )
 {
-    const QDir dir( folder() );
-    if ( dir.path().isEmpty() || !dir.exists() ) {
+    const auto path = folder();
+    // QDir( "" ) is the working directory: never delete anything there.
+    if ( path.isEmpty() ) {
+        return;
+    }
+    const QDir dir( path );
+    if ( !dir.exists() ) {
         return;
     }
     auto records = dir.entryList( { QStringLiteral( "crash-*.txt" ) }, QDir::Files, QDir::Name );

@@ -95,6 +95,9 @@ void installPlatformHandlers();
 void writeCrashNow( const char* reason );
 // Test hook: lets writeCrashForTest write another record in the same process.
 void resetCrashStateForTest();
+// Keeps the calling thread's latest throw site for the crash record, so a rethrow while naming
+// an uncaught exception does not replace it (Windows records every throw, rethrows included).
+void freezeThrowSite();
 QString lastRecordPath();
 void setNativeFolder( const QString& folder );
 QStringList formatThrowFrames( const ThrowSite& site );

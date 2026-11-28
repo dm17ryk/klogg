@@ -56,6 +56,9 @@ struct CrashJob {
 };
 CrashJob crashJob;
 std::atomic_bool crashDone{ false };
+// The throw site std::terminate kept before it rethrew to name the exception.
+ThrowSite frozenThrow;
+std::atomic_bool throwFrozen{ false };
 
 // The helper thread's buffers (static: nothing big on any stack).
 wchar_t basePath[ PathCapacity ] = {};
@@ -328,7 +331,7 @@ void writeCrash( const char* reason, EXCEPTION_POINTERS* info )
         crashJob.threadId = GetCurrentThreadId();
         crashJob.frameCount
             = static_cast<int>( CaptureStackBackTrace( 0, CrashFrames, crashJob.frames, nullptr ) );
-        crashJob.thrown = windowsThrow;
+        crashJob.thrown = throwFrozen.load() ? frozenThrow : windowsThrow;
         if ( const auto thread
              = CreateThread( nullptr, 256 * 1024, crashThread, nullptr, 0, nullptr ) ) {
             WaitForSingleObject( thread, CrashWaitMs );
@@ -426,10 +429,17 @@ void writeCrashNow( const char* reason )
     writeCrash( reason, nullptr );
 }
 
+void freezeThrowSite()
+{
+    frozenThrow = windowsThrow;
+    throwFrozen = true;
+}
+
 void resetCrashStateForTest()
 {
     crashing = false;
     crashDone = false;
+    throwFrozen = false;
 }
 
 QString lastRecordPath()
