@@ -18,7 +18,7 @@ add_library(
 # functions.
 if(WIN32)
   target_sources(klogg_crash_handler PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/crashdumps_windows.cpp)
-  target_link_libraries(klogg_crash_handler PUBLIC dbghelp)
+  target_link_libraries(klogg_crash_handler PUBLIC dbghelp shell32)
 else()
   target_sources(klogg_crash_handler PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/crashdumps_posix.cpp
                                              ${CMAKE_CURRENT_SOURCE_DIR}/src/throwsite_posix.cpp)

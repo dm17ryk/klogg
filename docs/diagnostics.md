@@ -76,7 +76,7 @@ The record is a text file, `crash-<time>-<pid>.txt`, holding:
 - the stack of the crashing thread;
 - the stack where that thread last threw a C++ exception.
 
-On Windows CILogg also writes a **minidump** next to the record (`.dmp`). By default it is small: every thread's stack, the loaded modules and the thread data. CILogg writes the record before the dump, so a dump that takes too long or is cut short still leaves a record. A dump the record does not call written is removed at the next start. On Linux and macOS there is no minidump. The record says whether the system keeps a core dump (the core dump limit), and CILogg does not change that limit.
+On Windows CILogg also writes a **minidump** next to the record (`.dmp`). By default it is small: every thread's stack, the loaded modules and the thread data. CILogg writes the record before the dump, so a dump that takes too long or is cut short still leaves a record. A dump the record does not call written is removed at the next start. The exception is a dump that is still being written: while the record has no result and the crashed process still runs (for at most an hour), a starting CILogg leaves it alone. DbgHelp, which writes the dump, is not thread-safe. If another thread holds it for more than 5 seconds, the crash leaves its record without a dump. On Linux and macOS there is no minidump. The record says whether the system keeps a core dump (the core dump limit), and CILogg does not change that limit.
 
 Nothing is uploaded. The 10 newest crash records are kept, and their dumps are kept within 2 GiB in all (the newest dump is always kept).
 
@@ -96,7 +96,9 @@ The next start turns each new crash record into a **crash report**, a report fol
 
 CILogg records, for every thread, the stack where its latest C++ exception was thrown. A background error report gets a **Where the error was thrown** section with those frames, newest first.
 
-On Windows a report of a background error also gets a small minidump of the whole process, `private/process.dmp`. It sits in a subfolder of the report folder and is never in the zip. If it is not written within 30 seconds, the report goes on without it.
+On Windows a report of a background error also gets a small minidump of the whole process, `private/process.dmp`. It sits in a subfolder of the report folder and is never in the zip.
+
+A second CILogg process writes it (CILogg started with an internal option). A dump written from inside the running process would suspend all its threads, the waiting one included, and could block on a lock one of them holds. If the helper takes more than 30 seconds, it is ended, its partial dump is removed and the report goes on without it.
 
 Platform limits:
 

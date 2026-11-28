@@ -44,9 +44,18 @@ public:
 
     // Writes a minidump of this process now (all threads, no crash). False and *error where
     // minidumps are not supported or the file cannot be written.
-    // It waits at most 30 s (MiniDumpWriteDump suspends every other thread, and one holding a lock
-    // can block it). A dump that finishes after that is removed: no report names it.
+    // The dump helper process (setDumpHelper) writes it: MiniDumpWriteDump in this process would
+    // suspend every thread, the waiting one included, and could block on a lock one of them
+    // holds. A helper that takes more than 30 s is ended and its partial dump removed. Without a
+    // helper there is no process dump.
     static bool writeProcessDump( const QString& path, bool fullMemory, QString* error = nullptr );
+    // The program that writes process dumps: CILogg itself (main() calls runDumpHelper first).
+    // Empty (the default) in every other program, so a test binary never starts itself.
+    static void setDumpHelper( const QString& program );
+    static QString dumpHelper();
+    // Call first in main(): when the command line asks for a dump of another process, writes it
+    // and returns the exit code (0 when written); otherwise -1.
+    static int runDumpHelper( int argc, char** argv );
     // Test hook: the wait above in milliseconds (negative: back to 30 s).
     static void setProcessDumpTimeoutForTest( int milliseconds );
 

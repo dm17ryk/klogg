@@ -538,6 +538,11 @@ bool writeLabArtifacts( const QVariantMap& payload, const QString& outputDirPath
 
 int main( int argc, char* argv[] )
 {
+    // R06b: started by a running CILogg to write a minidump of it from outside.
+    if ( const auto code = cilogg::diagnostics::CrashDumps::runDumpHelper( argc, argv );
+         code >= 0 ) {
+        return code;
+    }
     if ( argc > 1 && QByteArray( argv[ 1 ] ) == "--internal-preview-worker" ) {
         return PreviewService::workerMain( argc, argv );
     }
@@ -676,6 +681,8 @@ int main( int argc, char* argv[] )
     logging::enableFileLogging( parameters.log_to_file || config.enableLogging(), logLevel );
 
     app.initCrashHandler();
+    // R06b: this program writes the process minidumps of exception reports (see runDumpHelper).
+    cilogg::diagnostics::CrashDumps::setDumpHelper( QCoreApplication::applicationFilePath() );
 
     if ( parameters.scenario_batch_request ) {
         IssueReporter::setInteractive( false ); // unattended batch: reports, no dialogs

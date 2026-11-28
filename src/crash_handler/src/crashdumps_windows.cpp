@@ -11,12 +11,11 @@
 #include "crashdumps_platform.h"
 
 #include <QDir>
-#include <QMutex>
-#include <QMutexLocker>
 
 #include <csignal>
 #include <cstdlib>
 #include <cstring>
+#include <cwchar>
 #include <exception>
 #include <string>
 
@@ -26,6 +25,7 @@
 #include <windows.h>
 // windows.h first
 #include <dbghelp.h>
+#include <shellapi.h>
 
 namespace cilogg::diagnostics::detail {
 namespace {
@@ -36,7 +36,6 @@ wchar_t lastRecord[ PathCapacity ] = {};
 thread_local ThrowSite windowsThrow;
 constexpr DWORD MsvcExceptionCode = 0xE06D7363; // a C++ throw
 constexpr DWORD CrashWaitMs = 5 * 60 * 1000;    // a full-memory dump can take minutes
-constexpr DWORD ProcessDumpWaitMs = 30 * 1000;
 
 constexpr auto SmallDump
     = static_cast<MINIDUMP_TYPE>( MiniDumpNormal | MiniDumpWithThreadInfo
@@ -44,6 +43,10 @@ constexpr auto SmallDump
 constexpr auto FullDump = static_cast<MINIDUMP_TYPE>(
     MiniDumpWithFullMemory | MiniDumpWithFullMemoryInfo | MiniDumpWithHandleData
     | MiniDumpWithThreadInfo | MiniDumpWithUnloadedModules );
+
+// Every DbgHelp call (symbols, the crash dump) holds this: DbgHelp is not thread-safe.
+SRWLOCK dbghelpLock = SRWLOCK_INIT;
+constexpr int DbgHelpCrashAttempts = 50; // 100 ms each
 
 // The one crash of this process (guarded by `crashing`), filled by the crashing thread.
 struct CrashJob {
@@ -299,10 +302,23 @@ DWORD WINAPI crashThread( void* )
         }
         FlushFileBuffers( file );
     }
-    // The dump last: it can take long, and it may not finish.
-    const auto written = writeMinidumpFile( dumpPath, job.info, job.threadId, full );
+    // The dump last: it can take long, and it may not finish. DbgHelp is not thread-safe, and the
+    // thread that holds its lock may be the one that crashed: wait a little, then go without.
+    bool locked = false;
+    for ( int attempt = 0; attempt < DbgHelpCrashAttempts && !locked; ++attempt ) {
+        locked = TryAcquireSRWLockExclusive( &dbghelpLock ) != FALSE;
+        if ( !locked ) {
+            Sleep( 100 );
+        }
+    }
+    const auto written = locked && writeMinidumpFile( dumpPath, job.info, job.threadId, full );
+    if ( locked ) {
+        ReleaseSRWLockExclusive( &dbghelpLock );
+    }
     if ( file != INVALID_HANDLE_VALUE ) {
-        writeAll( file, written ? "dump result: written\n" : "dump result: failed\n" );
+        writeAll( file, written  ? "dump result: written\n"
+                        : locked ? "dump result: failed\n"
+                                 : "dump result: skipped (DbgHelp was busy)\n" );
         CloseHandle( file );
         lastRecord[ 0 ] = 0;
         append( lastRecord, PathCapacity, recordPath );
@@ -371,13 +387,18 @@ LONG CALLBACK onFirstChance( EXCEPTION_POINTERS* info )
     return EXCEPTION_CONTINUE_SEARCH;
 }
 
-// Symbols for a throw-site frame when a PDB is at hand (a development build); dbghelp is not
-// thread-safe, hence the lock.
+// Symbols for a throw-site frame when a PDB is at hand (a development build). DbgHelp is not
+// thread-safe: every DbgHelp call of CILogg takes dbghelpLock (the crash dump too).
 QString symbolFor( void* address )
 {
-    static QMutex mutex;
     static bool initialized = false;
-    QMutexLocker locker( &mutex );
+    AcquireSRWLockExclusive( &dbghelpLock );
+    struct Release {
+        ~Release()
+        {
+            ReleaseSRWLockExclusive( &dbghelpLock );
+        }
+    } release;
     if ( !initialized ) {
         SymSetOptions( SYMOPT_DEFERRED_LOADS | SYMOPT_UNDNAME | SYMOPT_FAIL_CRITICAL_ERRORS );
         initialized = SymInitialize( GetCurrentProcess(), nullptr, TRUE ) != FALSE;
@@ -395,37 +416,6 @@ QString symbolFor( void* address )
         return {};
     }
     return QString::fromLocal8Bit( symbol->Name );
-}
-
-// A minidump of the live process, written by a helper thread: MiniDumpWriteDump suspends the other
-// threads, and one that holds a heap or loader lock could block it. Whoever of the two finishes
-// last owns the job: the caller, or, after the caller gave up waiting, the worker, which then also
-// removes the late dump (no report names it, so it must not stay behind unannounced).
-enum ProcessDumpState { Running, Finished, Abandoned };
-
-struct ProcessDumpJob {
-    std::wstring path;
-    bool full = false;
-    DWORD callerThread = 0;
-    bool written = false;
-    DWORD error = 0;
-    std::atomic_int state{ Running };
-};
-
-std::atomic<DWORD> processDumpWaitMs{ ProcessDumpWaitMs };
-
-DWORD WINAPI processDumpThread( void* parameter )
-{
-    auto* job = static_cast<ProcessDumpJob*>( parameter );
-    job->written = writeMinidumpFile( job->path.c_str(), nullptr, job->callerThread, job->full );
-    job->error = job->written ? 0 : GetLastError();
-    int expected = Running;
-    if ( !job->state.compare_exchange_strong( expected, Finished ) ) {
-        // The caller gave up (Abandoned): remove what nobody will announce, and free the job.
-        DeleteFileW( job->path.c_str() );
-        delete job;
-    }
-    return 0;
 }
 
 } // namespace
@@ -486,47 +476,65 @@ QStringList formatThrowFrames( const ThrowSite& site )
     return frames;
 }
 
-bool writeProcessMinidump( const QString& path, bool fullMemory, QString* error )
+bool processAlive( long long pid )
 {
-    auto* job = new ProcessDumpJob;
-    job->path = QDir::toNativeSeparators( path ).toStdWString();
-    job->full = fullMemory;
-    job->callerThread = GetCurrentThreadId();
-    const auto thread = CreateThread( nullptr, 0, processDumpThread, job, 0, nullptr );
-    if ( thread == nullptr ) {
-        const auto failure = GetLastError();
-        delete job;
-        if ( error != nullptr ) {
-            *error = QStringLiteral( "Cannot start the dump thread (error %1)." ).arg( failure );
-        }
+    if ( pid <= 0 ) {
         return false;
     }
-    const auto waitMs = processDumpWaitMs.load();
-    const bool waited = WaitForSingleObject( thread, waitMs ) == WAIT_OBJECT_0;
-    CloseHandle( thread );
-    if ( !waited ) {
-        int expected = Running;
-        if ( job->state.compare_exchange_strong( expected, Abandoned ) ) {
-            // The worker owns the job now; it removes the dump when it finishes.
-            if ( error != nullptr ) {
-                *error
-                    = QStringLiteral( "The minidump was not written within %1 ms." ).arg( waitMs );
-            }
-            return false;
-        }
-        // It finished just after the wait ended: use its result as usual.
+    const auto process
+        = OpenProcess( PROCESS_QUERY_LIMITED_INFORMATION, FALSE, static_cast<DWORD>( pid ) );
+    if ( process == nullptr ) {
+        return GetLastError() == ERROR_ACCESS_DENIED; // it exists, but is not ours to open
     }
-    const auto written = job->written;
-    if ( !written && error != nullptr ) {
-        *error = QStringLiteral( "MiniDumpWriteDump failed (error %1)." ).arg( job->error );
-    }
-    delete job;
-    return written;
+    DWORD exitCode = 0;
+    const bool running = GetExitCodeProcess( process, &exitCode ) && exitCode == STILL_ACTIVE;
+    CloseHandle( process );
+    return running;
 }
 
-void setProcessDumpTimeoutForTest( int milliseconds )
+int runDumpHelper( int, char** )
 {
-    processDumpWaitMs = milliseconds < 0 ? ProcessDumpWaitMs : static_cast<DWORD>( milliseconds );
+    // Wide arguments: the dump path can hold any character (the user name), which the ANSI argv
+    // of main() cannot carry.
+    int count = 0;
+    auto** arguments = CommandLineToArgvW( GetCommandLineW(), &count );
+    if ( arguments == nullptr ) {
+        return -1;
+    }
+    struct Free {
+        LPWSTR* arguments;
+        ~Free()
+        {
+            LocalFree( arguments );
+        }
+    } release{ arguments };
+    const auto flag = QString::fromLatin1( DumpHelperFlag ).toStdWString();
+    if ( count < 5 || flag != arguments[ 1 ] ) {
+        return -1;
+    }
+    const auto pid = static_cast<DWORD>( std::wcstoul( arguments[ 2 ], nullptr, 10 ) );
+    const auto* path = arguments[ 3 ];
+    const bool full = std::wcscmp( arguments[ 4 ], L"full" ) == 0;
+    const auto process = OpenProcess(
+        PROCESS_QUERY_INFORMATION | PROCESS_VM_READ | PROCESS_DUP_HANDLE, FALSE, pid );
+    if ( process == nullptr ) {
+        return 3;
+    }
+    const auto file = CreateFileW( path, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
+                                   FILE_ATTRIBUTE_NORMAL, nullptr );
+    if ( file == INVALID_HANDLE_VALUE ) {
+        CloseHandle( process );
+        return 4;
+    }
+    const auto written = MiniDumpWriteDump( process, pid, file, full ? FullDump : SmallDump,
+                                            nullptr, nullptr, nullptr );
+    CloseHandle( file );
+    CloseHandle( process );
+    if ( !written ) {
+        DeleteFileW( path );
+        return 5;
+    }
+    return 0;
 }
 
 void enableThrowSiteCapture()

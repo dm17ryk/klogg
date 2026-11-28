@@ -11,6 +11,7 @@
 #include <QFile>
 
 #include <atomic>
+#include <cerrno>
 #include <csignal>
 #include <cstdlib>
 #include <cstring>
@@ -243,14 +244,14 @@ QStringList formatThrowFrames( const ThrowSite& site )
     return frames;
 }
 
-void setProcessDumpTimeoutForTest( int ) {}
-
-bool writeProcessMinidump( const QString&, bool, QString* error )
+int runDumpHelper( int, char** )
 {
-    if ( error != nullptr ) {
-        *error = QStringLiteral( "CILogg writes minidumps on Windows only." );
-    }
-    return false;
+    return -1; // no minidumps on Linux and macOS
+}
+
+bool processAlive( long long pid )
+{
+    return pid > 0 && ( ::kill( static_cast<pid_t>( pid ), 0 ) == 0 || errno == EPERM );
 }
 
 } // namespace cilogg::diagnostics::detail

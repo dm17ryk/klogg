@@ -101,10 +101,14 @@ void freezeThrowSite();
 QString lastRecordPath();
 void setNativeFolder( const QString& folder );
 QStringList formatThrowFrames( const ThrowSite& site );
-// A minidump of this process now (Windows); false and *error elsewhere.
-bool writeProcessMinidump( const QString& path, bool fullMemory, QString* error );
-// Test hook: how long writeProcessMinidump waits (negative: the default 30 s).
-void setProcessDumpTimeoutForTest( int milliseconds );
+// The dump helper: CILogg (or a test fixture) started as
+//   <program> --internal-minidump-writer <pid> <dump path> <small|full>
+// writes a minidump of that other process (Windows) and returns 0, or a positive error code.
+// Not such a command line: -1.
+constexpr char DumpHelperFlag[] = "--internal-minidump-writer";
+int runDumpHelper( int argc, char** argv );
+// Whether a process with this id runs (a crashing CILogg may still be writing its dump).
+bool processAlive( long long pid );
 
 } // namespace cilogg::diagnostics::detail
 

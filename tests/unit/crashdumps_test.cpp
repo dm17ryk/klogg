@@ -6,6 +6,7 @@
 
 #include <catch2/catch.hpp>
 
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -15,7 +16,6 @@
 #include <QJsonObject>
 #include <QProcess>
 #include <QTemporaryDir>
-#include <QTest>
 
 #include <algorithm>
 #include <stdexcept>
@@ -95,6 +95,20 @@ void writeFile( const QString& path, const QByteArray& content )
     REQUIRE( file.open( QIODevice::WriteOnly ) );
     file.write( content );
 }
+
+// The process minidump helper of these tests: crash_fixture also answers runDumpHelper (in the
+// app, CILogg itself does). Reset afterwards, so no other test starts a helper.
+struct DumpHelperGuard {
+    DumpHelperGuard()
+    {
+        CrashDumps::setDumpHelper( QString::fromUtf8( CRASH_FIXTURE_PATH ) );
+    }
+    ~DumpHelperGuard()
+    {
+        CrashDumps::setDumpHelper( {} );
+        CrashDumps::setProcessDumpTimeoutForTest( -1 );
+    }
+};
 } // namespace
 
 TEST_CASE( "The stack where an exception was thrown is kept for the thread that catches it",
@@ -120,13 +134,20 @@ TEST_CASE( "The stack where an exception was thrown is kept for the thread that 
     CHECK( other.isEmpty() );
 }
 
-TEST_CASE( "A minidump of the running process is written where minidumps are supported",
-           "[diagnostics]" )
+TEST_CASE( "A minidump of the running process is written by the helper process", "[diagnostics]" )
 {
     QTemporaryDir dir;
     REQUIRE( dir.isValid() );
     const auto path = dir.filePath( "process.dmp" );
     QString error;
+    // Without a helper there is no process dump (and no program starts itself).
+    REQUIRE( CrashDumps::dumpHelper().isEmpty() );
+    CHECK_FALSE( CrashDumps::writeProcessDump( path, false, &error ) );
+    CHECK_FALSE( error.isEmpty() );
+    CHECK_FALSE( QFileInfo::exists( path ) );
+
+    DumpHelperGuard helper;
+    error.clear();
     const auto written = CrashDumps::writeProcessDump( path, false, &error );
     if ( CrashDumps::minidumpsSupported() ) {
         INFO( error.toStdString() );
@@ -226,6 +247,7 @@ TEST_CASE( "An exception report keeps its throw site, and its minidump stays out
     ReportRootGuard guard;
     DiagnosticReports::setRoot( root.path() );
 
+    DumpHelperGuard helper;
     ReportRequest request( "exception", "Searching a file", "boom", {} );
     request.throwStack = QStringList{ "cilogg.exe+0x10 frameA", "cilogg.exe+0x20 frameB" };
     request.processDump = true;
@@ -417,8 +439,7 @@ TEST_CASE( "A report whose attachment cannot be copied is incomplete, so a crash
     CHECK_FALSE( result.error.isEmpty() );
 }
 
-TEST_CASE( "A process minidump that finishes after the wait is removed, not left unannounced",
-           "[diagnostics]" )
+TEST_CASE( "A minidump helper that takes too long is ended and its dump removed", "[diagnostics]" )
 {
     if ( !CrashDumps::minidumpsSupported() ) {
         return;
@@ -426,23 +447,38 @@ TEST_CASE( "A process minidump that finishes after the wait is removed, not left
     QTemporaryDir dir;
     REQUIRE( dir.isValid() );
     const auto path = dir.filePath( "late.dmp" );
-    struct Restore {
-        ~Restore()
-        {
-            CrashDumps::setProcessDumpTimeoutForTest( -1 );
-        }
-    } restore;
+    DumpHelperGuard helper;
     CrashDumps::setProcessDumpTimeoutForTest( 0 ); // give up at once
     QString error;
-    const auto written = CrashDumps::writeProcessDump( path, false, &error );
-    if ( written ) {
-        // The dump won the race: then it is reported, and complete.
-        CHECK( isMinidump( path ) );
-        return;
-    }
-    CHECK_FALSE( error.isEmpty() );
-    // The worker finishes later (a small dump takes well under a second) and removes the dump
-    // that no report names. Right after the call the file may not exist yet, so give it time.
-    QTest::qWait( 5000 );
-    REQUIRE( QTest::qWaitFor( [ & ] { return !QFileInfo::exists( path ); }, 30000 ) );
+    CHECK_FALSE( CrashDumps::writeProcessDump( path, false, &error ) );
+    CHECK( error.contains( "not written within" ) );
+    // The helper was ended and the partial dump removed: nothing stays behind unannounced.
+    CHECK_FALSE( QFileInfo::exists( path ) );
+}
+
+TEST_CASE( "A crash whose dump is still being written by a running process waits", "[diagnostics]" )
+{
+    // A full-memory dump can take minutes: while the record has no dump result and its process
+    // runs, a starting CILogg neither reports the crash nor removes the dump.
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    ReportRootGuard guard;
+    REQUIRE( CrashDumps::setFolder( root.path() ) );
+    const auto base = root.filePath( "crash-20260101-000000-1" );
+    writeFile( base + ".txt",
+               QStringLiteral( "reason: writing\npid: %1\ndump: full memory\nstack:\n" )
+                   .arg( QCoreApplication::applicationPid() )
+                   .toUtf8() );
+    writeFile( base + ".dmp", "MDMP" );
+    age( base + ".txt" );
+    CHECK( CrashDumps::pendingCrashes().isEmpty() );
+    CHECK( QFileInfo::exists( base + ".dmp" ) );
+
+    // Once that process is gone, the unfinished dump is removed and the crash reported.
+    writeFile( base + ".txt", "reason: writing\npid: 0\ndump: full memory\nstack:\n" );
+    age( base + ".txt" );
+    const auto pending = CrashDumps::pendingCrashes();
+    REQUIRE( pending.size() == 1 );
+    CHECK( pending.front().toMap().value( "dump" ).toString().isEmpty() );
+    CHECK_FALSE( QFileInfo::exists( base + ".dmp" ) );
 }

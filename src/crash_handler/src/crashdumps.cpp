@@ -10,12 +10,14 @@
 #include "crashdumps_platform.h"
 #include "klogg_version.h"
 
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QMutex>
 #include <QMutexLocker>
+#include <QProcess>
 
 #include <atomic>
 #include <cstdlib>
@@ -36,10 +38,19 @@ using namespace detail;
 
 constexpr int MaxRecordBytes = 256 * 1024;
 constexpr qint64 MinRecordAgeMs = 10 * 1000;              // younger: maybe still being written
+constexpr qint64 MaxDumpWriteMs = 60 * 60 * 1000;         // a dump still pending after that is not
 constexpr qint64 MaxDumpBytes = 2LL * 1024 * 1024 * 1024; // all dumps but the newest
 
 std::atomic_bool installedFlag{ false };
 char terminateReason[ 512 ] = {};
+constexpr int DefaultProcessDumpWaitMs = 30 * 1000;
+std::atomic_int processDumpWaitMs{ DefaultProcessDumpWaitMs };
+
+QString& dumpHelperPath()
+{
+    static QString path;
+    return path;
+}
 
 QMutex& stateMutex()
 {
@@ -167,12 +178,69 @@ bool CrashDumps::minidumpsSupported()
 
 bool CrashDumps::writeProcessDump( const QString& path, bool fullMemory, QString* error )
 {
-    return detail::writeProcessMinidump( path, fullMemory, error );
+    const auto fail = [ error ]( const QString& text ) {
+        if ( error != nullptr ) {
+            *error = text;
+        }
+        return false;
+    };
+    if ( !minidumpsSupported() ) {
+        return fail( QStringLiteral( "CILogg writes minidumps on Windows only." ) );
+    }
+    const auto helper = dumpHelper();
+    if ( helper.isEmpty() ) {
+        return fail( QStringLiteral( "No minidump helper is set." ) );
+    }
+    // Another process writes the dump: MiniDumpWriteDump in this process would suspend every other
+    // thread, this one included, and could wait forever for a lock one of them holds. The helper
+    // can be ended when it takes too long.
+    QProcess process;
+    process.setProgram( helper );
+    process.setArguments( { QString::fromLatin1( DumpHelperFlag ),
+                            QString::number( QCoreApplication::applicationPid() ),
+                            QDir::toNativeSeparators( path ),
+                            fullMemory ? QStringLiteral( "full" ) : QStringLiteral( "small" ) } );
+    process.start();
+    if ( !process.waitForStarted( 10000 ) ) {
+        return fail(
+            QStringLiteral( "Cannot start the minidump helper: %1" ).arg( process.errorString() ) );
+    }
+    const auto waitMs = processDumpWaitMs.load();
+    if ( !process.waitForFinished( waitMs ) ) {
+        process.kill();
+        process.waitForFinished( 5000 );
+        QFile::remove( path ); // a dump cut short is no use, and no report names it
+        return fail( QStringLiteral( "The minidump was not written within %1 ms." ).arg( waitMs ) );
+    }
+    if ( process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0
+         || !QFileInfo::exists( path ) ) {
+        QFile::remove( path );
+        return fail( QStringLiteral( "The minidump helper failed (exit code %1)." )
+                         .arg( process.exitCode() ) );
+    }
+    return true;
+}
+
+void CrashDumps::setDumpHelper( const QString& program )
+{
+    QMutexLocker locker( &stateMutex() );
+    dumpHelperPath() = program;
+}
+
+QString CrashDumps::dumpHelper()
+{
+    QMutexLocker locker( &stateMutex() );
+    return dumpHelperPath();
+}
+
+int CrashDumps::runDumpHelper( int argc, char** argv )
+{
+    return detail::runDumpHelper( argc, argv );
 }
 
 void CrashDumps::setProcessDumpTimeoutForTest( int milliseconds )
 {
-    detail::setProcessDumpTimeoutForTest( milliseconds );
+    processDumpWaitMs = milliseconds < 0 ? DefaultProcessDumpWaitMs : milliseconds;
 }
 
 QVariantList CrashDumps::pendingCrashes()
@@ -191,9 +259,8 @@ QVariantList CrashDumps::pendingCrashes()
         = dir.entryList( { QStringLiteral( "crash-*.txt" ) }, QDir::Files, QDir::Name );
     for ( const auto& name : records ) {
         const auto record = dir.filePath( name );
-        if ( QFileInfo::exists( record + QStringLiteral( ".reported" ) )
-             || QFileInfo( record ).lastModified().msecsTo( QDateTime::currentDateTime() )
-                    < MinRecordAgeMs ) {
+        const auto age = QFileInfo( record ).lastModified().msecsTo( QDateTime::currentDateTime() );
+        if ( QFileInfo::exists( record + QStringLiteral( ".reported" ) ) || age < MinRecordAgeMs ) {
             continue;
         }
         QFile file( record );
@@ -201,6 +268,16 @@ QVariantList CrashDumps::pendingCrashes()
             continue;
         }
         const auto text = QString::fromUtf8( file.read( MaxRecordBytes ) );
+        // A dump still being written (a full-memory dump can take minutes): the record names a
+        // dump but no result yet, and the crashing process still runs. A later start reports it
+        // (after at most an hour, the process id may belong to another program by then).
+        const bool dumpPending = text.contains( QLatin1String( "\ndump: " ) )
+                                 && !text.contains( QLatin1String( "\ndump: none" ) )
+                                 && !text.contains( QLatin1String( "dump result:" ) );
+        if ( dumpPending && age < MaxDumpWriteMs
+             && processAlive( recordField( text, QStringLiteral( "pid" ) ).toLongLong() ) ) {
+            continue;
+        }
         // A dump counts only when the record says it was written; one cut short is removed.
         auto dump = dir.filePath( QFileInfo( name ).completeBaseName() + QStringLiteral( ".dmp" ) );
         if ( !text.contains( QLatin1String( "dump result: written" ) ) ) {

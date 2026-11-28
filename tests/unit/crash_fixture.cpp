@@ -39,6 +39,11 @@ void throwThroughNoexcept() noexcept
 
 int main( int argc, char** argv )
 {
+    // Also the minidump helper of the tests (CILogg itself is that helper in the app).
+    if ( const auto code = cilogg::diagnostics::CrashDumps::runDumpHelper( argc, argv );
+         code >= 0 ) {
+        return code;
+    }
     QCoreApplication app( argc, argv );
     if ( argc < 3 ) {
         return 2;
